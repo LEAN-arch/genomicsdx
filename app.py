@@ -367,7 +367,7 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
         if not action_items_df.empty and 'status' in action_items_df.columns:
             open_items = action_items_df[action_items_df['status'] != 'Completed']
             if not open_items.empty:
-                overdue_items_count = len(open_items[open_items['status'] == 'Overdue'])
+                overdue_actions_count = len(open_items[open_items['status'] == 'Overdue'])
                 execution_score = (1 - (overdue_items_count / len(open_items))) * 100 if len(open_items) > 0 else 100
         
         overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
@@ -791,10 +791,14 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         st.dataframe(df_doe, use_container_width=True)
         
         try:
-            # *** BUG FIX: Add dropna() to prevent error on incomplete data ***
-            df_doe.dropna(subset=['library_yield', 'pcr_cycles', 'input_dna'], inplace=True)
-            if len(df_doe) < 4: # Need enough data points for the model
-                 st.warning("Insufficient data for DOE analysis after removing missing values.")
+            # *** BUG FIX: Robust data cleaning before analysis ***
+            required_cols = ['library_yield', 'pcr_cycles', 'input_dna']
+            for col in required_cols:
+                df_doe[col] = pd.to_numeric(df_doe[col], errors='coerce')
+            df_doe.dropna(subset=required_cols, inplace=True)
+            
+            if len(df_doe) < 4:
+                 st.warning("Insufficient valid data for DOE analysis after removing missing values.")
             else:
                 model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
                 anova_table = anova_lm(model, typ=2)
