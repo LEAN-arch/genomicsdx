@@ -33,38 +33,17 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista"]
 
     # --- ML Data Generation (SME Definitive Refactor) ---
-    # This section has been refactored to prevent data structure mismatches.
-    # Features are created as separate, named components and then explicitly
-    # concatenated to ensure a consistent 10-feature DataFrame every time.
+    # This section is refactored for guaranteed structural integrity.
     np.random.seed(42)
     num_samples = 100
-    
-    # Generate target variable first
     y_series = pd.Series(np.random.randint(0, 2, num_samples), name='target')
-    
-    # Generate feature components separately for clarity and robustness
-    base_features = pd.DataFrame(
-        np.random.rand(num_samples, 7), 
-        columns=[f'biomarker_{i}' for i in range(7)]
-    )
-    promo_a = pd.Series(
-        y_series * 0.5 + np.random.normal(0.2, 0.1, num_samples), 
-        name='promoter_A_met'
-    )
-    enhancer_b = pd.Series(
-        y_series * 0.3 + np.random.normal(0.1, 0.05, num_samples), 
-        name='enhancer_B_met'
-    )
-    noise_feature = pd.Series(
-        np.random.rand(num_samples) * 0.1, 
-        name='junk_dna_met'
-    )
-    
-    # Atomically concatenate all features into a single, reliable DataFrame
+    base_features = pd.DataFrame(np.random.rand(num_samples, 7), columns=[f'biomarker_{i}' for i in range(7)])
+    promo_a = pd.Series(y_series * 0.5 + np.random.normal(0.2, 0.1, num_samples), name='promoter_A_met')
+    enhancer_b = pd.Series(y_series * 0.3 + np.random.normal(0.1, 0.05, num_samples), name='enhancer_B_met')
+    noise_feature = pd.Series(np.random.rand(num_samples) * 0.1, name='junk_dna_met')
     X_df = pd.concat([base_features, promo_a, enhancer_b, noise_feature], axis=1)
 
     # --- DOE Data Generation (SME Definitive Refactor) ---
-    # Data is created as a DataFrame with explicit types to prevent downstream errors.
     doe_df = pd.DataFrame({
         "pcr_cycles": pd.Series([10, 14, 10, 14], dtype='int64'), 
         "input_dna": pd.Series([20, 20, 50, 50], dtype='int64'),
@@ -72,14 +51,12 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     })
 
     # --- BUILT-IN DATA VALIDATION GATE ---
-    # This block acts as a unit test to ensure data integrity at the source.
-    # If this fails, it indicates a bug in the generation logic itself.
-    assert X_df.shape == (100, 10), "FATAL: ML feature matrix has incorrect shape."
+    assert X_df.shape == (100, 10), f"FATAL: ML feature matrix has incorrect shape: {X_df.shape}"
     assert not X_df.isnull().values.any(), "FATAL: ML feature matrix contains NaN values."
     assert doe_df.notna().all().all(), "FATAL: DOE data frame contains NaN values."
     assert np.issubdtype(doe_df['pcr_cycles'].dtype, np.integer), "FATAL: DOE pcr_cycles column is not integer."
     assert np.issubdtype(doe_df['library_yield'].dtype, np.floating), "FATAL: DOE library_yield column is not float."
-    logger.info("Internal data validation passed successfully.")
+    logger.info("Internal data generation validation passed successfully.")
     
     # --- Data Model Generation ---
     return {
@@ -258,7 +235,7 @@ class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
     # Incremented to force a reload with the new robust, validated data generation logic
-    _CURRENT_DATA_VERSION = 50 
+    _CURRENT_DATA_VERSION = 51
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
@@ -267,15 +244,22 @@ class SessionStateManager:
         session_data = st.session_state.get(self._DHF_DATA_KEY)
         if not session_data or session_data.get("data_version") != self._CURRENT_DATA_VERSION:
             logger.info(f"Initializing session state with MCED data model v{self._CURRENT_DATA_VERSION}.")
-            dhf_data = _create_mced_diagnostic_dhf_model(self._CURRENT_DATA_VERSION)
-            
-            # Train and store the classifier model in the session state
-            X, y = dhf_data['ml_models']['classifier_data']
-            model = RandomForestClassifier(n_estimators=100, random_state=42)
-            model.fit(X, y)
-            dhf_data['ml_models']['classifier_model'] = model
-            
-            st.session_state[self._DHF_DATA_KEY] = dhf_data
+            try:
+                dhf_data = _create_mced_diagnostic_dhf_model(self._CURRENT_DATA_VERSION)
+                
+                # Train and store the classifier model in the session state
+                X, y = dhf_data['ml_models']['classifier_data']
+                model = RandomForestClassifier(n_estimators=100, random_state=42)
+                model.fit(X, y)
+                dhf_data['ml_models']['classifier_model'] = model
+                
+                st.session_state[self._DHF_DATA_KEY] = dhf_data
+                logger.info("Session state initialized successfully.")
+            except AssertionError as e:
+                logger.critical(f"FATAL: Data generation validation failed: {e}", exc_info=True)
+                st.error(f"A critical error occurred during application startup: {e}. The application cannot continue. Please contact support.", icon="🚨")
+                st.stop()
+
 
     def get_data(self, primary_key: str, secondary_key: Optional[str] = None) -> Any:
         """Safely retrieves data from the nested session state dictionary."""
