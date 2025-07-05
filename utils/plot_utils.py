@@ -75,13 +75,16 @@ def create_risk_profile_chart(hazards_df: pd.DataFrame) -> go.Figure:
     try:
         if hazards_df.empty:
             return _create_placeholder_figure("No Risk Data Available", title)
-        # ... (full implementation) ...
         df = hazards_df.copy()
-        df['initial_level'] = df.apply(lambda row: _RISK_CONFIG['levels'].get((row.get('initial_S'), row.get('initial_O')), "N/A"), axis=1)
-        df['final_level'] = df.apply(lambda row: _RISK_CONFIG['levels'].get((row.get('final_S'), row.get('final_O')), "N/A"), axis=1)
+        
+        get_level = lambda s, o: _RISK_CONFIG['levels'].get((s, o), "N/A")
+        df['initial_level'] = df.apply(lambda row: get_level(row.get('initial_S'), row.get('initial_O')), axis=1)
+        df['final_level'] = df.apply(lambda row: get_level(row.get('final_S'), row.get('final_O')), axis=1)
+        
         risk_levels_order = _RISK_CONFIG['order']
         initial_counts = df['initial_level'].value_counts().reindex(risk_levels_order, fill_value=0)
         final_counts = df['final_level'].value_counts().reindex(risk_levels_order, fill_value=0)
+        
         bar_colors = [_RISK_CONFIG['colors'][level] for level in risk_levels_order]
         fig = go.Figure(data=[
             go.Bar(name='Initial Risk', x=risk_levels_order, y=initial_counts.values, text=initial_counts.values, marker=dict(color=bar_colors, line=dict(color='rgba(0,0,0,0.5)', width=1)), opacity=0.6),
@@ -114,7 +117,6 @@ def create_action_item_chart(actions_df: pd.DataFrame) -> go.Figure:
     except Exception as e:
         logger.error(f"Error creating action item chart: {e}", exc_info=True)
         return _create_placeholder_figure("Action Item Chart Error", title, icon="⚠️")
-
 
 # ==============================================================================
 # --- SME-AUGMENTED: SPECIALIZED GENOMICS & QC PLOTS ---
@@ -155,10 +157,8 @@ def create_lod_probit_plot(df: pd.DataFrame, conc_col: str, hit_rate_col: str, t
         if df_filtered.empty or len(df_filtered) < 2:
             return _create_placeholder_figure("Insufficient data for Probit plot.", title)
 
-        # --- FINAL CORRECTION ---
         # The modern equivalent of probit is the Percent Point Function (ppf) of the normal distribution.
         df_filtered['probit_hit_rate'] = stats.norm.ppf(df_filtered[hit_rate_col])
-        # --- END CORRECTION ---
         
         log_conc = np.log10(df_filtered[conc_col])
         slope, intercept, _, _, _ = stats.linregress(log_conc, df_filtered['probit_hit_rate'])
