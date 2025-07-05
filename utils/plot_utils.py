@@ -398,7 +398,6 @@ def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) ->
         plt.title("SHAP Feature Importance Summary", fontsize=16)
         plt.tight_layout()
         
-        # *** BUG FIX: Save to in-memory buffer for robust rendering with st.image ***
         buf = io.BytesIO()
         fig.savefig(buf, format="png", bbox_inches='tight')
         buf.seek(0)
@@ -424,30 +423,57 @@ def create_forecast_plot(history_df: pd.DataFrame, forecast_df: pd.DataFrame) ->
         logger.error(f"Error creating forecast plot: {e}", exc_info=True)
         return _create_placeholder_figure("Forecast Plot Error", title, "⚠️")
 
-def create_doe_interaction_plot(df: pd.DataFrame, factor1_col: str, factor2_col: str, response_col: str) -> go.Figure:
+def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, response: str) -> Tuple[go.Figure, go.Figure]:
     """
-    Creates a 2D interaction plot for DOE as a fallback visualization.
-    This plot shows the raw relationship between factors and the response,
-    and does not depend on a statistical model, making it robust to data issues.
+    Calculates and plots the main and interaction effects for a 2x2 factorial DOE.
+    This is a numerically stable alternative to fitting a regression model.
     """
-    title = f"<b>Interaction Plot: {factor1_col} & {factor2_col} vs. {response_col}</b>"
     try:
-        fig = px.line(
-            df,
-            x=factor1_col,
-            y=response_col,
-            color=factor2_col,
-            markers=True,
-            title=title,
-            labels={
-                factor1_col: f"Factor: {factor1_col}",
-                response_col: f"Response: {response_col}",
-                factor2_col: f"Factor: {factor2_col}"
-            }
+        # Calculate mean response for each of the 4 combinations
+        means = df.groupby([factor1, factor2])[response].mean()
+        
+        f1_low, f1_high = df[factor1].unique()
+        f2_low, f2_high = df[factor2].unique()
+
+        y1 = means.loc[f1_low, f2_low]    # Factor1 Low, Factor2 Low
+        y2 = means.loc[f1_high, f2_low]   # Factor1 High, Factor2 Low
+        y3 = means.loc[f1_low, f2_high]   # Factor1 Low, Factor2 High
+        y4 = means.loc[f1_high, f2_high]  # Factor1 High, Factor2 High
+
+        # --- Main Effects Calculation ---
+        main_effect_f1 = ((y2 - y1) + (y4 - y3)) / 2
+        main_effect_f2 = ((y3 - y1) + (y4 - y2)) / 2
+        effects_data = pd.DataFrame([
+            {'Effect': f'Main Effect: {factor1}', 'Value': main_effect_f1},
+            {'Effect': f'Main Effect: {factor2}', 'Value': main_effect_f2}
+        ])
+        
+        # --- Interaction Effect Calculation ---
+        interaction_effect = ((y4 - y3) - (y2 - y1)) / 2
+        effects_data.loc[len(effects_data)] = {'Effect': f'Interaction: {factor1}:{factor2}', 'Value': interaction_effect}
+
+        # --- Create Main Effects Plot ---
+        effects_fig = px.bar(effects_data, x='Effect', y='Value', title="<b>Calculated Factor Effects</b>",
+                             color='Effect', text_auto='.3f')
+        effects_fig.update_layout(showlegend=False, yaxis_title="Effect on Response", **_PLOT_LAYOUT_CONFIG)
+
+        # --- Create Interaction Plot ---
+        interaction_df = means.reset_index()
+        interaction_fig = px.line(interaction_df, x=factor1, y=response, color=factor2, markers=True,
+                                  title=f"<b>Interaction Plot: {factor1} vs {factor2}</b>")
+        interaction_fig.update_traces(marker=dict(size=12), line=dict(width=3))
+        interaction_fig.update_layout(
+            xaxis=dict(type='category'),
+            xaxis_title=f"Factor: {factor1}",
+            yaxis_title=f"Mean {response}",
+            legend_title=f"Factor: {factor2}",
+            **_PLOT_LAYOUT_CONFIG
         )
-        fig.update_layout(**_PLOT_LAYOUT_CONFIG, height=500)
-        fig.update_traces(marker=dict(size=10), line=dict(width=3))
-        return fig
+        
+        return effects_fig, interaction_fig
+
     except Exception as e:
-        logger.error(f"Error creating DOE interaction plot: {e}", exc_info=True)
-        return _create_placeholder_figure("Interaction Plot Error", title, icon="⚠️")
+        logger.error(f"Error creating DOE effects plot: {e}", exc_info=True)
+        title = "<b>DOE Analysis Error</b>"
+        return _create_placeholder_figure("Could not calculate effects.", title, "⚠️"), \
+               _create_placeholder_figure("Could not create interaction plot.", title, "⚠️")
