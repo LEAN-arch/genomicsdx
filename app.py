@@ -327,7 +327,8 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     st.header("Executive Health Summary")
 
     # Initialize all KPIs with default values
-    schedule_score, risk_score, execution_score, av_pass_rate, trace_coverage, enrollment_rate, overdue_actions_count = 0, 0, 100, 0, 0, 0, 0
+    schedule_score, risk_score, execution_score, av_pass_rate, trace_coverage, enrollment_rate = 0, 0, 100, 0, 0, 0
+    overdue_actions_count = 0 # *** BUG FIX: Initialize here ***
     weights = {'schedule': 0.4, 'quality': 0.4, 'execution': 0.2}
 
     # *** BUG FIX: Move data fetching to the top level of the function ***
@@ -368,7 +369,7 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
             open_items = action_items_df[action_items_df['status'] != 'Completed']
             if not open_items.empty:
                 overdue_actions_count = len(open_items[open_items['status'] == 'Overdue'])
-                execution_score = (1 - (overdue_items_count / len(open_items))) * 100 if len(open_items) > 0 else 100
+                execution_score = (1 - (overdue_actions_count / len(open_items))) * 100 if len(open_items) > 0 else 100
         
         overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
         
