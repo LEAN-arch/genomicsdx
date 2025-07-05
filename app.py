@@ -791,30 +791,30 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         st.dataframe(df_doe, use_container_width=True)
         
         try:
-            # *** SME-ENHANCED FIX: Comprehensive data sanitization before analysis ***
+            # *** SME-ENHANCED FIX: Definitive, multi-step data sanitization before analysis ***
             required_cols = ['library_yield', 'pcr_cycles', 'input_dna']
             
-            # Ensure columns exist before processing
             if not all(col in df_doe.columns for col in required_cols):
-                raise ValueError("DOE data is missing one or more required columns.")
+                raise ValueError("DOE data is missing one or more required columns for analysis.")
 
-            # Step 1: Coerce to numeric, turning invalid strings into NaN
+            # Step 1: Coerce all relevant columns to numeric, converting invalid entries to NaN
             for col in required_cols:
                 df_doe[col] = pd.to_numeric(df_doe[col], errors='coerce')
 
-            # Step 2: Replace infinite values with NaN so dropna can handle them all
+            # Step 2: Replace any infinite values (positive or negative) with NaN
             df_doe.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-            # Step 3: Drop any rows that now have NaN in the essential columns
+            # Step 3: Drop any rows that now contain NaN in the essential columns
             original_rows = len(df_doe)
             df_doe.dropna(subset=required_cols, inplace=True)
             cleaned_rows = len(df_doe)
             
             if cleaned_rows < original_rows:
-                logger.warning(f"Removed {original_rows - cleaned_rows} rows from DOE data due to non-finite values.")
+                logger.warning(f"Removed {original_rows - cleaned_rows} rows from DOE data due to non-finite values (NaN or Inf).")
+                st.warning(f"**Data Quality Alert:** {original_rows - cleaned_rows} rows were excluded from the DOE analysis due to missing or invalid numerical data. Please review the source data.", icon="⚠️")
             
             if len(df_doe) < 4:
-                 st.warning("Insufficient valid data for DOE analysis after removing non-finite values.")
+                 st.warning("Insufficient valid data remains for DOE analysis after sanitization.")
             else:
                 model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
                 anova_table = anova_lm(model, typ=2)
