@@ -55,7 +55,6 @@ def generate_meeting_minutes(review: Dict[str, Any]) -> str:
     else:
         df = pd.DataFrame(action_items)
         try:
-            # *** BUG FIX: Use a try-except block for the optional dependency ***
             minutes += df.to_markdown(index=False)
         except ImportError:
             logger.warning("`tabulate` package not found. Falling back to plain text table for meeting minutes.")
@@ -93,7 +92,8 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
             df_actions = pd.DataFrame(all_actions)
             if 'due_date' in df_actions.columns:
                 now = pd.to_datetime(date.today())
-                df_actions.loc[(pd.to_datetime(df_actions['due_date']) < now) & (df_actions['status'] != 'Completed'), 'status'] = 'Overdue'
+                df_actions['due_date'] = pd.to_datetime(df_actions['due_date'], errors='coerce')
+                df_actions.loc[(df_actions['due_date'] < now) & (df_actions['status'] != 'Completed'), 'status'] = 'Overdue'
             
             status_counts = df_actions['status'].value_counts() if 'status' in df_actions.columns else pd.Series()
             
@@ -152,7 +152,8 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
         cols = st.columns(3)
         date_val = cols[0].date_input("**Date**", value=pd.to_datetime(review.get('date')))
         type_options = ["Phase-Gate", "Technical", "Risk", "Software", "Usability"]
-        type_val = cols[1].selectbox("**Review Type**", options=type_options, index=type_options.index(review.get('type', 'Technical')))
+        current_type = review.get('type', 'Technical')
+        type_val = cols[1].selectbox("**Review Type**", options=type_options, index=type_options.index(current_type) if current_type in type_options else 0)
         phase_val = cols[2].text_input("**Project Phase Reviewed**", value=review.get('phase', ''), help="E.g., 'Assay Freeze'")
         
         scope_val = st.text_area("**Scope & Purpose**", value=review.get('scope', ''), height=100)
@@ -166,9 +167,9 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
         reviewer_index = owner_options.index(current_reviewer) if current_reviewer in owner_options else 0
         independent_reviewer_val = att_cols[1].selectbox("**Independent Reviewer (Required)**", options=owner_options, index=reviewer_index)
         
-        outcome_val = review.get('outcome', 'Pending')
+        current_outcome = review.get('outcome', 'Pending')
         outcome_options = ["Go", "Go with Conditions", "No-Go", "Pending"]
-        outcome_val = att_cols[2].selectbox("**Formal Outcome**", options=outcome_options, index=outcome_options.index(outcome_val))
+        outcome_val = att_cols[2].selectbox("**Formal Outcome**", options=outcome_options, index=outcome_options.index(current_outcome) if current_outcome in outcome_options else 3)
         
         notes_val = st.text_area("**Summary & Notes**", value=review.get('notes', ''), height=150)
 
@@ -186,8 +187,7 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
             }, hide_index=True,
         )
         
-        form_cols = st.columns([1, 1, 2])
-        submitted = form_cols[0].form_submit_button(f"💾 Save Changes", use_container_width=True, type="primary")
+        submitted = st.form_submit_button(f"💾 Save Changes", use_container_width=True, type="primary")
         
         if submitted:
             edited_actions_list = edited_actions_df.to_dict('records')
@@ -206,10 +206,12 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
                 st.toast(f"Design Review {review.get('id')} updated!", icon="✅")
                 st.rerun()
 
-    form_cols[1].download_button(
+    # *** BUG FIX: Move download_button outside the form ***
+    st.download_button(
         label="📄 Generate Minutes",
         data=generate_meeting_minutes(review),
         file_name=f"Minutes_{review.get('id')}_{review.get('date')}.md",
         mime="text/markdown",
-        use_container_width=True
+        use_container_width=True,
+        key=f"download_minutes_{review.get('id')}"
     )
