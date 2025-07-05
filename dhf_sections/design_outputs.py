@@ -48,8 +48,8 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
 
     try:
         # --- 1. Load Data and Prepare Dependencies ---
-        outputs_data: List[Dict[str, Any]] = ssm.get_data("design_outputs", "documents")
-        inputs_data: List[Dict[str, Any]] = ssm.get_data("design_inputs", "requirements")
+        outputs_data: List[Dict[str, Any]] = ssm.get_data("design_outputs", "documents") or []
+        inputs_data: List[Dict[str, Any]] = ssm.get_data("design_inputs", "requirements") or []
         logger.info(f"Loaded {len(outputs_data)} design output records and {len(inputs_data)} input records.")
 
         if not inputs_data:
@@ -63,23 +63,18 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
         st.subheader("Device Master Record (DMR) Health Dashboard")
         kpi_cols = st.columns(3)
         
-        # KPI 1: Output Status
         if not df_outputs.empty:
             status_counts = df_outputs['status'].value_counts()
             approved_count = status_counts.get("Approved", 0)
-            in_review_count = status_counts.get("In Review", 0)
-            draft_count = status_counts.get("Draft", 0)
             total_outputs = len(df_outputs)
             
-            # KPI 2: Traceability Coverage
-            non_user_needs_ids = set(df_inputs[df_inputs['type'] != 'User Need']['id'])
+            non_user_needs_ids = set(df_inputs[df_inputs['type'] != 'User Need']['id']) if 'type' in df_inputs.columns else set()
             linked_inputs = set(df_outputs.dropna(subset=['linked_input_id'])['linked_input_id'])
             coverage_pct = (len(linked_inputs.intersection(non_user_needs_ids)) / len(non_user_needs_ids)) * 100 if non_user_needs_ids else 0
             
-            # KPI 3: Untraced Outputs
             untraced_outputs = df_outputs[df_outputs['linked_input_id'].isnull() | (df_outputs['linked_input_id'] == '')]
 
-            kpi_cols[0].metric("Approved Outputs", f"{approved_count} / {total_outputs}", f"{approved_count/total_outputs:.1%}")
+            kpi_cols[0].metric("Approved Outputs", f"{approved_count} / {total_outputs}", f"{(approved_count/total_outputs if total_outputs > 0 else 0):.1%}")
             kpi_cols[1].metric("Input-to-Output Coverage", f"{coverage_pct:.1f}%", help="Percentage of formal requirements (non-User Needs) that are covered by at least one Design Output.")
             kpi_cols[2].metric("Untraced Outputs", len(untraced_outputs), help="Number of Design Outputs not linked to a Design Input. This is a critical compliance gap.", delta=len(untraced_outputs), delta_color="inverse")
             
@@ -96,7 +91,6 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
 
         st.divider()
         
-        # Create a user-friendly mapping for the requirement selection dropdown
         req_options_map = {
             f"{req.get('id', '')}: {req.get('description', '')[:70]}...": req.get('id', '')
             for req in inputs_data
@@ -116,10 +110,14 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
             st.subheader(f"{key_suffix.replace('_', ' ').title()} Specifications")
             st.caption(help_text)
             
-            tab_df = df_outputs[df_outputs['type'].isin(type_options)].copy()
-            original_data = tab_df.to_dict('records')
+            tab_df = df[df['type'].isin(type_options)].copy()
+            
+            # *** BUG FIX: Convert date strings to datetime objects before passing to editor ***
+            if 'approval_date' in tab_df.columns:
+                tab_df['approval_date'] = pd.to_datetime(tab_df['approval_date'], errors='coerce')
 
-            # Map the raw ID to the descriptive text for display in the editor
+            original_data = tab_df.to_dict('records')
+            
             tab_df['linked_input_descriptive'] = tab_df['linked_input_id'].map(reverse_req_map)
 
             edited_tab_df = st.data_editor(
@@ -128,23 +126,26 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
                     "id": st.column_config.TextColumn("ID", required=True),
                     "type": st.column_config.SelectboxColumn("Type", options=type_options, required=True),
                     "title": st.column_config.TextColumn("Title", width="large", required=True),
-                    "version": st.column_config.TextColumn("Version", required=True, help="E.g., 1.0, 1.1, 2.0"),
+                    "version": st.column_config.TextColumn("Version", required=True),
                     "status": st.column_config.SelectboxColumn("Status", options=["Draft", "In Review", "Approved", "Obsolete"], required=True),
                     "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
                     "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=list(req_options_map.keys()), required=True),
-                    "linked_input_id": None, # Hide the raw ID column
-                    "link_to_artifact": st.column_config.LinkColumn("Link to Artifact", help="Link to controlled document in eQMS.")
+                    "linked_input_id": None, 
+                    "link_to_artifact": st.column_config.LinkColumn("Link to Artifact")
                 }, hide_index=True
             )
 
-            if edited_tab_df.to_dict('records') != tab_df.to_dict('records'):
-                # Map the descriptive text back to the raw ID for storage
-                edited_tab_df['linked_input_id'] = edited_tab_df['linked_input_descriptive'].map(req_options_map)
-                edited_tab_df.drop(columns=['linked_input_descriptive'], inplace=True)
+            # Convert back to storable format before checking for changes
+            df_to_save = edited_tab_df.copy()
+            if 'approval_date' in df_to_save.columns:
+                 df_to_save['approval_date'] = df_to_save['approval_date'].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+
+            if df_to_save.to_dict('records') != original_data:
+                df_to_save['linked_input_id'] = df_to_save['linked_input_descriptive'].map(req_options_map)
+                df_to_save.drop(columns=['linked_input_descriptive'], inplace=True)
                 
-                # Merge back with other types and save
                 other_outputs = df_outputs[~df_outputs['type'].isin(type_options)].to_dict('records')
-                updated_all_outputs = other_outputs + edited_tab_df.to_dict('records')
+                updated_all_outputs = other_outputs + df_to_save.to_dict('records')
                 ssm.update_data(updated_all_outputs, "design_outputs", "documents")
                 logger.info(f"Design outputs for '{key_suffix}' updated.")
                 st.toast(f"{key_suffix.replace('_', ' ').title()} saved!", icon="✅")
