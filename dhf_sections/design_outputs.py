@@ -3,9 +3,11 @@
 Renders the Design Outputs section of the DHF dashboard.
 
 This module provides a structured, categorized UI for managing all tangible
-outputs of the design process. It ensures each output (specifications, code,
+outputs of the design process, which collectively form the basis for the
+Device Master Record (DMR). It ensures each output (specifications, code,
 procedures, etc.) is version-controlled, its status is tracked, and it is
 traceably linked to a design input, as required by 21 CFR 820.30(d).
+This module includes analytics for monitoring DMR completeness.
 """
 
 # --- Standard Library Imports ---
@@ -30,18 +32,19 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
     This function displays outputs in separate tabs for clarity (Assay, Software,
     Hardware, Labeling). It provides an editable table within each tab to manage
     the outputs, including their version, status, and the critical traceability
-    link back to a specific design input requirement.
+    link back to a specific design input requirement. It also features a
+    dashboard for analyzing the health and completeness of the DMR.
 
     Args:
         ssm (SessionStateManager): The session state manager to access DHF data.
     """
-    st.header("5. Design Outputs")
+    st.header("5. Design Outputs (Device Master Record Basis)")
     st.markdown("""
     *As per 21 CFR 820.30(d).*
 
-    Design Outputs are the full set of specifications, procedures, and artifacts that define the entire diagnostic service. They are the tangible results of the design process and form the basis for the Device Master Record (DMR). **Crucially, each output must be traceable to a design input, be approved, and be placed under formal version control.**
+    Design Outputs are the full set of specifications, procedures, and artifacts that define the entire diagnostic service. They are the tangible results of the design process and form the basis for the **Device Master Record (DMR)**. **Crucially, each output must be traceable to a design input, be approved, and be placed under formal version control.**
     """)
-    st.info("Use the tabs below to manage the outputs for each part of the system. Every output must be linked to an input requirement. Changes are saved automatically.", icon="ℹ️")
+    st.info("Use the tabs below to manage the outputs for each part of the system. Every output must be linked to an input requirement. Changes are saved automatically.", icon="📝")
 
     try:
         # --- 1. Load Data and Prepare Dependencies ---
@@ -53,157 +56,108 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
             st.warning("⚠️ No Design Inputs found. Please add requirements in '4. Design Inputs' before creating outputs.", icon="❗")
             return
         
-        # Create a user-friendly mapping for the requirement selection dropdown
-        req_options = [f"{req.get('id', '')}: {req.get('description', '')[:70]}..." for req in inputs_data]
-        req_map = {option: req.get('id', '') for option, req in zip(req_options, inputs_data)}
-        reverse_req_map = {v: k for k, v in req_map.items()}
+        df_outputs = pd.DataFrame(outputs_data)
+        df_inputs = pd.DataFrame(inputs_data)
+        
+        # --- 2. DMR Health Dashboard ---
+        st.subheader("Device Master Record (DMR) Health Dashboard")
+        kpi_cols = st.columns(3)
+        
+        # KPI 1: Output Status
+        if not df_outputs.empty:
+            status_counts = df_outputs['status'].value_counts()
+            approved_count = status_counts.get("Approved", 0)
+            in_review_count = status_counts.get("In Review", 0)
+            draft_count = status_counts.get("Draft", 0)
+            total_outputs = len(df_outputs)
+            
+            # KPI 2: Traceability Coverage
+            non_user_needs_ids = set(df_inputs[df_inputs['type'] != 'User Need']['id'])
+            linked_inputs = set(df_outputs.dropna(subset=['linked_input_id'])['linked_input_id'])
+            coverage_pct = (len(linked_inputs.intersection(non_user_needs_ids)) / len(non_user_needs_ids)) * 100 if non_user_needs_ids else 0
+            
+            # KPI 3: Untraced Outputs
+            untraced_outputs = df_outputs[df_outputs['linked_input_id'].isnull() | (df_outputs['linked_input_id'] == '')]
 
-        # --- 2. Define Tabs for Each Output Category ---
+            kpi_cols[0].metric("Approved Outputs", f"{approved_count} / {total_outputs}", f"{approved_count/total_outputs:.1%}")
+            kpi_cols[1].metric("Input-to-Output Coverage", f"{coverage_pct:.1f}%", help="Percentage of formal requirements (non-User Needs) that are covered by at least one Design Output.")
+            kpi_cols[2].metric("Untraced Outputs", len(untraced_outputs), help="Number of Design Outputs not linked to a Design Input. This is a critical compliance gap.", delta=len(untraced_outputs), delta_color="inverse")
+            
+            with st.expander("View DMR Status Details"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("Outputs by Status")
+                    st.dataframe(status_counts)
+                with col2:
+                    st.write("Untraced Design Outputs")
+                    st.dataframe(untraced_outputs[['id', 'title', 'type']], use_container_width=True)
+        else:
+            st.warning("No Design Outputs logged yet.")
+
+        st.divider()
+        
+        # Create a user-friendly mapping for the requirement selection dropdown
+        req_options_map = {
+            f"{req.get('id', '')}: {req.get('description', '')[:70]}...": req.get('id', '')
+            for req in inputs_data
+        }
+        reverse_req_map = {v: k for k, v in req_options_map.items()}
+
+        # --- 3. Define Tabs for Each Output Category ---
         tab_titles = [
             "Assay & Reagent Specifications",
             "Software & Algorithm Outputs",
             "Hardware & Kit Specifications",
             "Labeling & Procedures"
         ]
-        tab1, tab2, tab3, tab4 = st.tabs(tab_titles)
+        tabs = st.tabs(tab_titles)
 
-        # --- Helper function for rendering editor tabs ---
-        def render_editor_tab(
-            title: str,
-            df: pd.DataFrame,
-            key_suffix: str,
-            column_config: Dict,
-            help_text: str
-        ):
-            st.subheader(title)
+        def render_editor_tab(df: pd.DataFrame, key_suffix: str, type_options: List[str], help_text: str):
+            st.subheader(f"{key_suffix.replace('_', ' ').title()} Specifications")
             st.caption(help_text)
             
-            # Use a copy for safe manipulation and comparison
-            df_display = df.copy()
-            
-            # Map the raw ID to the descriptive text for display in the editor
-            if 'linked_input_id' in df_display.columns:
-                df_display['linked_input_descriptive'] = df_display['linked_input_id'].map(reverse_req_map)
-            else:
-                df_display['linked_input_descriptive'] = pd.Series(dtype=str)
+            tab_df = df_outputs[df_outputs['type'].isin(type_options)].copy()
+            original_data = tab_df.to_dict('records')
 
-            # Ensure the required columns exist before editing
-            for col, config in column_config.items():
-                if col not in df_display.columns and config is not None:
-                    # Initialize with a default value appropriate for the column type
-                    if isinstance(config, (st.column_config.TextColumn, st.column_config.LinkColumn)):
-                        df_display[col] = ""
-                    elif isinstance(config, st.column_config.SelectboxColumn):
-                        df_display[col] = config.default if config.default is not None else (config.options[0] if config.options else None)
-                    else:
-                        df_display[col] = pd.NA
-            
-            # Define a consistent column order for the editor
-            column_order = [
-                "id", "type", "title", "version", "status", "approval_date", 
-                "linked_input_descriptive", "link_to_artifact"
-            ]
-            # Filter order to only columns present in the config
-            display_columns = [col for col in column_order if col in column_config and column_config[col] is not None]
+            # Map the raw ID to the descriptive text for display in the editor
+            tab_df['linked_input_descriptive'] = tab_df['linked_input_id'].map(reverse_req_map)
 
             edited_tab_df = st.data_editor(
-                df_display,
-                num_rows="dynamic",
-                use_container_width=True,
-                key=f"output_editor_{key_suffix}",
-                column_config=column_config,
-                column_order=display_columns,
-                hide_index=True
+                tab_df, num_rows="dynamic", use_container_width=True, key=f"output_editor_{key_suffix}",
+                column_config={
+                    "id": st.column_config.TextColumn("ID", required=True),
+                    "type": st.column_config.SelectboxColumn("Type", options=type_options, required=True),
+                    "title": st.column_config.TextColumn("Title", width="large", required=True),
+                    "version": st.column_config.TextColumn("Version", required=True, help="E.g., 1.0, 1.1, 2.0"),
+                    "status": st.column_config.SelectboxColumn("Status", options=["Draft", "In Review", "Approved", "Obsolete"], required=True),
+                    "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
+                    "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=list(req_options_map.keys()), required=True),
+                    "linked_input_id": None, # Hide the raw ID column
+                    "link_to_artifact": st.column_config.LinkColumn("Link to Artifact", help="Link to controlled document in eQMS.")
+                }, hide_index=True
             )
 
-            if edited_tab_df.to_dict('records') != df_display.to_dict('records'):
+            if edited_tab_df.to_dict('records') != tab_df.to_dict('records'):
                 # Map the descriptive text back to the raw ID for storage
-                if 'linked_input_descriptive' in edited_tab_df.columns:
-                    valid_rows = edited_tab_df['linked_input_descriptive'].notna()
-                    edited_tab_df.loc[valid_rows, 'linked_input_id'] = edited_tab_df.loc[valid_rows, 'linked_input_descriptive'].map(req_map)
+                edited_tab_df['linked_input_id'] = edited_tab_df['linked_input_descriptive'].map(req_options_map)
+                edited_tab_df.drop(columns=['linked_input_descriptive'], inplace=True)
                 
-                # Drop the temporary display column before saving
-                edited_tab_df.drop(columns=['linked_input_descriptive'], inplace=True, errors='ignore')
-
                 # Merge back with other types and save
-                other_outputs = [out for out in outputs_data if out.get('type') not in df['type'].unique()]
+                other_outputs = df_outputs[~df_outputs['type'].isin(type_options)].to_dict('records')
                 updated_all_outputs = other_outputs + edited_tab_df.to_dict('records')
                 ssm.update_data(updated_all_outputs, "design_outputs", "documents")
-                logger.info(f"Design outputs for '{title}' updated.")
-                st.toast(f"{title} saved!", icon="✅")
+                logger.info(f"Design outputs for '{key_suffix}' updated.")
+                st.toast(f"{key_suffix.replace('_', ' ').title()} saved!", icon="✅")
                 st.rerun()
 
-        # --- 3. Render Each Tab with Specific Configurations ---
-        df_all = pd.DataFrame(outputs_data) if outputs_data else pd.DataFrame()
-        status_options = ["Draft", "In Review", "Approved", "Obsolete"]
-
-        with tab1: # Assay & Reagent
-            assay_df = df_all[df_all['type'] == 'Assay Spec'].copy()
-            render_editor_tab(
-                "Assay & Reagent Specifications", assay_df, "assay",
-                {
-                    "id": st.column_config.TextColumn("Spec ID", required=True),
-                    "type": st.column_config.SelectboxColumn("Type", options=["Assay Spec"], default="Assay Spec", required=True),
-                    "title": st.column_config.TextColumn("Specification Title", width="large", required=True),
-                    "version": st.column_config.TextColumn("Version", required=True, help="E.g., 1.0, 1.1, 2.0"),
-                    "status": st.column_config.SelectboxColumn("Status", options=status_options, required=True),
-                    "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
-                    "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=req_options, required=True),
-                    "link_to_artifact": st.column_config.LinkColumn("Link to Spec", help="Link to controlled document in eQMS.")
-                },
-                "Define the specifications for all wet-lab components, including oligo sequences, buffer formulations, and reagent QC tests."
-            )
-
-        with tab2: # Software & Algorithm
-            sw_df = df_all[df_all['type'].isin(['Software Spec', 'Algorithm'])].copy()
-            render_editor_tab(
-                "Software & Algorithm Outputs", sw_df, "software",
-                {
-                    "id": st.column_config.TextColumn("Artifact ID", required=True),
-                    "type": st.column_config.SelectboxColumn("Type", options=["Software Spec", "Algorithm"], required=True),
-                    "title": st.column_config.TextColumn("Artifact Title", width="large", required=True),
-                    "version": st.column_config.TextColumn("Version/Commit Hash", required=True, help="E.g., 2.1.3 or a Git commit hash."),
-                    "status": st.column_config.SelectboxColumn("Status", options=status_options, required=True),
-                    "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
-                    "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=req_options, required=True),
-                    "link_to_artifact": st.column_config.LinkColumn("Link to Repo/Doc", help="Link to Git repo, SDS, or locked model file.")
-                },
-                "List the Software Design Specifications (SDS), locked algorithm models, and source code repositories that define the bioinformatics pipeline and classifier."
-            )
-
-        with tab3: # Hardware & Kit
-            kit_df = df_all[df_all['type'] == 'Hardware Spec'].copy()
-            render_editor_tab(
-                "Hardware & Kit Specifications", kit_df, "kit",
-                {
-                    "id": st.column_config.TextColumn("Spec ID", required=True),
-                    "type": st.column_config.SelectboxColumn("Type", options=["Hardware Spec"], default="Hardware Spec", required=True),
-                    "title": st.column_config.TextColumn("Specification Title", width="large", required=True),
-                    "version": st.column_config.TextColumn("Version", required=True),
-                    "status": st.column_config.SelectboxColumn("Status", options=status_options, required=True),
-                    "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
-                    "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=req_options, required=True),
-                    "link_to_artifact": st.column_config.LinkColumn("Link to Drawing/Spec", help="Link to CAD drawing or material spec.")
-                },
-                "Define the specifications for the physical components of the service, such as the blood collection tube, packaging, and shipping materials."
-            )
-
-        with tab4: # Labeling & Procedures
-            proc_df = df_all[df_all['type'].isin(['Labeling', 'Procedure'])].copy()
-            render_editor_tab(
-                "Labeling & Procedures", proc_df, "proc",
-                {
-                    "id": st.column_config.TextColumn("Doc ID", required=True),
-                    "type": st.column_config.SelectboxColumn("Type", options=["Labeling", "Procedure"], required=True),
-                    "title": st.column_config.TextColumn("Document Title", width="large", required=True),
-                    "version": st.column_config.TextColumn("Version", required=True),
-                    "status": st.column_config.SelectboxColumn("Status", options=status_options, required=True),
-                    "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
-                    "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=req_options, required=True),
-                    "link_to_artifact": st.column_config.LinkColumn("Link to Document", help="Link to controlled document in eQMS (e.g., IFU, SOP, Report Template).")
-                },
-                "List all controlled documents that will be part of the final service, including the Instructions for Use (IFU), lab SOPs, and the Clinical Report template."
-            )
+        with tabs[0]:
+            render_editor_tab(df_outputs, "assay_reagent", ["Assay Spec"], "Define the specifications for all wet-lab components, including oligo sequences, buffer formulations, and reagent QC tests.")
+        with tabs[1]:
+            render_editor_tab(df_outputs, "software_algorithm", ["Software Spec", "Algorithm"], "List the Software Design Specifications (SDS), locked algorithm models, and source code repositories that define the bioinformatics pipeline and classifier.")
+        with tabs[2]:
+            render_editor_tab(df_outputs, "hardware_kit", ["Hardware Spec"], "Define the specifications for the physical components of the service, such as the blood collection tube, packaging, and shipping materials.")
+        with tabs[3]:
+            render_editor_tab(df_outputs, "labeling_procedures", ["Labeling", "Procedure"], "List all controlled documents that will be part of the final service, including the Instructions for Use (IFU), lab SOPs, and the Clinical Report template.")
 
     except Exception as e:
         st.error("An error occurred while displaying the Design Outputs section. The data may be malformed.")
