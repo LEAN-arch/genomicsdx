@@ -86,8 +86,8 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 st.metric("V&V Coverage of Risk Controls", f"{coverage:.1f}%", delta=f"-{untraced_count} Untraced", delta_color="inverse")
                 with st.expander("View Untraced Risk Controls"):
                     if untraced_controls:
-                        # *** BUG FIX: Defensively select available columns ***
                         df_untraced = pd.DataFrame(untraced_controls)
+                        # Defensively select available columns to prevent KeyErrors
                         display_cols = [col for col in ['id', 'risk_control_measure', 'mitigation'] if col in df_untraced.columns]
                         st.dataframe(df_untraced[display_cols], hide_index=True, use_container_width=True)
                     else:
@@ -127,7 +127,7 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
         def render_fmea_risk_matrix_plot(fmea_data: List[Dict[str, Any]], title: str):
             st.markdown(f"**Interactive Risk Matrix: {title}**")
             if not fmea_data: st.warning(f"No {title} data available to plot."); return
-            df = pd.DataFrame(fmea_data).dropna(subset=['S', 'O', 'D']) # Drop rows without S,O,D
+            df = pd.DataFrame(fmea_data).dropna(subset=['S', 'O', 'D'])
             if df.empty: st.warning(f"No valid S, O, D data in {title} to plot."); return
 
             df['RPN'] = df['S'] * df['O'] * df['D']
