@@ -4,23 +4,21 @@ Renders the Design Verification / Analytical Validation section of the DHF.
 
 This module provides a comprehensive dashboard for managing the extensive
 Analytical Validation (AV) program required for a PMA-class genomic diagnostic.
-It confirms that design outputs meet design inputs, as per 21 CFR 820.30(f),
-by tracking the specific performance characteristic studies recommended by
-CLSI guidelines.
+It confirms that design outputs meet their corresponding design inputs, as per
+21 CFR 820.30(f), by tracking the specific performance characteristic studies
+recommended by CLSI guidelines.
 """
 
 # --- Standard Library Imports ---
-# --- SME OVERHAUL: Definitive, Compliance-Focused Version ---
-# ... (docstring)
-# --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
-# ... (rest of file is unchanged) ...
 
 # --- Setup Logging ---
 logger = logging.getLogger(__name__)
