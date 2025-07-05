@@ -219,7 +219,7 @@ def render_traceability_matrix(ssm: SessionStateManager):
                 display_df = matrix_df.reset_index().fillna('N/A')
                 display_df.rename(columns={'id_x': 'id', 'description_x': 'description'}, inplace=True, errors='ignore')
                 
-                trace_cols = [col for col in display_df.columns if col not in ['id', 'description', 'is_risk_control']]
+                trace_cols = [col for col in display_df.columns if col not in ['id', 'description', 'is_risk_control', 'risk_control_measure']]
                 styler = display_df.style.apply(highlight_risk_control, axis=1)
                 styler = styler.map(style_trace_cell, subset=trace_cols)
 
@@ -256,11 +256,11 @@ def render_traceability_matrix(ssm: SessionStateManager):
             haz_df = pd.DataFrame(all_hazards)
             out_df = pd.DataFrame(ssm.get_data("design_outputs", "documents") or [])
             
-            if not req_df.empty: all_artifacts.extend([f"REQ: {id}" for id in req_df['id']])
-            if not ver_df.empty: all_artifacts.extend([f"VER: {id}" for id in ver_df['id']])
-            if not val_df.empty: all_artifacts.extend([f"VAL: {id}" for id in val_df['id']])
-            if not haz_df.empty: all_artifacts.extend([f"HAZ: {id}" for id in haz_df['id']])
-            if not out_df.empty: all_artifacts.extend([f"OUT: {id}" for id in out_df['id']])
+            if not req_df.empty and 'id' in req_df.columns: all_artifacts.extend([f"REQ: {id}" for id in req_df['id']])
+            if not ver_df.empty and 'id' in ver_df.columns: all_artifacts.extend([f"VER: {id}" for id in ver_df['id']])
+            if not val_df.empty and 'id' in val_df.columns: all_artifacts.extend([f"VAL: {id}" for id in val_df['id']])
+            if not haz_df.empty and 'id' in haz_df.columns: all_artifacts.extend([f"HAZ: {id}" for id in haz_df['id']])
+            if not out_df.empty and 'id' in out_df.columns: all_artifacts.extend([f"OUT: {id}" for id in out_df['id']])
             
             selected_artifact = st.selectbox("Select an artifact to trace:", sorted(list(set(all_artifacts))))
 
