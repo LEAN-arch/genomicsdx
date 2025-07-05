@@ -277,13 +277,13 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
     results_df = pd.DataFrame(columns=['Source', 'Variance Component', '% Contribution']).set_index('Source')
     try:
         # *** BUG FIX: Use standard formula string syntax without backticks for patsy ***
-        formula = f"{value_col} ~ C({operator_col}) + C({part_col}) + C({operator_col}):C({part_col})"
+        formula = f"`{value_col}` ~ C(`{operator_col}`) + C(`{part_col}`) + C(`{operator_col}`):C(`{part_col}`)"
         model = ols(formula, data=df).fit()
         anova_table = anova_lm(model, typ=2)
         
-        ms_operator = anova_table.loc[f'C({operator_col})', 'sum_sq'] / anova_table.loc[f'C({operator_col})', 'df']
-        ms_part = anova_table.loc[f'C({part_col})', 'sum_sq'] / anova_table.loc[f'C({part_col})', 'df']
-        ms_interact = anova_table.loc[f'C({operator_col}):C({part_col})', 'sum_sq'] / anova_table.loc[f'C({operator_col}):C({part_col})', 'df']
+        ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`)', 'df']
+        ms_part = anova_table.loc[f'C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{part_col}`)', 'df']
+        ms_interact = anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'df']
         ms_error = anova_table.loc['Residual', 'sum_sq'] / anova_table.loc['Residual', 'df']
 
         n_parts = df[part_col].nunique()
@@ -380,16 +380,15 @@ def create_confusion_matrix_heatmap(cm: np.ndarray, class_names: List[str]) -> g
         logger.error(f"Error creating confusion matrix heatmap: {e}", exc_info=True)
         return _create_placeholder_figure("Confusion Matrix Error", "Confusion Matrix", "⚠️")
 
-def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) -> Optional[Any]:
+def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) -> Optional[io.BytesIO]:
     """
-    Creates a SHAP summary plot as a Matplotlib figure object.
-    Returns None on failure to prevent passing incorrect object types.
+    Creates a SHAP summary plot and returns it as an in-memory PNG image buffer.
+    Returns None on failure.
     """
     try:
         import shap
         import matplotlib.pyplot as plt
 
-        # *** BUG FIX: Ensure shap_values and features have matching dimensions ***
         if shap_values.shape[1] != features.shape[1]:
             logger.error(f"SHAP plot error: Mismatch in shapes. SHAP values have {shap_values.shape[1]} features, data has {features.shape[1]}.")
             return None
@@ -398,7 +397,13 @@ def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) ->
         shap.summary_plot(shap_values, features, show=False)
         plt.title("SHAP Feature Importance Summary", fontsize=16)
         plt.tight_layout()
-        return fig
+        
+        # *** BUG FIX: Save to in-memory buffer for robust rendering with st.image ***
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig) # Close the figure to free up memory
+        return buf
     except Exception as e:
         logger.error(f"Error creating SHAP summary plot: {e}", exc_info=True)
         return None
