@@ -112,12 +112,13 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
             
             tab_df = df[df['type'].isin(type_options)].copy()
             
-            # *** BUG FIX: Convert date strings to datetime objects before passing to editor ***
+            # Create the original state for comparison AFTER potential type conversions
             if 'approval_date' in tab_df.columns:
                 tab_df['approval_date'] = pd.to_datetime(tab_df['approval_date'], errors='coerce')
-
-            original_data = tab_df.to_dict('records')
             
+            original_records = tab_df.to_dict('records')
+
+            # Map the raw ID to the descriptive text for display in the editor
             tab_df['linked_input_descriptive'] = tab_df['linked_input_id'].map(reverse_req_map)
 
             edited_tab_df = st.data_editor(
@@ -135,15 +136,22 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
                 }, hide_index=True
             )
 
-            # Convert back to storable format before checking for changes
-            df_to_save = edited_tab_df.copy()
-            if 'approval_date' in df_to_save.columns:
-                 df_to_save['approval_date'] = df_to_save['approval_date'].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
-
-            if df_to_save.to_dict('records') != original_data:
-                df_to_save['linked_input_id'] = df_to_save['linked_input_descriptive'].map(req_options_map)
-                df_to_save.drop(columns=['linked_input_descriptive'], inplace=True)
+            # *** BUG FIX: Convert edited data back to original format BEFORE comparison ***
+            edited_records_for_comparison = edited_tab_df.copy()
+            if 'approval_date' in edited_records_for_comparison.columns:
+                 edited_records_for_comparison['approval_date'] = pd.to_datetime(edited_records_for_comparison['approval_date']).dt.date
+            
+            # Compare dicts to avoid floating point/type issues with DataFrame.equals()
+            if str(edited_records_for_comparison.to_dict('records')) != str(original_records):
+                # Map the descriptive text back to the raw ID for storage
+                edited_tab_df['linked_input_id'] = edited_tab_df['linked_input_descriptive'].map(req_options_map)
+                df_to_save = edited_tab_df.drop(columns=['linked_input_descriptive'])
                 
+                # Ensure date is string for JSON serialization
+                if 'approval_date' in df_to_save.columns:
+                    df_to_save['approval_date'] = df_to_save['approval_date'].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+
+                # Merge back with other types and save
                 other_outputs = df_outputs[~df_outputs['type'].isin(type_options)].to_dict('records')
                 updated_all_outputs = other_outputs + df_to_save.to_dict('records')
                 ssm.update_data(updated_all_outputs, "design_outputs", "documents")
