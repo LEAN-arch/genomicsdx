@@ -17,6 +17,7 @@ from typing import Any, Dict, List
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go  # *** BUG FIX: Added missing import ***
 
 # --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
@@ -49,56 +50,52 @@ def render_action_item_tracker(ssm: SessionStateManager) -> None:
         sources_checked = []
 
         # Source 1: Design Reviews
-        reviews = ssm.get_data("design_reviews", "reviews")
-        if reviews:
-            sources_checked.append("Design Reviews")
-            for review in reviews:
-                if not isinstance(review, dict): continue
-                for action in review.get("action_items", []):
-                    if not isinstance(action, dict): continue
-                    action_copy = action.copy()
-                    action_copy['source'] = f"Review: {review.get('id', 'N/A')}"
-                    action_copy['type'] = action.get('type', 'Action Item')
-                    all_actions.append(action_copy)
+        reviews = ssm.get_data("design_reviews", "reviews") or []
+        sources_checked.append("Design Reviews")
+        for review in reviews:
+            if not isinstance(review, dict): continue
+            for action in review.get("action_items", []):
+                if not isinstance(action, dict): continue
+                action_copy = action.copy()
+                action_copy['source'] = f"Review: {review.get('id', 'N/A')}"
+                action_copy['type'] = action.get('type', 'Action Item')
+                all_actions.append(action_copy)
 
         # Source 2: Design Changes
-        changes = ssm.get_data("design_changes", "changes")
-        if changes:
-            sources_checked.append("Design Changes")
-            for change in changes:
-                if not isinstance(change, dict): continue
-                for action in change.get("action_items", []):
-                    if not isinstance(action, dict): continue
-                    action_copy = action.copy()
-                    action_copy['source'] = f"DCR-{change.get('id', 'N/A')}"
-                    action_copy['type'] = action.get('type', 'Change Action')
-                    all_actions.append(action_copy)
+        changes = ssm.get_data("design_changes", "changes") or []
+        sources_checked.append("Design Changes")
+        for change in changes:
+            if not isinstance(change, dict): continue
+            for action in change.get("action_items", []):
+                if not isinstance(action, dict): continue
+                action_copy = action.copy()
+                action_copy['source'] = f"DCR-{change.get('id', 'N/A')}"
+                action_copy['type'] = action.get('type', 'Change Action')
+                all_actions.append(action_copy)
 
         # Source 3: CAPA Records (Ref: 21 CFR 820.100)
-        capas = ssm.get_data("quality_system", "capa_records")
-        if capas:
-            sources_checked.append("CAPAs")
-            for capa in capas:
-                if not isinstance(capa, dict): continue
-                for action in capa.get("action_plan", []):
-                    if not isinstance(action, dict): continue
-                    action_copy = action.copy()
-                    action_copy['source'] = f"CAPA-{capa.get('id', 'N/A')}"
-                    action_copy['type'] = 'CAPA Action' # Overwrite type for clarity
-                    all_actions.append(action_copy)
+        capas = ssm.get_data("quality_system", "capa_records") or []
+        sources_checked.append("CAPAs")
+        for capa in capas:
+            if not isinstance(capa, dict): continue
+            for action in capa.get("action_plan", []):
+                if not isinstance(action, dict): continue
+                action_copy = action.copy()
+                action_copy['source'] = f"CAPA-{capa.get('id', 'N/A')}"
+                action_copy['type'] = 'CAPA Action'
+                all_actions.append(action_copy)
         
         # Source 4: Non-Conformance Reports (NCRs)
-        ncrs = ssm.get_data("quality_system", "ncr_records")
-        if ncrs:
-            sources_checked.append("NCRs")
-            for ncr in ncrs:
-                if not isinstance(ncr, dict): continue
-                for action in ncr.get("correction_actions", []):
-                    if not isinstance(action, dict): continue
-                    action_copy = action.copy()
-                    action_copy['source'] = f"NCR-{ncr.get('id', 'N/A')}"
-                    action_copy['type'] = 'NCR Correction'
-                    all_actions.append(action_copy)
+        ncrs = ssm.get_data("quality_system", "ncr_records") or []
+        sources_checked.append("NCRs")
+        for ncr in ncrs:
+            if not isinstance(ncr, dict): continue
+            for action in ncr.get("correction_actions", []):
+                if not isinstance(action, dict): continue
+                action_copy = action.copy()
+                action_copy['source'] = f"NCR-{ncr.get('id', 'N/A')}"
+                action_copy['type'] = 'NCR Correction'
+                all_actions.append(action_copy)
 
         logger.info(f"Aggregated a total of {len(all_actions)} action items from sources: {', '.join(sources_checked)}.")
 
@@ -107,7 +104,6 @@ def render_action_item_tracker(ssm: SessionStateManager) -> None:
             return
 
         actions_df = pd.DataFrame(all_actions)
-        # Drop duplicates in case an action is somehow sourced twice
         actions_df.drop_duplicates(subset=['id'], keep='first', inplace=True)
 
         # --- 2. Enrich the data for better insights ---
