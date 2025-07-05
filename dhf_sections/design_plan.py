@@ -10,10 +10,12 @@ and ISO 13485:2016, Section 7.3.1.
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
@@ -171,8 +173,14 @@ def render_design_plan(ssm: SessionStateManager) -> None:
             plan_data["team_members"] = edited_team_df.to_dict('records')
 
         # --- 3. Persist All Changes ---
-        ssm.update_data(plan_data, "design_plan")
-        logger.debug("Design plan data updated in session state.")
+        # A single update call at the end ensures atomicity for this section's edits if this were a single form,
+        # but with st.data_editor and individual widgets, changes are handled per widget interaction.
+        # We need to explicitly check and update for text/selectbox widgets.
+        if ssm.get_data("design_plan") != plan_data:
+            ssm.update_data(plan_data, "design_plan")
+            logger.debug("Design plan data updated in session state.")
+            # A toast can be added here, but it might be too frequent.
+            # st.toast("Design plan updated!")
 
     except Exception as e:
         st.error("An error occurred while displaying the Design Plan section. The data may be malformed.")
