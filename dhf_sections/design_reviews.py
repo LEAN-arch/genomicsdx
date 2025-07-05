@@ -54,7 +54,12 @@ def generate_meeting_minutes(review: Dict[str, Any]) -> str:
         minutes += "None.\n"
     else:
         df = pd.DataFrame(action_items)
-        minutes += df.to_markdown(index=False)
+        try:
+            # *** BUG FIX: Use a try-except block for the optional dependency ***
+            minutes += df.to_markdown(index=False)
+        except ImportError:
+            logger.warning("`tabulate` package not found. Falling back to plain text table for meeting minutes.")
+            minutes += df.to_string(index=False)
         
     return minutes
 
@@ -93,7 +98,7 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
             status_counts = df_actions['status'].value_counts() if 'status' in df_actions.columns else pd.Series()
             
             kpi_cols = st.columns(4)
-            overdue_count = int(status_counts.get("Overdue", 0)) # *** BUG FIX: Cast to int ***
+            overdue_count = int(status_counts.get("Overdue", 0))
             kpi_cols[0].metric("Total Actions", len(df_actions))
             kpi_cols[1].metric("Completed", int(status_counts.get("Completed", 0)))
             kpi_cols[2].metric("Open", int(status_counts.get("Open", 0) + status_counts.get("In Progress", 0)))
@@ -109,7 +114,6 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
         st.divider()
         st.info("Select a review from the dropdown to view its details, or log a new review record.", icon="ℹ️")
 
-        # Sort reviews by date, most recent first
         reviews.sort(key=lambda r: pd.to_datetime(r.get('date', '1900-01-01')), reverse=True)
 
         if not reviews:
@@ -125,14 +129,13 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
                     with st.container(border=True):
                         render_review_form(review, reviews, ssm, owner_options, output_options)
 
-        # Button to start a new review log
         if st.button("📝 Log New Design Review", use_container_width=True):
             new_id = f"DR-{len(reviews) + 1:03d}"
             new_review = {
                 "id": new_id, "date": str(date.today()), "type": "Technical", "phase": "N/A",
                 "attendees": [], "independent_reviewer": "", "scope": "", "outcome": "Pending", "notes": "", "documents_reviewed": [], "action_items": []
             }
-            reviews.insert(0, new_review) # Add to the top of the list
+            reviews.insert(0, new_review)
             ssm.update_data(reviews, "design_reviews", "reviews")
             st.success(f"Created new draft review {new_id}. Select it from the dropdown to edit.")
             st.rerun()
@@ -146,16 +149,15 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
     with st.form(key=f"review_form_{review.get('id')}"):
         st.subheader(f"Design Review Record: {review.get('id')}")
 
-        # --- Review Metadata ---
         cols = st.columns(3)
         date_val = cols[0].date_input("**Date**", value=pd.to_datetime(review.get('date')))
-        type_val = cols[1].selectbox("**Review Type**", options=["Phase-Gate", "Technical", "Risk", "Software", "Usability"], index=["Phase-Gate", "Technical", "Risk", "Software", "Usability"].index(review.get('type', 'Technical')))
+        type_options = ["Phase-Gate", "Technical", "Risk", "Software", "Usability"]
+        type_val = cols[1].selectbox("**Review Type**", options=type_options, index=type_options.index(review.get('type', 'Technical')))
         phase_val = cols[2].text_input("**Project Phase Reviewed**", value=review.get('phase', ''), help="E.g., 'Assay Freeze'")
         
         scope_val = st.text_area("**Scope & Purpose**", value=review.get('scope', ''), height=100)
         docs_val = st.multiselect("**Documents Reviewed**", options=output_options, default=review.get('documents_reviewed', []))
 
-        # --- Attendees & Outcome ---
         st.markdown("**Attendees & Review Outcome**")
         att_cols = st.columns(3)
         attendees_val = att_cols[0].multiselect("**Attendees**", options=owner_options, default=review.get('attendees', []))
@@ -170,7 +172,6 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
         
         notes_val = st.text_area("**Summary & Notes**", value=review.get('notes', ''), height=150)
 
-        # --- Action Items Editor ---
         st.markdown("**Action Items**")
         action_items_df = pd.DataFrame(review.get("action_items", []))
         if 'due_date' in action_items_df.columns:
@@ -178,22 +179,19 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
         edited_actions_df = st.data_editor(
             action_items_df, num_rows="dynamic", use_container_width=True, key=f"action_item_editor_{review['id']}",
             column_config={
-                "id": st.column_config.TextColumn("ID", required=True),
-                "description": st.column_config.TextColumn("Description", width="large", required=True),
-                "owner": st.column_config.SelectboxColumn("Owner", options=owner_options, required=True),
-                "due_date": st.column_config.DateColumn("Due Date", format="YYYY-MM-DD", required=True),
+                "id": st.column_config.TextColumn("ID", required=True), "description": st.column_config.TextColumn("Description", width="large", required=True),
+                "owner": st.column_config.SelectboxColumn("Owner", options=owner_options, required=True), "due_date": st.column_config.DateColumn("Due Date", format="YYYY-MM-DD", required=True),
                 "status": st.column_config.SelectboxColumn("Status", options=["Open", "In Progress", "Completed"], required=True),
                 "risk_priority": st.column_config.SelectboxColumn("Priority", options=["High", "Medium", "Low"], default="Medium", required=True)
             }, hide_index=True,
         )
         
-        # --- Form Submission and Actions ---
         form_cols = st.columns([1, 1, 2])
         submitted = form_cols[0].form_submit_button(f"💾 Save Changes", use_container_width=True, type="primary")
         
         if submitted:
             edited_actions_list = edited_actions_df.to_dict('records')
-            for item in edited_actions_list: # Ensure date is serialized correctly
+            for item in edited_actions_list:
                 item['due_date'] = str(pd.to_datetime(item['due_date']).date()) if pd.notna(item['due_date']) else None
             
             review_index = next((i for i, r in enumerate(all_reviews) if r.get('id') == review.get('id')), None)
@@ -208,7 +206,6 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
                 st.toast(f"Design Review {review.get('id')} updated!", icon="✅")
                 st.rerun()
 
-    # --- Meeting Minutes Generation (Outside the form) ---
     form_cols[1].download_button(
         label="📄 Generate Minutes",
         data=generate_meeting_minutes(review),
