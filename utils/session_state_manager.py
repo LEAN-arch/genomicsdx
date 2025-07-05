@@ -33,6 +33,9 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista"]
 
     # --- ML Data Generation (SME Robust Refactor) ---
+    # This section has been refactored to prevent data structure mismatches.
+    # Features are created as separate, named components and then explicitly
+    # concatenated to ensure a consistent 10-feature DataFrame every time.
     np.random.seed(42)
     num_samples = 100
     
@@ -59,7 +62,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
         name='junk_dna_met'
     )
     
-    # Concatenate all features into a single, reliable DataFrame
+    # Atomically concatenate all features into a single, reliable DataFrame
     X_df = pd.concat([base_features, promo_a, enhancer_b, noise_feature], axis=1)
 
     # --- Data Model Generation ---
@@ -208,7 +211,12 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
             "spc_data": {"target": 98.5, "stdev": 0.5, "measurements": [gauss(98.5, 0.5) for _ in range(50)], "usl": 100.0, "lsl": 97.0},
             "hypothesis_testing_data": {'pipeline_a': list(np.random.normal(0.012, 0.005, 30)), 'pipeline_b': list(np.random.normal(0.010, 0.005, 30))},
             "equivalence_data": {'reagent_lot_a': list(np.random.normal(0.85, 0.05, 30)), 'reagent_lot_b': list(np.random.normal(0.86, 0.05, 30))},
-            "doe_data": [{"pcr_cycles": 10, "input_dna": 20, "library_yield": 250.0}, {"pcr_cycles": 14, "input_dna": 20, "library_yield": 450.0}, {"pcr_cycles": 10, "input_dna": 50, "library_yield": 600.0}, {"pcr_cycles": 14, "input_dna": 50, "library_yield": 1100.0}],
+            # SME FIX: DOE data is now generated as a typed DataFrame to prevent data integrity issues downstream.
+            "doe_data": pd.DataFrame({
+                "pcr_cycles": pd.Series([10, 14, 10, 14], dtype='int64'), 
+                "input_dna": pd.Series([20, 20, 50, 50], dtype='int64'),
+                "library_yield": pd.Series([250.0, 450.0, 600.0, 1100.0], dtype='float64')
+            }).to_dict('records'),
             "msa_data": [{"part": p, "operator": o, "measurement": round(gauss(p * 1.0, 0.08), 4)} for p in range(1, 11) for o in ["Tech A", "Tech B", "Tech C"] for _ in range(3)],
         },
         "project_management": { "tasks": [
@@ -238,7 +246,8 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
 class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
-    _CURRENT_DATA_VERSION = 48 # Incremented for data generation fix
+    # Incremented to force a reload with the new robust data generation logic
+    _CURRENT_DATA_VERSION = 49 
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
