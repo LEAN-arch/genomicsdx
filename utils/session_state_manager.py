@@ -189,7 +189,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
             "spc_data": {"target": 98.5, "stdev": 0.5, "measurements": [gauss(98.5, 0.5) for _ in range(50)], "usl": 100.0, "lsl": 97.0},
             "hypothesis_testing_data": {'pipeline_a': list(np.random.normal(0.012, 0.005, 30)), 'pipeline_b': list(np.random.normal(0.010, 0.005, 30))},
             "equivalence_data": {'reagent_lot_a': list(np.random.normal(0.85, 0.05, 30)), 'reagent_lot_b': list(np.random.normal(0.86, 0.05, 30))},
-            "doe_data": [{"pcr_cycles": 10, "input_dna": 20, "library_yield": 250}, {"pcr_cycles": 14, "input_dna": 20, "library_yield": 450}, {"pcr_cycles": 10, "input_dna": 50, "library_yield": 600}, {"pcr_cycles": 14, "input_dna": 50, "library_yield": 1100}],
+            "doe_data": [{"pcr_cycles": 10, "input_dna": 20, "library_yield": 250.0}, {"pcr_cycles": 14, "input_dna": 20, "library_yield": 450.0}, {"pcr_cycles": 10, "input_dna": 50, "library_yield": 600.0}, {"pcr_cycles": 14, "input_dna": 50, "library_yield": 1100.0}],
             "msa_data": [{"part": p, "operator": o, "measurement": round(gauss(p * 1.0, 0.08), 4)} for p in range(1, 11) for o in ["Tech A", "Tech B", "Tech C"] for _ in range(3)],
         },
         "project_management": { "tasks": [
@@ -219,7 +219,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
 class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
-    _CURRENT_DATA_VERSION = 46 # Incremented for final bug fixes
+    _CURRENT_DATA_VERSION = 47 # Incremented for final bug fixes
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
