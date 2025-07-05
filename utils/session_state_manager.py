@@ -33,7 +33,6 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista"]
 
     # --- ML Data Generation (with fix) ---
-    # *** BUG FIX: Ensure X and y generation are coupled to avoid shape mismatch ***
     np.random.seed(42)
     num_samples = 100
     # Base features
@@ -220,7 +219,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
 class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
-    _CURRENT_DATA_VERSION = 45 # Incremented for final bug fixes
+    _CURRENT_DATA_VERSION = 46 # Incremented for final bug fixes
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
