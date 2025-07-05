@@ -539,7 +539,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
 def render_compliance_guide_tab():
     st.header("🏛️ A Guide to the IVD & Genomics Regulatory Landscape")
-    st.markdown("This section provides a high-level overview of the key regulations and standards governing the development of a PMA-class genomic diagnostic.")
     # ... full implementation ...
 
 # ==============================================================================
