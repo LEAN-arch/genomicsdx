@@ -411,7 +411,7 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     with khi_col1: st.metric(label="Analytical Validation (AV) Pass Rate", value=f"{av_pass_rate:.1f}%", help="Percentage of all planned Analytical Verification protocols that are complete and passing. (Ref: 21 CFR 820.30(f))"); st.progress(av_pass_rate / 100)
     with khi_col2: st.metric(label="Pivotal Study Enrollment", value=f"{enrollment_rate:.1f}%", help="Enrollment progress for the pivotal clinical trial required for PMA submission."); st.progress(enrollment_rate / 100)
     with khi_col3: st.metric(label="Requirement-to-V&V Traceability", value=f"{trace_coverage:.1f}%", help="Percentage of requirements traced to a verification or validation activity. (Ref: 21 CFR 820.30(g))"); st.progress(trace_coverage / 100)
-    with khi_col4: st.metric(label="Overdue Action Items", value=overdue_actions_count, delta=overdue_actions_count, delta_color="inverse", help="Total number of action items from all design reviews that are past their due date.")
+    with khi_col4: st.metric(label="Overdue Action Items", value=int(overdue_actions_count), delta=int(overdue_actions_count), delta_color="inverse", help="Total number of action items from all design reviews that are past their due date.")
     
     st.divider()
     st.subheader("Action Item Health (Last 30 Days)")
@@ -791,8 +791,9 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         st.dataframe(df_doe, use_container_width=True)
         
         try:
+            # *** BUG FIX: Add dropna() to prevent error on incomplete data ***
             df_doe.dropna(subset=['library_yield', 'pcr_cycles', 'input_dna'], inplace=True)
-            if len(df_doe) < 4:
+            if len(df_doe) < 4: # Need enough data points for the model
                  st.warning("Insufficient data for DOE analysis after removing missing values.")
             else:
                 model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
@@ -979,6 +980,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         
         st.write("Fitting ARIMA model and forecasting next 30 days...")
         try:
+            # A simple ARIMA model for demonstration
             model = ARIMA(df_ts['samples'].asfreq('D'), order=(5, 1, 0)).fit()
             forecast = model.get_forecast(steps=30)
             
@@ -1056,7 +1058,6 @@ def main() -> None:
     except Exception as e:
         st.error("Fatal Error: Could not initialize Session State."); logger.critical(f"Failed to instantiate SessionStateManager: {e}", exc_info=True); st.stop()
     
-    # Pre-process data with robust error handling
     try:
         tasks_raw = ssm.get_data("project_management", "tasks") or []
         tasks_df_processed = preprocess_task_data(tasks_raw)
