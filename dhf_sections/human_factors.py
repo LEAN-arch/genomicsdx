@@ -11,10 +11,12 @@ user interface, and linking risks to controls and validation activities.
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
@@ -56,6 +58,9 @@ def render_human_factors(ssm: SessionStateManager) -> None:
 
         # --- Helper Function for Rendering Tables ---
         def render_editor_tab(table_key: str, df: pd.DataFrame, column_config: dict):
+            # Make a copy to compare against for changes
+            original_data = df.to_dict('records')
+            
             edited_df = st.data_editor(
                 df,
                 num_rows="dynamic",
@@ -65,7 +70,7 @@ def render_human_factors(ssm: SessionStateManager) -> None:
                 hide_index=True
             )
             
-            if edited_df.to_dict('records') != df.to_dict('records'):
+            if edited_df.to_dict('records') != original_data:
                 hf_data[table_key] = edited_df.to_dict('records')
                 ssm.update_data(hf_data, "human_factors")
                 st.toast(f"{table_key.replace('_', ' ').title()} data updated!", icon="✅")
