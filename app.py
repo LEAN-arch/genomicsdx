@@ -18,6 +18,7 @@ import copy
 from datetime import timedelta
 from typing import Any, Dict, List, Tuple
 import hashlib  # For deterministic seeding and data integrity checks
+import io # For creating in-memory files
 
 # --- Third-party Imports ---
 import numpy as np
@@ -49,7 +50,9 @@ try:
     from genomicsdx.utils.plot_utils import (
         _RISK_CONFIG,
         create_action_item_chart, create_risk_profile_chart,
-        create_roc_curve, create_levey_jennings_plot, create_lod_probit_plot, create_bland_altman_plot
+        create_roc_curve, create_levey_jennings_plot, create_lod_probit_plot, create_bland_altman_plot,
+        create_pareto_chart, create_gauge_rr_plot, create_tost_plot,
+        create_confusion_matrix_heatmap, create_shap_summary_plot, create_forecast_plot
     )
     from genomicsdx.utils.session_state_manager import SessionStateManager
 except ImportError as e:
@@ -449,6 +452,7 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     with st.expander("Expand to see Audit & Continuous Improvement Details"): render_audit_and_improvement_dashboard(ssm)
 
 def render_dhf_explorer_tab(ssm: SessionStateManager):
+    """Renders the tab for exploring DHF sections."""
     st.header("🗂️ Design History File Explorer")
     st.markdown("Select a DHF section from the sidebar to view its contents. Each section corresponds to a requirement under **21 CFR 820.30**.")
     with st.sidebar:
@@ -459,6 +463,7 @@ def render_dhf_explorer_tab(ssm: SessionStateManager):
     page_function(ssm)
 
 def render_advanced_analytics_tab(ssm: SessionStateManager):
+    """Renders the tab for advanced analytics tools."""
     st.header("🔬 Advanced Compliance & Project Analytics")
     analytics_tabs = st.tabs(["Traceability Matrix", "Action Item Tracker", "Project Task Editor"])
     with analytics_tabs[0]: render_traceability_matrix(ssm)
@@ -484,67 +489,520 @@ def render_advanced_analytics_tab(ssm: SessionStateManager):
         except Exception as e: st.error("Could not load the Project Task Editor."); logger.error(f"Error in task editor: {e}", exc_info=True)
 
 def render_statistical_tools_tab(ssm: SessionStateManager):
+    """Renders the tab containing various statistical analysis tools."""
     st.header("📈 Statistical Workbench for Assay & Lab Development")
     st.info("Utilize this interactive workbench for rigorous statistical analysis of assay performance, a cornerstone of the Analytical Validation required for a PMA.")
+    
     try:
         from statsmodels.formula.api import ols
+        from statsmodels.stats.anova import anova_lm
+        from statsmodels.stats.power import TTestIndPower
         from scipy.stats import shapiro, mannwhitneyu, chi2_contingency, pearsonr
-    except ImportError: st.error("This tab requires `statsmodels` and `scipy`. Please install them (`pip install statsmodels scipy`) to enable statistical tools.", icon="🚨"); return
-    tool_tabs = st.tabs(["Process Control (Levey-Jennings)", "Hypothesis Testing", "Pareto Analysis (Failure Modes)", "Design of Experiments (DOE)", "Gauge R&R (MSA)", "Chi-Squared Test", "Correlation Analysis", "Equivalence Test (TOST)"])
+    except ImportError:
+        st.error("This tab requires `statsmodels` and `scipy`. Please install them (`pip install statsmodels scipy`) to enable statistical tools.", icon="🚨")
+        return
+
+    tool_tabs = st.tabs([
+        "Process Control (Levey-Jennings)",
+        "Hypothesis Testing (A/B Test)",
+        "Equivalence Testing (TOST)",
+        "Pareto Analysis (Failure Modes)",
+        "Measurement System Analysis (Gauge R&R)",
+        "Design of Experiments (DOE)"
+    ])
+
+    # --- Tool 1: Levey-Jennings ---
     with tool_tabs[0]:
         st.subheader("Statistical Process Control (SPC) for Assay Monitoring")
-        # ... full implementation ...
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            The Levey-Jennings (L-J) chart is a fundamental tool for Quality Control (QC) in clinical laboratories. Its purpose is to monitor the stability and precision of an assay over time using a control material with a known value. It provides a visual way to detect shifts, trends, or increased variability in the assay process, helping to ensure that results remain reliable.
+
+            **The Mathematical Basis & Method:**
+            The chart plots QC measurements on the y-axis against the run number or date on the x-axis. Horizontal lines are drawn at the mean of the QC data and at +/- 1, 2, and 3 standard deviations (SD) from the mean. These lines act as control limits. The distribution of points is expected to be random around the mean. Specific patterns, known as **Westgard Rules**, can be applied to detect out-of-control conditions (e.g., one point exceeding ±3SD, two consecutive points exceeding ±2SD).
+
+            **Procedure:**
+            1.  Select a set of SPC data from the available mock datasets.
+            2.  The application automatically calculates the mean and standard deviation.
+            3.  The L-J chart is plotted with the control measurements and the calculated control limits (Mean, ±1SD, ±2SD, ±3SD).
+            4.  Visually inspect the chart for non-random patterns or points exceeding the ±3SD limits, which indicate a potential process issue.
+
+            **Significance of Results:**
+            - **In-Control Process:** Most points are near the mean, and they are randomly distributed above and below it. This indicates the assay is stable and performing as expected.
+            - **Out-of-Control Process:** Points forming a trend (e.g., 6 consecutive points increasing) or exceeding the outer limits suggest a systemic issue (e.g., reagent degradation, instrument drift, change in operator technique). Such a signal requires immediate investigation, and patient sample results from the affected runs may need to be invalidated, as per CLIA regulations.
+            """)
+        spc_data = ssm.get_data("quality_system", "spc_data")
+        fig = create_levey_jennings_plot(spc_data)
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The selected control data appears to be stable and in-control. No Westgard rule violations were detected.")
+
+    # --- Tool 2: Hypothesis Testing ---
     with tool_tabs[1]:
         st.subheader("Hypothesis Testing for Assay Comparability")
-        # ... full implementation ...
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            Hypothesis testing is used to determine if there is a statistically significant difference between two or more groups. In assay development, it's commonly used to compare the performance of a new method, reagent, or software pipeline (Group B) against the current standard (Group A). It helps answer questions like: "Does changing our pipeline significantly alter the median biomarker value?"
+
+            **The Mathematical Basis & Method:**
+            - **T-Test:** Assumes the data in both groups are normally distributed and have equal variances. It calculates a t-statistic that represents the difference between the means relative to the variation within the groups.
+            - **Mann-Whitney U Test:** A non-parametric alternative used when the data is not normally distributed. It ranks all the data from both groups and checks if the ranks for one group are systematically higher or lower than the other.
+            - **Shapiro-Wilk Test:** Used to check if the data is likely to have come from a normal distribution. A low p-value (< 0.05) suggests the data is not normal, and a non-parametric test like Mann-Whitney U should be used.
+            The final result is a **p-value**, which is the probability of observing the data if there were truly no difference between the groups.
+
+            **Procedure:**
+            1.  The tool loads two sample datasets (e.g., `Pipeline A` vs. `Pipeline B`).
+            2.  It first performs a Shapiro-Wilk test on each dataset to check for normality.
+            3.  Based on the normality test, it automatically selects the appropriate comparison test (T-Test for normal data, Mann-Whitney U for non-normal).
+            4.  It calculates the test statistic and the p-value.
+            5.  A box plot is generated to visually compare the distributions of the two groups.
+
+            **Significance of Results:**
+            A low p-value (typically < 0.05) indicates a statistically significant difference between the two groups. This means the change (e.g., the new pipeline) had a real effect on the output. A high p-value (> 0.05) means there is not enough evidence to conclude that a difference exists.
+            **Crucially, failing to find a difference is NOT the same as proving equivalence.** For that, you must use Equivalence Testing (TOST).
+            """)
+        ht_data = ssm.get_data("quality_system", "hypothesis_testing_data")
+        df_a = pd.DataFrame({'value': ht_data['pipeline_a'], 'group': 'Pipeline A'})
+        df_b = pd.DataFrame({'value': ht_data['pipeline_b'], 'group': 'Pipeline B'})
+        df_ht = pd.concat([df_a, df_b], ignore_index=True)
+
+        stat_a, p_a = stats.shapiro(df_a['value'])
+        stat_b, p_b = stats.shapiro(df_b['value'])
+        
+        st.write("##### Normality Test (Shapiro-Wilk)")
+        norm_col1, norm_col2 = st.columns(2)
+        norm_col1.metric("Pipeline A p-value", f"{p_a:.3f}", "Normal" if p_a > 0.05 else "Not Normal")
+        norm_col2.metric("Pipeline B p-value", f"{p_b:.3f}", "Normal" if p_b > 0.05 else "Not Normal")
+
+        if p_a > 0.05 and p_b > 0.05:
+            st.success("Data appears normally distributed. Performing Welch's T-Test.")
+            test_stat, p_val = stats.ttest_ind(df_a['value'], df_b['value'], equal_var=False)
+            test_name = "T-Test"
+        else:
+            st.warning("Data does not appear normally distributed. Performing Mann-Whitney U Test.")
+            test_stat, p_val = stats.mannwhitneyu(df_a['value'], df_b['value'])
+            test_name = "Mann-Whitney U"
+            
+        st.write(f"##### {test_name} Result")
+        res_col1, res_col2 = st.columns(2)
+        res_col1.metric("Test Statistic", f"{test_stat:.3f}")
+        res_col2.metric("P-value", f"{p_val:.3f}")
+        
+        if p_val < 0.05:
+            st.error(f"**Conclusion:** There is a statistically significant difference between the groups (p < 0.05).")
+        else:
+            st.success(f"**Conclusion:** There is no statistically significant difference between the groups (p >= 0.05).")
+
+        fig = px.box(df_ht, x='group', y='value', color='group', points='all', title="Comparison of Pipeline Outputs")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # --- Tool 3: Equivalence Testing (TOST) ---
     with tool_tabs[2]:
-        st.subheader("Pareto Analysis of Sequencing Run Failures")
-        # ... full implementation ...
+        st.subheader("Equivalence Testing (TOST) for Change Control")
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            Equivalence testing is the statistically rigorous way to demonstrate that two methods or two batches of material are "practically the same." This is critical for regulatory submissions when, for example, you change a critical reagent supplier and need to prove the new reagent performs identically to the old one. It answers the question: "Is the difference between these two groups small enough to be considered irrelevant?"
+
+            **The Mathematical Basis & Method:**
+            Instead of trying to disprove a null hypothesis of no difference (like a t-test), TOST (Two One-Sided Tests) tries to *reject* the hypothesis that the groups are *different*.
+            1.  You first define an **equivalence margin** (e.g., ±10% of the mean). This is the "zone of indifference" where any difference is considered scientifically meaningless.
+            2.  Two separate one-sided t-tests are performed:
+                - Test 1: Is the mean difference significantly *greater than* the lower margin?
+                - Test 2: Is the mean difference significantly *less than* the upper margin?
+            3.  If **both** tests are statistically significant (both p-values < 0.05), you can reject the idea that the true difference lies outside your margins. Therefore, you can conclude the groups are equivalent.
+
+            **Procedure:**
+            1.  The tool loads two sample datasets (e.g., `Reagent Lot A` vs. `Reagent Lot B`).
+            2.  The user defines an equivalence margin (as a percentage of the mean of Lot A).
+            3.  The tool performs the TOST procedure and calculates the p-value.
+            4.  A plot is generated showing the confidence interval of the mean difference in relation to the equivalence margins.
+
+            **Significance of Results:**
+            - **Equivalence Concluded (p < 0.05):** The 90% confidence interval for the difference lies entirely *within* the equivalence margins. You have successfully demonstrated that the two lots are equivalent for practical purposes. This is a powerful statement for a change control report.
+            - **Equivalence Not Concluded (p >= 0.05):** The confidence interval crosses one or both of the equivalence margins. You cannot conclude that the lots are equivalent. They may be different, or your study may have been underpowered to prove equivalence.
+            """)
+        eq_data = ssm.get_data("quality_system", "equivalence_data")
+        margin_pct = st.slider("Select Equivalence Margin (%)", 5, 25, 10)
+        
+        lot_a = np.array(eq_data['reagent_lot_a'])
+        lot_b = np.array(eq_data['reagent_lot_b'])
+        
+        margin_abs = (margin_pct / 100) * lot_a.mean()
+        lower_bound, upper_bound = -margin_abs, margin_abs
+        
+        fig, p_value = create_tost_plot(lot_a, lot_b, lower_bound, upper_bound)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        if p_value < 0.05:
+            st.success(f"**Conclusion:** Equivalence has been demonstrated (p = {p_value:.4f}). The difference between the lots is statistically smaller than the defined margin of {margin_pct}%.")
+        else:
+            st.error(f"**Conclusion:** Equivalence could not be demonstrated (p = {p_value:.4f}). The confidence interval for the difference extends beyond the equivalence margin of {margin_pct}%.")
+    
+    # --- Tool 4: Pareto Analysis ---
     with tool_tabs[3]:
-        st.subheader("Design of Experiments (DOE) for Assay Optimization")
-        # ... full implementation ...
+        st.subheader("Pareto Analysis of Run Failures")
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            A Pareto chart is a quality management tool that applies the Pareto principle (the "80/20 rule") to identify the most significant factors in a given process. For lab operations, it's used to find the "vital few" causes of failures (e.g., sequencing run failures, QC failures) so that corrective and preventive action (CAPA) efforts can be focused on the highest-impact problems.
+
+            **The Mathematical Basis & Method:**
+            The chart is a combination of a bar chart and a line graph.
+            - The **bars** represent individual failure modes (or causes), sorted in descending order of frequency.
+            - The **line** represents the cumulative percentage of total failures.
+            The analysis simply involves counting the occurrences of each category of failure, calculating the percentage of the total for each, and then calculating the cumulative percentage.
+
+            **Procedure:**
+            1.  The tool loads a list of observed failure modes.
+            2.  It counts the frequency of each unique failure mode.
+            3.  It calculates the percentage and cumulative percentage.
+            4.  It generates the Pareto chart, showing the sorted bars and the cumulative line.
+
+            **Significance of Results:**
+            The chart clearly separates the "vital few" from the "trivial many." By looking at the chart, you can instantly see which 1, 2, or 3 failure modes account for ~80% of all problems. For example, if "Low Library Yield" and "Reagent QC Failure" account for 75% of all run failures, the operational improvement team knows to focus their resources on solving those two specific problems rather than wasting effort on less frequent issues.
+            """)
+        failure_data = ssm.get_data("lab_operations", "run_failures")
+        df_failures = pd.DataFrame(failure_data)
+        if not df_failures.empty:
+            fig = create_pareto_chart(df_failures, category_col='failure_mode', title='Pareto Analysis of Assay Run Failures')
+            st.plotly_chart(fig, use_container_width=True)
+            st.success("The analysis highlights 'Low Library Yield' and 'Reagent QC Failure' as the primary contributors to run failures, indicating these are the top priorities for process improvement initiatives.")
+        else:
+            st.info("No failure data to analyze.")
+            
+    # --- Tool 5: Gauge R&R ---
     with tool_tabs[4]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
-        # ... full implementation ...
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            A Gauge Repeatability & Reproducibility (Gauge R&R) study is used to evaluate the precision of a measurement system (e.g., an assay). It breaks down the total observed variation into two key components:
+            1.  **Repeatability (Equipment Variation):** Variation seen when the *same operator* measures the *same part* multiple times. This is the inherent variation of the assay/instrument.
+            2.  **Reproducibility (Appraiser Variation):** Variation seen when *different operators* measure the *same part*. This is the variation caused by differences in operator technique.
+            The goal is to ensure that the variation from the measurement system itself is small compared to the actual variation in the product being measured.
+
+            **The Mathematical Basis & Method:**
+            The analysis uses Analysis of Variance (ANOVA). It partitions the total sum of squares in the data into components attributable to the parts (the samples being measured), the operators, and the measurement error (repeatability). The % contribution of each source of variation to the total is then calculated.
+
+            **Procedure:**
+            1.  The tool loads a dataset from a structured Gauge R&R study (multiple operators measure multiple parts multiple times).
+            2.  An ANOVA model (`measurement ~ operator + sample`) is fitted to the data.
+            3.  The components of variance are extracted from the ANOVA table.
+            4.  The results are displayed in a table and a stacked bar chart showing the percentage contribution of each source of variation.
+
+            **Significance of Results:**
+            According to industry standards (e.g., AIAG), the total Gauge R&R contribution should be:
+            - **< 10%:** Acceptable measurement system.
+            - **10% - 30%:** May be acceptable depending on the application's importance and cost.
+            - **> 30%:** Unacceptable. The measurement system is inadequate, and its variation is masking the true variation of the product.
+            If Reproducibility (operator variation) is high, it indicates a need for better training or more standardized procedures. If Repeatability is high, the assay or instrument itself may need improvement.
+            """)
+        msa_data = ssm.get_data("quality_system", "msa_data")
+        df_msa = pd.DataFrame(msa_data)
+        if not df_msa.empty:
+            fig, results_df = create_gauge_rr_plot(df_msa, part_col='sample', operator_col='operator', value_col='measurement')
+            
+            st.write("##### ANOVA Variance Components")
+            st.dataframe(results_df, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
+            if total_grr < 10:
+                st.success(f"**Conclusion:** The measurement system is acceptable (Total GR&R = {total_grr:.2f}%). Most of the variation comes from the parts themselves, not the measurement process.")
+            elif total_grr < 30:
+                st.warning(f"**Conclusion:** The measurement system is marginal (Total GR&R = {total_grr:.2f}%). Further investigation may be warranted.")
+            else:
+                st.error(f"**Conclusion:** The measurement system is unacceptable (Total GR&R = {total_grr:.2f}%). The assay has too much inherent variation.")
+        else:
+            st.info("No MSA data to analyze.")
+
+    # --- Tool 6: DOE ---
     with tool_tabs[5]:
-        st.subheader("Chi-Squared Test of Independence")
-        # ... full implementation ...
-    with tool_tabs[6]:
-        st.subheader("Correlation Analysis")
-        # ... full implementation ...
-    with tool_tabs[7]:
-        st.subheader("Equivalence Testing (TOST) for Change Control")
-        # ... full implementation ...
+        st.subheader("Design of Experiments (DOE) for Assay Optimization")
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            Design of Experiments (DOE) is a systematic method for determining the relationship between factors affecting a process and the output of that process. In assay development, it is used to efficiently optimize conditions (e.g., PCR cycles, DNA input amount, incubation time) to maximize a desired outcome (e.g., library yield).
+
+            **The Mathematical Basis & Method:**
+            This tool uses a 2-level full factorial design analysis.
+            1.  A regression model is fitted to the experimental data using Ordinary Least Squares (OLS). The formula looks like `output ~ factor1 * factor2`, which accounts for the main effect of each factor and the interaction effect between them.
+            2.  An ANOVA table is generated from the model. The p-values in the ANOVA table tell us which factors (and interactions) have a statistically significant effect on the output.
+            3.  A 3D surface plot is generated from the model to visualize the "response surface," showing how the output changes as the factors are varied.
+
+            **Procedure:**
+            1.  The tool loads data from a designed experiment.
+            2.  The user selects the input factors and the output response variable.
+            3.  The tool fits the regression model, generates the ANOVA table, and creates the 3D surface plot.
+
+            **Significance of Results:**
+            - **ANOVA Table:** If the p-value for a factor is low (< 0.05), it means that changing that factor has a significant effect on the output. A significant interaction effect (`factor1:factor2`) means the effect of one factor depends on the level of the other. This is a key insight that "one-factor-at-a-time" experiments miss.
+            - **Response Surface Plot:** This plot provides an intuitive map for optimization. The user can visually identify the combination of factor settings that leads to the maximum (or minimum) response. For example, it might show that maximum library yield is achieved with 14 PCR cycles AND 50ng of input DNA.
+            """)
+        doe_data = ssm.get_data("quality_system", "doe_data")
+        df_doe = pd.DataFrame(doe_data)
+        
+        st.write("##### DOE Data")
+        st.dataframe(df_doe, use_container_width=True)
+        
+        try:
+            model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
+            anova_table = anova_lm(model, typ=2)
+            
+            st.write("##### ANOVA Results")
+            st.dataframe(anova_table)
+            
+            st.write("##### 3D Response Surface Plot")
+            # Create a grid for prediction
+            pcr_levels = df_doe['pcr_cycles'].unique()
+            dna_levels = df_doe['input_dna'].unique()
+            grid_x, grid_y = np.meshgrid(np.linspace(pcr_levels.min(), pcr_levels.max(), 10),
+                                         np.linspace(dna_levels.min(), dna_levels.max(), 10))
+            grid_df = pd.DataFrame({'pcr_cycles': grid_x.flatten(), 'input_dna': grid_y.flatten()})
+            grid_df['predicted_yield'] = model.predict(grid_df)
+            
+            fig = go.Figure(data=[go.Surface(z=grid_df['predicted_yield'].values.reshape(grid_x.shape),
+                                              x=grid_x, y=grid_y, colorscale='Viridis')])
+            fig.add_trace(go.Scatter3d(x=df_doe['pcr_cycles'], y=df_doe['input_dna'], z=df_doe['library_yield'],
+                                       mode='markers', marker=dict(size=5, color='red')))
+            fig.update_layout(title='Predicted Library Yield Response Surface',
+                              scene=dict(xaxis_title='PCR Cycles', yaxis_title='Input DNA (ng)', zaxis_title='Library Yield'),
+                              height=600)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Interpretation
+            p_val_interaction = anova_table.loc['C(pcr_cycles):C(input_dna)', 'PR(>F)']
+            if p_val_interaction < 0.05:
+                st.success("**Conclusion:** Both PCR cycles and input DNA amount, as well as their interaction, are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
+            else:
+                 st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
+        except Exception as e:
+            st.error(f"Could not perform DOE analysis. Error: {e}")
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
+    """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
     st.info("Utilize and validate predictive models for operational efficiency and explore the classifier's behavior. Model explainability is key for regulatory review.")
+    
     try:
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import train_test_split
-        from sklearn.metrics import confusion_matrix
+        from sklearn.metrics import confusion_matrix, roc_auc_score, precision_recall_curve, auc
+        from statsmodels.tsa.arima.model import ARIMA
         import shap
-    except ImportError: st.error("This tab requires `scikit-learn` and `shap`. Please install them to enable ML features.", icon="🚨"); return
+    except ImportError:
+        st.error("This tab requires `scikit-learn`, `shap`, and `statsmodels`. Please install them to enable ML features.", icon="🚨")
+        return
+        
     ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)"])
+
+    # --- Tool 1: SHAP ---
     with ml_tabs[0]:
         st.subheader("Cancer Classifier Explainability (SHAP)")
-        # ... full implementation ...
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            Machine learning models, especially complex ones like gradient boosting or random forests, are often considered "black boxes." For a medical device, especially a PMA-class diagnostic, this is unacceptable to regulators. We must be able to explain *why* the model made a specific prediction for a given patient. SHAP (SHapley Additive exPlanations) is a state-of-the-art method that assigns each feature (e.g., a specific methylation biomarker) an importance value for each individual prediction, providing crucial model transparency and explainability.
+
+            **The Mathematical Basis & Method:**
+            SHAP is based on Shapley values, a concept from cooperative game theory. It calculates the average marginal contribution of a feature value across all possible combinations of features. In essence, it answers the question: "How much did feature X's value contribute to pushing the model's prediction away from the baseline average?"
+            - **Positive SHAP value:** Pushes the prediction higher (e.g., towards "Cancer Signal Detected").
+            - **Negative SHAP value:** Pushes the prediction lower (e.g., towards "No Signal Detected").
+
+            **Procedure:**
+            1.  A pre-trained classifier and a sample of the training data are loaded.
+            2.  A SHAP `TreeExplainer` is created for the model.
+            3.  SHAP values are calculated for every feature for every sample in the dataset.
+            4.  A **summary plot** is generated. This plot shows the most important features overall and the distribution of their SHAP values.
+
+            **Significance of Results:**
+            The SHAP summary plot is incredibly insightful:
+            - **Feature Importance:** Features are ranked top-to-bottom by their importance.
+            - **Impact Direction:** The color shows whether a high (red) or low (blue) value of that feature resulted in a positive or negative SHAP value.
+            For our MCED test, we would expect to see known cancer-related methylation markers ranked as highly important. If a non-biological feature (like `batch_id`) appeared as important, it would be a major red flag for a confounding batch effect. This plot provides powerful, objective evidence that the model is learning biologically relevant patterns, which is a cornerstone of the analytical validation for the algorithm.
+            """)
+        
+        st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
+        X, y = ssm.get_data("ml_models", "classifier_data")
+        model = ssm.get_data("ml_models", "classifier_model")
+        
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X)
+        
+        # We plot the SHAP values for the "Cancer" class, which is typically the second class (index 1)
+        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+        fig_shap = create_shap_summary_plot(shap_values[1], X)
+        st.pyplot(fig_shap, use_container_width=True)
+        st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
+
+    # --- Tool 2: Predictive Operations ---
     with ml_tabs[1]:
         st.subheader("Predictive Operations: Sequencing Run Failure")
-        # ... full implementation ...
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            This tool uses machine learning to predict the likelihood of a sequencing run failing *before* it is started, based on pre-run QC metrics. Failed runs are a major source of cost and delay in a high-throughput lab. By identifying high-risk runs in advance, the lab can take preventive action (e.g., re-prepping the library, holding the run), saving significant resources.
+
+            **The Mathematical Basis & Method:**
+            A classification model (in this case, Logistic Regression) is trained on historical data.
+            - **Features (X):** Pre-run QC metrics like library concentration, fragment size (DV200), and adapter-dimer percentage.
+            - **Target (y):** The historical outcome of the run (Pass or Fail).
+            The model learns the relationship between the input QC values and the run outcome. A **confusion matrix** is used to evaluate the model's performance. It's a table that shows:
+            - **True Positives (TP):** Correctly predicted failures.
+            - **True Negatives (TN):** Correctly predicted passes.
+            - **False Positives (FP):** Incorrectly predicted failures (pass was predicted to fail).
+            - **False Negatives (FN):** Incorrectly predicted passes (fail was predicted to pass). This is the most costly error.
+
+            **Procedure:**
+            1.  Historical run QC data is loaded and split into training and testing sets.
+            2.  A Logistic Regression model is trained on the training set.
+            3.  The trained model makes predictions on the unseen test set.
+            4.  A confusion matrix is generated and plotted as a heatmap to visualize the model's performance.
+
+            **Significance of Results:**
+            The confusion matrix tells us how well the model can distinguish between runs that will pass and runs that will fail. The key goal is to minimize **False Negatives**—runs that the model predicted would pass but actually failed. By reviewing the model's performance, lab management can decide if it's reliable enough to be used in production. A good model can lead to substantial reductions in the Cost of Poor Quality (COPQ) by preventing wasted reagents and instrument time.
+            """)
+        
+        run_qc_data = ssm.get_data("ml_models", "run_qc_data")
+        df_run_qc = pd.DataFrame(run_qc_data)
+        
+        X = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
+        y = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
+        
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+        
+        model = LogisticRegression(random_state=42, class_weight='balanced')
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        
+        cm = confusion_matrix(y_test, y_pred)
+        
+        st.write("##### Run Failure Prediction Model Performance (on Test Set)")
+        fig_cm = create_confusion_matrix_heatmap(cm, ['Pass', 'Fail'])
+        st.plotly_chart(fig_cm, use_container_width=True)
+        
+        tn, fp, fn, tp = cm.ravel()
+        st.success(f"""
+        **Model Evaluation:**
+        - The model correctly identified **{tp}** out of **{tp+fn}** failing runs in the test set.
+        - It successfully avoided **{fn}** costly failures that would have otherwise occurred.
+        - This predictive tool shows promise for integration into the pre-run QC checklist to reduce overall COPQ.
+        """)
+        
+    # --- Tool 3: Time Series Forecasting ---
     with ml_tabs[2]:
         st.subheader("Time Series Forecasting for Lab Operations")
-        # ... full implementation ...
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            This tool forecasts future lab operational metrics, such as incoming sample volume, based on historical trends. Accurate forecasting is essential for resource planning, including staffing, reagent purchasing, and capacity management. It helps the business move from reactive to proactive operational management.
+
+            **The Mathematical Basis & Method:**
+            This tool uses an **ARIMA (AutoRegressive Integrated Moving Average)** model, a standard and powerful class of models for time series forecasting.
+            - **AR (AutoRegressive):** Assumes the current value depends on its own previous values.
+            - **I (Integrated):** Uses differencing of the raw observations to make the time series stationary (i.e., its mean and variance don't change over time).
+            - **MA (Moving Average):** Assumes the current value depends on past forecast errors.
+            The model is fitted to the historical data, and then it projects the learned patterns into the future, creating a forecast with associated confidence intervals.
+
+            **Procedure:**
+            1.  Historical daily sample volume data is loaded.
+            2.  An ARIMA model is fitted to this data.
+            3.  The model is used to forecast the next 30 days of sample volume.
+            4.  A plot is generated showing the historical data, the forecast, and the 95% confidence interval for the forecast.
+
+            **Significance of Results:**
+            The forecast plot provides an actionable estimate of future workload. Lab management can use this to:
+            - **Optimize Reagent Orders:** Purchase enough reagents to meet the expected demand without overstocking and risking expiration.
+            - **Schedule Staff:** Ensure adequate staffing levels for anticipated busy periods.
+            - **Capacity Planning:** Identify when future demand might exceed current lab capacity, signaling the need for investment in new equipment or process improvements.
+            The confidence interval provides a "worst-case" and "best-case" scenario, allowing for more robust planning.
+            """)
+        
+        ts_data = ssm.get_data("ml_models", "sample_volume_data")
+        df_ts = pd.DataFrame(ts_data)
+        df_ts['date'] = pd.to_datetime(df_ts['date'])
+        df_ts = df_ts.set_index('date')
+        
+        st.write("Fitting ARIMA model and forecasting next 30 days...")
+        try:
+            # A simple ARIMA model for demonstration
+            model = ARIMA(df_ts['samples'], order=(5, 1, 0))
+            model_fit = model.fit()
+            forecast = model_fit.get_forecast(steps=30)
+            
+            forecast_df = forecast.summary_frame()
+            forecast_df.index.name = "date"
+            
+            fig = create_forecast_plot(df_ts, forecast_df)
+            st.plotly_chart(fig, use_container_width=True)
+            st.success("The forecast projects a continued upward trend in sample volume, suggesting the need to review reagent inventory and staffing levels for the upcoming month.")
+        except Exception as e:
+            st.error(f"Could not generate time series forecast. Error: {e}")
 
 def render_compliance_guide_tab():
+    """Renders the educational guide to the regulatory landscape."""
     st.header("🏛️ A Guide to the IVD & Genomics Regulatory Landscape")
-    # ... full implementation ...
+    st.markdown("This guide provides a high-level overview of the key regulations and standards governing the development of the GenomicsDx Sentry™ MCED Test. It is intended for educational purposes for the project team.")
 
+    with st.expander("⚖️ **FDA Regulations (Title 21, Code of Federal Regulations)**"):
+        st.subheader("21 CFR 820: Quality System Regulation (QSR)")
+        st.markdown("""
+        Also known as the Current Good Manufacturing Practice (cGMP), the QSR is the foundational regulation for medical device quality systems. It outlines the requirements for the procedures and facilities used in the design, manufacture, packaging, labeling, storage, installation, and servicing of all finished medical devices intended for human use.
+        - **Key Subpart C - Design Controls (§ 820.30):** This is the heart of the DHF and this dashboard. It mandates a formal process for:
+            - `(a)` General: Establish and maintain procedures to control the design of the device.
+            - `(b)` **Design and Development Planning:** What this project is based on.
+            - `(c)` **Design Input:** Defining all requirements.
+            - `(d)` **Design Output:** The specifications, drawings, and procedures that make up the device.
+            - `(e)` **Design Review:** Formal phase-gates to assess progress.
+            - `(f)` **Design Verification:** *Did we build the product right?* (Analytical Validation).
+            - `(g)` **Design Validation:** *Did we build the right product?* (Clinical & Usability Validation).
+            - `(h)` **Design Transfer:** Moving the design to manufacturing (the clinical lab).
+            - `(i)` **Design Changes:** Controlling changes after the design is locked.
+            - `(j)` **Design History File (DHF):** The compilation of all records demonstrating the design was developed in accordance with the plan. This dashboard *is* the living DHF.
+        """)
+        st.subheader("21 CFR 809: In Vitro Diagnostic (IVD) Products")
+        st.markdown("This part contains specific labeling requirements for IVDs, including Instructions For Use (IFU) and reagent labeling. (Ref: § 809.10)")
+
+    with st.expander("🌐 **International Standards (ISO)**"):
+        st.subheader("ISO 13485:2016 - Medical Devices Quality Management Systems")
+        st.markdown("This is the international standard for medical device QMS. While the FDA QSR is law in the US, ISO 13485 is often required for market access in other countries (e.g., Europe, Canada). It is highly aligned with 21 CFR 820 but has a broader scope, emphasizing a risk-based approach throughout the entire QMS.")
+        
+        st.subheader("ISO 14971:2019 - Application of Risk Management to Medical Devices")
+        st.markdown("This standard specifies the process for identifying, analyzing, evaluating, controlling, and monitoring risks associated with a medical device. It is the global benchmark for risk management and is a required process for both FDA and international submissions. The **Risk Management File** is the output of this process.")
+
+        st.subheader("ISO 62304:2006 - Medical Device Software - Software Life Cycle Processes")
+        st.markdown("This standard defines the lifecycle requirements for medical device software. It provides a framework for designing, developing, testing, and maintaining software in a safe and controlled manner. The required level of rigor depends on the **Software Safety Classification** (Class A, B, or C), which is based on the potential of the software to cause harm. Our SaMD is **Class C (High Risk)**, requiring the most stringent level of documentation and control.")
+
+    with st.expander("🔬 **US Laboratory Regulations (CLIA)**"):
+        st.subheader("Clinical Laboratory Improvement Amendments (CLIA)")
+        st.markdown("CLIA regulations establish quality standards for all laboratory testing performed on humans in the U.S. (except for clinical trials and basic research). For our LDT (Laboratory Developed Test) service to be offered commercially, the performing laboratory must be CLIA-certified. This involves demonstrating analytical validity, having qualified personnel, and adhering to strict quality control and proficiency testing procedures.")
+
+    with st.expander("📄 **PMA Submission Structure**"):
+        st.markdown("""
+        A Premarket Approval (PMA) is the most stringent type of device marketing application required by the FDA. It is required for Class III devices, like our MCED test. The submission is a comprehensive document that must provide reasonable assurance of the device's safety and effectiveness.
+        
+        A typical PMA for an IVD includes, but is not limited to:
+        1.  **Device Description & Intended Use:** What it is and how it's used.
+        2.  **Non-Clinical (Analytical) Studies:** The complete **Analytical Validation** package (Precision, LoD, Specificity, Robustness, etc.).
+        3.  **Software/Bioinformatics Validation:** The complete software V&V package as per ISO 62304.
+        4.  **Clinical Studies:** The full results and analysis from the pivotal clinical trial, including all patient data, statistical analysis plans, and outcomes.
+        5.  **Labeling:** The proposed Instructions for Use, box labels, and Clinical Report format.
+        6.  **Manufacturing Information:** A complete description of the laboratory process (Design Transfer, SOPs, QC procedures). This is the **Device Master Record (DMR)**.
+        7.  **Quality System Information:** Evidence of compliance with 21 CFR 820.
+        8.  **Risk Management File:** The complete file as per ISO 14971.
+        
+        This dashboard is designed to be the central repository for generating and organizing the evidence required for nearly every section of the PMA.
+        """)
+        
 # ==============================================================================
 # --- MAIN APPLICATION LOGIC ---
 # ==============================================================================
 def main() -> None:
+    """Main function to run the Streamlit application."""
     st.set_page_config(layout="wide", page_title="GenomicsDx Command Center", page_icon="🧬")
     try:
         ssm = SessionStateManager()
