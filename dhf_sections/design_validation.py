@@ -11,10 +11,12 @@ factors (usability) studies, as required by 21 CFR 820.30(g) and FDA guidance.
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
@@ -59,15 +61,25 @@ def render_design_validation(ssm: SessionStateManager) -> None:
             st.subheader("Pivotal Clinical Trial Management")
             st.caption("Track the status, enrollment, and performance of the main clinical study providing safety and effectiveness data for the PMA submission.")
 
-            # --- Study Metadata ---
-            st.markdown("##### **Study Overview**")
-            cols = st.columns(3)
-            cols[0].text_input("**NCT ID**", value=validation_data.get("nct_id", ""), key="val_nct_id")
-            cols[1].text_input("**Study Phase**", value=validation_data.get("phase", "Pivotal"), key="val_phase")
-            cols[2].text_input("**Primary Completion Date (Planned)**", value=validation_data.get("planned_completion_date", ""), key="val_plan_date")
-            
-            st.text_area("**Primary Endpoints**", value=validation_data.get("primary_endpoints", ""), key="val_endpoints", height=100, help="E.g., Co-primary endpoints are sensitivity and specificity for detection of cancer signal.")
-            
+            with st.form("clinical_trial_form"):
+                st.markdown("##### **Study Overview**")
+                cols = st.columns(3)
+                nct_id_val = cols[0].text_input("**NCT ID**", value=validation_data.get("nct_id", ""))
+                phase_val = cols[1].text_input("**Study Phase**", value=validation_data.get("phase", "Pivotal"))
+                planned_completion_date_val = cols[2].text_input("**Primary Completion Date (Planned)**", value=validation_data.get("planned_completion_date", ""))
+                
+                primary_endpoints_val = st.text_area("**Primary Endpoints**", value=validation_data.get("primary_endpoints", ""), height=100, help="E.g., Co-primary endpoints are sensitivity and specificity for detection of cancer signal.")
+                
+                submitted = st.form_submit_button("Save Study Overview")
+                if submitted:
+                    validation_data['nct_id'] = nct_id_val
+                    validation_data['phase'] = phase_val
+                    validation_data['planned_completion_date'] = planned_completion_date_val
+                    validation_data['primary_endpoints'] = primary_endpoints_val
+                    ssm.update_data(validation_data, "clinical_study")
+                    st.toast("Clinical study overview updated!", icon="✅")
+                    st.rerun()
+
             # --- Enrollment Tracking ---
             st.markdown("##### **Enrollment Progress**")
             enrollment_df = pd.DataFrame(validation_data.get("enrollment", []))
@@ -121,23 +133,6 @@ def render_design_validation(ssm: SessionStateManager) -> None:
                 ssm.update_data(validation_data, "clinical_study")
                 st.toast("Human Factors validation studies updated!", icon="✅")
                 st.rerun()
-
-        # --- Persist any changes made in the clinical trial tab ---
-        # This approach is simpler since the widgets are not in a form
-        current_data = ssm.get_data("clinical_study")
-        
-        # Check and update each field
-        changed = False
-        for key in ["nct_id", "phase", "planned_completion_date", "primary_endpoints"]:
-            if st.session_state[f"val_{key}"] != current_data.get(key, ""):
-                current_data[key] = st.session_state[f"val_{key}"]
-                changed = True
-        
-        if changed:
-            ssm.update_data(current_data, "clinical_study")
-            logger.info("Clinical study metadata updated.")
-            st.toast("Clinical study details saved!", icon="✅")
-            # No rerun needed for text inputs
 
     except Exception as e:
         st.error("An error occurred while displaying the Design Validation section. The data may be malformed.")
