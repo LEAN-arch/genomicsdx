@@ -11,10 +11,12 @@ required by 21 CFR 820.30(h) and 21 CFR 820.170.
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
@@ -82,9 +84,15 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
 
         # --- Helper Function for Rendering Tables ---
         def render_editor_tab(df_key: str, column_config: Dict, help_text: str):
+            st.caption(help_text)
+            
             data = transfer_data.get(df_key, [])
             df = pd.DataFrame(data)
-            st.caption(help_text)
+            
+            # Ensure date columns are in the correct format for the editor
+            for col, config in column_config.items():
+                if isinstance(config, st.column_config.DateColumn) and col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors='coerce')
             
             edited_df = st.data_editor(
                 df,
@@ -95,8 +103,14 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
                 hide_index=True
             )
             
-            if edited_df.to_dict('records') != data:
-                ssm.update_data(edited_df.to_dict('records'), "lab_operations", df_key)
+            if edited_df.to_dict('records') != df.to_dict('records'):
+                # Convert date columns back to string format for JSON serialization
+                df_to_save = edited_df.copy()
+                for col, config in column_config.items():
+                    if isinstance(config, st.column_config.DateColumn) and col in df_to_save.columns:
+                         df_to_save[col] = df_to_save[col].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+
+                ssm.update_data(df_to_save.to_dict('records'), "lab_operations", df_key)
                 st.toast(f"{df_key.replace('_', ' ').title()} updated!", icon="✅")
                 st.rerun()
 
