@@ -17,6 +17,7 @@ from typing import Any, Dict, List
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.express as px  # *** BUG FIX: Added missing import ***
 
 # --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
@@ -67,13 +68,13 @@ def render_design_inputs(ssm: SessionStateManager) -> None:
 
     try:
         # --- 1. Load All Necessary Data ---
-        inputs_data: List[Dict[str, Any]] = ssm.get_data("design_inputs", "requirements")
+        inputs_data: List[Dict[str, Any]] = ssm.get_data("design_inputs", "requirements") or []
         df_all = pd.DataFrame(inputs_data) if inputs_data else pd.DataFrame(columns=['id', 'type', 'description', 'parent_id', 'status', 'is_risk_control', 'related_hazard_id'])
         
-        hazards: List[Dict[str, Any]] = ssm.get_data("risk_management_file", "hazards")
+        hazards: List[Dict[str, Any]] = ssm.get_data("risk_management_file", "hazards") or []
         hazard_ids: List[str] = [""] + sorted([h.get('id', '') for h in hazards if h.get('id')])
         
-        verifications = ssm.get_data("design_verification", "tests")
+        verifications = ssm.get_data("design_verification", "tests") or []
         verified_req_ids = {v['input_verified_id'] for v in verifications if v.get('input_verified_id')}
 
         # --- 2. Requirements Health & Traceability Dashboard ---
@@ -81,13 +82,18 @@ def render_design_inputs(ssm: SessionStateManager) -> None:
         kpi_cols = st.columns(2)
         
         # KPI 1: Untraced Requirements
-        non_user_needs = df_all[df_all['type'] != 'User Need']
-        untraced_reqs = non_user_needs[non_user_needs['parent_id'].fillna('').eq('')]
+        untraced_reqs = pd.DataFrame()
+        if not df_all.empty and 'type' in df_all.columns:
+            non_user_needs = df_all[df_all['type'] != 'User Need']
+            untraced_reqs = non_user_needs[non_user_needs['parent_id'].fillna('').eq('')]
         kpi_cols[0].metric("Untraced Requirements", len(untraced_reqs), help="Requirements that do not trace back to a parent User Need or System Requirement. These are critical gaps.")
         
         # KPI 2: Unverified Requirements
-        unverified_reqs = df_all[~df_all['id'].isin(verified_req_ids)]
-        unverified_reqs = unverified_reqs[unverified_reqs['type'] != 'User Need'] # User needs are validated, not verified
+        unverified_reqs = pd.DataFrame()
+        if not df_all.empty and 'id' in df_all.columns:
+            unverified_reqs = df_all[~df_all['id'].isin(verified_req_ids)]
+            if 'type' in unverified_reqs.columns:
+                unverified_reqs = unverified_reqs[unverified_reqs['type'] != 'User Need']
         kpi_cols[1].metric("Unverified Requirements", len(unverified_reqs), help="Requirements not yet covered by a verification test. These must be addressed before design freeze.")
 
         with st.expander("View Interactive Requirements Hierarchy Tree & Gap Analysis Tables"):
@@ -134,8 +140,6 @@ def render_design_inputs(ssm: SessionStateManager) -> None:
                 st.rerun()
 
         # --- 4. Render Each Tab with Context-Aware Dropdowns ---
-        
-        # Parent options for each level
         user_need_ids = [""] + sorted(list(df_all[df_all['type'] == 'User Need']['id'].unique()))
         system_req_ids = [""] + sorted(list(df_all[df_all['type'].isin(['System', 'Assay'])]['id'].unique()))
 
