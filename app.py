@@ -979,13 +979,10 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         
         st.write("Fitting ARIMA model and forecasting next 30 days...")
         try:
-            # A simple ARIMA model for demonstration
-            model = ARIMA(df_ts['samples'], order=(5, 1, 0))
-            model_fit = model.fit()
-            forecast = model_fit.get_forecast(steps=30)
+            model = ARIMA(df_ts['samples'].asfreq('D'), order=(5, 1, 0)).fit()
+            forecast = model.get_forecast(steps=30)
             
             forecast_df = forecast.summary_frame()
-            forecast_df.index.name = "date"
             
             fig = create_forecast_plot(df_ts, forecast_df)
             st.plotly_chart(fig, use_container_width=True)
@@ -1058,6 +1055,8 @@ def main() -> None:
         logger.info("Application initialized. Session State Manager loaded.")
     except Exception as e:
         st.error("Fatal Error: Could not initialize Session State."); logger.critical(f"Failed to instantiate SessionStateManager: {e}", exc_info=True); st.stop()
+    
+    # Pre-process data with robust error handling
     try:
         tasks_raw = ssm.get_data("project_management", "tasks") or []
         tasks_df_processed = preprocess_task_data(tasks_raw)
