@@ -89,7 +89,7 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                         # *** BUG FIX: Defensively select available columns ***
                         df_untraced = pd.DataFrame(untraced_controls)
                         display_cols = [col for col in ['id', 'risk_control_measure', 'mitigation'] if col in df_untraced.columns]
-                        st.dataframe(df_untraced[display_cols], hide_index=True)
+                        st.dataframe(df_untraced[display_cols], hide_index=True, use_container_width=True)
                     else:
                         st.success("All risk controls are traced to a V&V activity.")
 
@@ -110,17 +110,26 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                     st.toast("Risk Management Plan scope saved!", icon="✅")
 
         def render_risk_table(table_key: str, df: pd.DataFrame, column_config: dict):
+            if df.empty:
+                st.info(f"No data available for {table_key.replace('_', ' ').title()}. You can add new records below.")
+                df = pd.DataFrame([{}]) # Provide an empty row to start adding data
+            
             original_data = df.to_dict('records')
             edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key=f"risk_editor_{table_key}", column_config=column_config, hide_index=True)
+            
             if edited_df.to_dict('records') != original_data:
-                rmf_data[table_key] = edited_df.to_dict('records')
+                # Filter out any completely empty rows before saving
+                cleaned_records = [record for record in edited_df.to_dict('records') if any(val not in [None, ''] for val in record.values())]
+                rmf_data[table_key] = cleaned_records
                 ssm.update_data(rmf_data, "risk_management_file")
-                st.toast(f"{table_key} data updated!", icon="✅"); st.rerun()
+                st.toast(f"{table_key.replace('_', ' ').title()} data updated!", icon="✅"); st.rerun()
 
         def render_fmea_risk_matrix_plot(fmea_data: List[Dict[str, Any]], title: str):
             st.markdown(f"**Interactive Risk Matrix: {title}**")
-            if not fmea_data: st.warning(f"No {title} data available."); return
-            df = pd.DataFrame(fmea_data)
+            if not fmea_data: st.warning(f"No {title} data available to plot."); return
+            df = pd.DataFrame(fmea_data).dropna(subset=['S', 'O', 'D']) # Drop rows without S,O,D
+            if df.empty: st.warning(f"No valid S, O, D data in {title} to plot."); return
+
             df['RPN'] = df['S'] * df['O'] * df['D']
             df['S_jitter'] = df['S'] + np.random.uniform(-0.15, 0.15, len(df))
             df['O_jitter'] = df['O'] + np.random.uniform(-0.15, 0.15, len(df))
