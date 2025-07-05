@@ -11,6 +11,19 @@ Bioinformatics, and Laboratory Operations under ISO 13485, ISO 15189, and CLIA.
 """
 
 # --- Standard Library Imports ---
+import logging# --- SME-Revised, PMA-Ready, and Unabridged Enhanced Version (Corrected) ---
+"""
+Main application entry point for the GenomicsDx Command Center.
+
+This Streamlit application serves as the definitive Quality Management System (QMS)
+and development dashboard for a breakthrough-designated, Class III, PMA-required
+Multi-Cancer Early Detection (MCED) genomic diagnostic service. It is designed
+to manage the Design History File (DHF) in accordance with 21 CFR 820.30 and
+provide real-time insights into Analytical Validation, Clinical Validation,
+Bioinformatics, and Laboratory Operations under ISO 13485, ISO 15189, and CLIA.
+"""
+
+# --- Standard Library Imports ---
 import logging
 import os
 import sys
@@ -343,10 +356,13 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     original_action_items = [item for r in reviews_data for item in r.get("action_items", [])]
     action_items_df = get_cached_df(original_action_items)
     if not action_items_df.empty:
-        open_items = action_items_df[action_items_df['status'] != 'Completed']
-        if not open_items.empty:
-            overdue_items_count = len(open_items[open_items['status'] == 'Overdue'])
-            execution_score = (1 - (overdue_items_count / len(open_items))) * 100 if len(open_items) > 0 else 100
+        # Ensure 'status' column exists before filtering
+        if 'status' in action_items_df.columns:
+            open_items = action_items_df[action_items_df['status'] != 'Completed']
+            if not open_items.empty:
+                # Check for 'Overdue' status; if not present, no items are overdue
+                overdue_items_count = len(open_items[open_items['status'] == 'Overdue']) if 'Overdue' in open_items['status'].unique() else 0
+                execution_score = (1 - (overdue_items_count / len(open_items))) * 100 if len(open_items) > 0 else 100
     weights = {'schedule': 0.4, 'quality': 0.4, 'execution': 0.2}
     overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
     ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
@@ -355,7 +371,7 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     trace_coverage = (ver_tests_df.dropna(subset=['input_verified_id'])['input_verified_id'].nunique() / reqs_df['id'].nunique()) * 100 if not reqs_df.empty and reqs_df['id'].nunique() > 0 else 0
     study_df = get_cached_df(ssm.get_data("clinical_study", "enrollment"))
     if not study_df.empty: enrollment_rate = (study_df['enrolled'].sum() / study_df['target'].sum()) * 100 if study_df['target'].sum() > 0 else 0
-    overdue_actions_count = len(action_items_df[action_items_df['status'] == 'Overdue']) if not action_items_df.empty else 0
+    overdue_actions_count = len(action_items_df[action_items_df['status'] == 'Overdue']) if 'status' in action_items_df.columns and not action_items_df.empty else 0
     
     col1, col2 = st.columns([1.5, 2])
     with col1:
@@ -446,7 +462,9 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     
     st.divider()
     st.header("Deep Dives")
-    with st.expander("Expand to see Phase Gate Readiness & Timeline Details"): render_dhf_completeness_panel(ssm, tasks_df_processed, docs_by_phase)
+    # *** BUG FIX APPLIED HERE ***
+    with st.expander("Expand to see Phase Gate Readiness & Timeline Details"): render_dhf_completeness_panel(ssm, tasks_df, docs_by_phase)
+    # *** END BUG FIX ***
     with st.expander("Expand to see Risk & FMEA Details"): render_risk_and_fmea_dashboard(ssm)
     with st.expander("Expand to see Assay Performance and Lab Operations Readiness Details"): render_assay_and_ops_readiness_panel(ssm)
     with st.expander("Expand to see Audit & Continuous Improvement Details"): render_audit_and_improvement_dashboard(ssm)
@@ -501,261 +519,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     except ImportError:
         st.error("This tab requires `statsmodels` and `scipy`. Please install them (`pip install statsmodels scipy`) to enable statistical tools.", icon="🚨")
         return
-def render_machine_learning_lab_tab(ssm: SessionStateManager):
-    """Renders the tab containing machine learning and bioinformatics tools."""
-    st.header("🤖 Machine Learning & Bioinformatics Lab")
-    st.info("Utilize and validate predictive models for operational efficiency and explore the classifier's behavior. Model explainability is key for regulatory review.")
-    
-    try:
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.model_selection import train_test_split
-        from sklearn.metrics import confusion_matrix, roc_auc_score, precision_recall_curve, auc
-        from statsmodels.tsa.arima.model import ARIMA
-        import shap
-    except ImportError:
-        st.error("This tab requires `scikit-learn`, `shap`, and `statsmodels`. Please install them to enable ML features.", icon="🚨")
-        return
-        
-    ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)"])
 
-    # --- Tool 1: SHAP ---
-    with ml_tabs[0]:
-        st.subheader("Cancer Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:**
-            Machine learning models, especially complex ones like gradient boosting or random forests, are often considered "black boxes." For a medical device, especially a PMA-class diagnostic, this is unacceptable to regulators. We must be able to explain *why* the model made a specific prediction for a given patient. SHAP (SHapley Additive exPlanations) is a state-of-the-art method that assigns each feature (e.g., a specific methylation biomarker) an importance value for each individual prediction, providing crucial model transparency and explainability.
-
-            **The Mathematical Basis & Method:**
-            SHAP is based on Shapley values, a concept from cooperative game theory. It calculates the average marginal contribution of a feature value across all possible combinations of features. In essence, it answers the question: "How much did feature X's value contribute to pushing the model's prediction away from the baseline average?"
-            - **Positive SHAP value:** Pushes the prediction higher (e.g., towards "Cancer Signal Detected").
-            - **Negative SHAP value:** Pushes the prediction lower (e.g., towards "No Signal Detected").
-
-            **Procedure:**
-            1.  A pre-trained classifier and a sample of the training data are loaded.
-            2.  A SHAP `TreeExplainer` is created for the model.
-            3.  SHAP values are calculated for every feature for every sample in the dataset.
-            4.  A **summary plot** is generated. This plot shows the most important features overall and the distribution of their SHAP values.
-
-            **Significance of Results:**
-            The SHAP summary plot is incredibly insightful:
-            - **Feature Importance:** Features are ranked top-to-bottom by their importance.
-            - **Impact Direction:** The color shows whether a high (red) or low (blue) value of that feature resulted in a positive or negative SHAP value.
-            For our MCED test, we would expect to see known cancer-related methylation markers ranked as highly important. If a non-biological feature (like `batch_id`) appeared as important, it would be a major red flag for a confounding batch effect. This plot provides powerful, objective evidence that the model is learning biologically relevant patterns, which is a cornerstone of the analytical validation for the algorithm.
-            """)
-        
-        st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
-        X, y = ssm.get_data("ml_models", "classifier_data")
-        model = ssm.get_data("ml_models", "classifier_model")
-        
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X)
-        
-        # We plot the SHAP values for the "Cancer" class, which is typically the second class (index 1)
-        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-        fig_shap = create_shap_summary_plot(shap_values[1], X)
-        st.pyplot(fig_shap, use_container_width=True)
-        st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
-
-    # --- Tool 2: Predictive Operations ---
-    with ml_tabs[1]:
-        st.subheader("Predictive Operations: Sequencing Run Failure")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:**
-            This tool uses machine learning to predict the likelihood of a sequencing run failing *before* it is started, based on pre-run QC metrics. Failed runs are a major source of cost and delay in a high-throughput lab. By identifying high-risk runs in advance, the lab can take preventive action (e.g., re-prepping the library, holding the run), saving significant resources.
-
-            **The Mathematical Basis & Method:**
-            A classification model (in this case, Logistic Regression) is trained on historical data.
-            - **Features (X):** Pre-run QC metrics like library concentration, fragment size (DV200), and adapter-dimer percentage.
-            - **Target (y):** The historical outcome of the run (Pass or Fail).
-            The model learns the relationship between the input QC values and the run outcome. A **confusion matrix** is used to evaluate the model's performance. It's a table that shows:
-            - **True Positives (TP):** Correctly predicted failures.
-            - **True Negatives (TN):** Correctly predicted passes.
-            - **False Positives (FP):** Incorrectly predicted failures (pass was predicted to fail).
-            - **False Negatives (FN):** Incorrectly predicted passes (fail was predicted to pass). This is the most costly error.
-
-            **Procedure:**
-            1.  Historical run QC data is loaded and split into training and testing sets.
-            2.  A Logistic Regression model is trained on the training set.
-            3.  The trained model makes predictions on the unseen test set.
-            4.  A confusion matrix is generated and plotted as a heatmap to visualize the model's performance.
-
-            **Significance of Results:**
-            The confusion matrix tells us how well the model can distinguish between runs that will pass and runs that will fail. The key goal is to minimize **False Negatives**—runs that the model predicted would pass but actually failed. By reviewing the model's performance, lab management can decide if it's reliable enough to be used in production. A good model can lead to substantial reductions in the Cost of Poor Quality (COPQ) by preventing wasted reagents and instrument time.
-            """)
-        
-        run_qc_data = ssm.get_data("ml_models", "run_qc_data")
-        df_run_qc = pd.DataFrame(run_qc_data)
-        
-        X = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
-        y = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
-        
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
-        
-        model = LogisticRegression(random_state=42, class_weight='balanced')
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        
-        cm = confusion_matrix(y_test, y_pred)
-        
-        st.write("##### Run Failure Prediction Model Performance (on Test Set)")
-        fig_cm = create_confusion_matrix_heatmap(cm, ['Pass', 'Fail'])
-        st.plotly_chart(fig_cm, use_container_width=True)
-        
-        tn, fp, fn, tp = cm.ravel()
-        st.success(f"""
-        **Model Evaluation:**
-        - The model correctly identified **{tp}** out of **{tp+fn}** failing runs in the test set.
-        - It successfully avoided **{fn}** costly failures that would have otherwise occurred.
-        - This predictive tool shows promise for integration into the pre-run QC checklist to reduce overall COPQ.
-        """)
-        
-    # --- Tool 3: Time Series Forecasting ---
-    with ml_tabs[2]:
-        st.subheader("Time Series Forecasting for Lab Operations")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:**
-            This tool forecasts future lab operational metrics, such as incoming sample volume, based on historical trends. Accurate forecasting is essential for resource planning, including staffing, reagent purchasing, and capacity management. It helps the business move from reactive to proactive operational management.
-
-            **The Mathematical Basis & Method:**
-            This tool uses an **ARIMA (AutoRegressive Integrated Moving Average)** model, a standard and powerful class of models for time series forecasting.
-            - **AR (AutoRegressive):** Assumes the current value depends on its own previous values.
-            - **I (Integrated):** Uses differencing of the raw observations to make the time series stationary (i.e., its mean and variance don't change over time).
-            - **MA (Moving Average):** Assumes the current value depends on past forecast errors.
-            The model is fitted to the historical data, and then it projects the learned patterns into the future, creating a forecast with associated confidence intervals.
-
-            **Procedure:**
-            1.  Historical daily sample volume data is loaded.
-            2.  An ARIMA model is fitted to this data.
-            3.  The model is used to forecast the next 30 days of sample volume.
-            4.  A plot is generated showing the historical data, the forecast, and the 95% confidence interval for the forecast.
-
-            **Significance of Results:**
-            The forecast plot provides an actionable estimate of future workload. Lab management can use this to:
-            - **Optimize Reagent Orders:** Purchase enough reagents to meet the expected demand without overstocking and risking expiration.
-            - **Schedule Staff:** Ensure adequate staffing levels for anticipated busy periods.
-            - **Capacity Planning:** Identify when future demand might exceed current lab capacity, signaling the need for investment in new equipment or process improvements.
-            The confidence interval provides a "worst-case" and "best-case" scenario, allowing for more robust planning.
-            """)
-        
-        ts_data = ssm.get_data("ml_models", "sample_volume_data")
-        df_ts = pd.DataFrame(ts_data)
-        df_ts['date'] = pd.to_datetime(df_ts['date'])
-        df_ts = df_ts.set_index('date')
-        
-        st.write("Fitting ARIMA model and forecasting next 30 days...")
-        try:
-            # A simple ARIMA model for demonstration
-            model = ARIMA(df_ts['samples'], order=(5, 1, 0))
-            model_fit = model.fit()
-            forecast = model_fit.get_forecast(steps=30)
-            
-            forecast_df = forecast.summary_frame()
-            forecast_df.index.name = "date"
-            
-            fig = create_forecast_plot(df_ts, forecast_df)
-            st.plotly_chart(fig, use_container_width=True)
-            st.success("The forecast projects a continued upward trend in sample volume, suggesting the need to review reagent inventory and staffing levels for the upcoming month.")
-        except Exception as e:
-            st.error(f"Could not generate time series forecast. Error: {e}")
-
-def render_compliance_guide_tab():
-    """Renders the educational guide to the regulatory landscape."""
-    st.header("🏛️ A Guide to the IVD & Genomics Regulatory Landscape")
-    st.markdown("This guide provides a high-level overview of the key regulations and standards governing the development of the GenomicsDx Sentry™ MCED Test. It is intended for educational purposes for the project team.")
-
-    with st.expander("⚖️ **FDA Regulations (Title 21, Code of Federal Regulations)**"):
-        st.subheader("21 CFR 820: Quality System Regulation (QSR)")
-        st.markdown("""
-        Also known as the Current Good Manufacturing Practice (cGMP), the QSR is the foundational regulation for medical device quality systems. It outlines the requirements for the procedures and facilities used in the design, manufacture, packaging, labeling, storage, installation, and servicing of all finished medical devices intended for human use.
-        - **Key Subpart C - Design Controls (§ 820.30):** This is the heart of the DHF and this dashboard. It mandates a formal process for:
-            - `(a)` General: Establish and maintain procedures to control the design of the device.
-            - `(b)` **Design and Development Planning:** What this project is based on.
-            - `(c)` **Design Input:** Defining all requirements.
-            - `(d)` **Design Output:** The specifications, drawings, and procedures that make up the device.
-            - `(e)` **Design Review:** Formal phase-gates to assess progress.
-            - `(f)` **Design Verification:** *Did we build the product right?* (Analytical Validation).
-            - `(g)` **Design Validation:** *Did we build the right product?* (Clinical & Usability Validation).
-            - `(h)` **Design Transfer:** Moving the design to manufacturing (the clinical lab).
-            - `(i)` **Design Changes:** Controlling changes after the design is locked.
-            - `(j)` **Design History File (DHF):** The compilation of all records demonstrating the design was developed in accordance with the plan. This dashboard *is* the living DHF.
-        """)
-        st.subheader("21 CFR 809: In Vitro Diagnostic (IVD) Products")
-        st.markdown("This part contains specific labeling requirements for IVDs, including Instructions For Use (IFU) and reagent labeling. (Ref: § 809.10)")
-
-    with st.expander("🌐 **International Standards (ISO)**"):
-        st.subheader("ISO 13485:2016 - Medical Devices Quality Management Systems")
-        st.markdown("This is the international standard for medical device QMS. While the FDA QSR is law in the US, ISO 13485 is often required for market access in other countries (e.g., Europe, Canada). It is highly aligned with 21 CFR 820 but has a broader scope, emphasizing a risk-based approach throughout the entire QMS.")
-        
-        st.subheader("ISO 14971:2019 - Application of Risk Management to Medical Devices")
-        st.markdown("This standard specifies the process for identifying, analyzing, evaluating, controlling, and monitoring risks associated with a medical device. It is the global benchmark for risk management and is a required process for both FDA and international submissions. The **Risk Management File** is the output of this process.")
-
-        st.subheader("ISO 62304:2006 - Medical Device Software - Software Life Cycle Processes")
-        st.markdown("This standard defines the lifecycle requirements for medical device software. It provides a framework for designing, developing, testing, and maintaining software in a safe and controlled manner. The required level of rigor depends on the **Software Safety Classification** (Class A, B, or C), which is based on the potential of the software to cause harm. Our SaMD is **Class C (High Risk)**, requiring the most stringent level of documentation and control.")
-
-    with st.expander("🔬 **US Laboratory Regulations (CLIA)**"):
-        st.subheader("Clinical Laboratory Improvement Amendments (CLIA)")
-        st.markdown("CLIA regulations establish quality standards for all laboratory testing performed on humans in the U.S. (except for clinical trials and basic research). For our LDT (Laboratory Developed Test) service to be offered commercially, the performing laboratory must be CLIA-certified. This involves demonstrating analytical validity, having qualified personnel, and adhering to strict quality control and proficiency testing procedures.")
-
-    with st.expander("📄 **PMA Submission Structure**"):
-        st.markdown("""
-        A Premarket Approval (PMA) is the most stringent type of device marketing application required by the FDA. It is required for Class III devices, like our MCED test. The submission is a comprehensive document that must provide reasonable assurance of the device's safety and effectiveness.
-        
-        A typical PMA for an IVD includes, but is not limited to:
-        1.  **Device Description & Intended Use:** What it is and how it's used.
-        2.  **Non-Clinical (Analytical) Studies:** The complete **Analytical Validation** package (Precision, LoD, Specificity, Robustness, etc.).
-        3.  **Software/Bioinformatics Validation:** The complete software V&V package as per ISO 62304.
-        4.  **Clinical Studies:** The full results and analysis from the pivotal clinical trial, including all patient data, statistical analysis plans, and outcomes.
-        5.  **Labeling:** The proposed Instructions for Use, box labels, and Clinical Report format.
-        6.  **Manufacturing Information:** A complete description of the laboratory process (Design Transfer, SOPs, QC procedures). This is the **Device Master Record (DMR)**.
-        7.  **Quality System Information:** Evidence of compliance with 21 CFR 820.
-        8.  **Risk Management File:** The complete file as per ISO 14971.
-        
-        This dashboard is designed to be the central repository for generating and organizing the evidence required for nearly every section of the PMA.
-        """)
-        
-# ==============================================================================
-# --- MAIN APPLICATION LOGIC ---
-# ==============================================================================
-def main() -> None:
-    """Main function to run the Streamlit application."""
-    st.set_page_config(layout="wide", page_title="GenomicsDx Command Center", page_icon="🧬")
-    try:
-        ssm = SessionStateManager()
-        logger.info("Application initialized. Session State Manager loaded.")
-    except Exception as e:
-        st.error("Fatal Error: Could not initialize Session State."); logger.critical(f"Failed to instantiate SessionStateManager: {e}", exc_info=True); st.stop()
-    try:
-        tasks_raw = ssm.get_data("project_management", "tasks")
-        tasks_df_processed = preprocess_task_data(tasks_raw)
-        docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
-        docs_by_phase = {phase: data for phase, data in docs_df.groupby('phase')} if 'phase' in docs_df.columns else {}
-    except Exception as e:
-        st.error("Failed to process initial project data for dashboard."); logger.error(f"Error during initial data pre-processing: {e}", exc_info=True)
-        tasks_df_processed = pd.DataFrame(); docs_by_phase = {}
-
-    st.title("🧬 GenomicsDx DHF Command Center")
-    project_name = ssm.get_data("design_plan", "project_name")
-    st.caption(f"Live QMS Monitoring for the **{project_name or 'GenomicsDx MCED Test'}** Program")
-
-    tab_names = ["📊 **Program Health Dashboard**", "🗂️ **DHF Explorer**", "🔬 **Advanced Analytics**", "📈 **Statistical Workbench**", "🤖 **ML & Bioinformatics Lab**", "🏛️ **Regulatory Guide**"]
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_names)
-
-    with tab1: render_health_dashboard_tab(ssm, tasks_df_processed, docs_by_phase)
-    with tab2: render_dhf_explorer_tab(ssm)
-    with tab3: render_advanced_analytics_tab(ssm)
-    with tab4: render_statistical_tools_tab(ssm)
-    with tab5: render_machine_learning_lab_tab(ssm)
-    with tab6: render_compliance_guide_tab()
-
-# ==============================================================================
-# --- SCRIPT EXECUTION ---
-# ==============================================================================
-if __name__ == "__main__":
-    main()
     tool_tabs = st.tabs([
         "Process Control (Levey-Jennings)",
         "Hypothesis Testing (A/B Test)",
@@ -1038,5 +802,259 @@ if __name__ == "__main__":
                  st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
         except Exception as e:
             st.error(f"Could not perform DOE analysis. Error: {e}")
+    def render_machine_learning_lab_tab(ssm: SessionStateManager):
+    """Renders the tab containing machine learning and bioinformatics tools."""
+    st.header("🤖 Machine Learning & Bioinformatics Lab")
+    st.info("Utilize and validate predictive models for operational efficiency and explore the classifier's behavior. Model explainability is key for regulatory review.")
     
+    try:
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import train_test_split
+        from sklearn.metrics import confusion_matrix, roc_auc_score, precision_recall_curve, auc
+        from statsmodels.tsa.arima.model import ARIMA
+        import shap
+    except ImportError:
+        st.error("This tab requires `scikit-learn`, `shap`, and `statsmodels`. Please install them to enable ML features.", icon="🚨")
+        return
+        
+    ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)"])
+
+    # --- Tool 1: SHAP ---
+    with ml_tabs[0]:
+        st.subheader("Cancer Classifier Explainability (SHAP)")
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            Machine learning models, especially complex ones like gradient boosting or random forests, are often considered "black boxes." For a medical device, especially a PMA-class diagnostic, this is unacceptable to regulators. We must be able to explain *why* the model made a specific prediction for a given patient. SHAP (SHapley Additive exPlanations) is a state-of-the-art method that assigns each feature (e.g., a specific methylation biomarker) an importance value for each individual prediction, providing crucial model transparency and explainability.
+
+            **The Mathematical Basis & Method:**
+            SHAP is based on Shapley values, a concept from cooperative game theory. It calculates the average marginal contribution of a feature value across all possible combinations of features. In essence, it answers the question: "How much did feature X's value contribute to pushing the model's prediction away from the baseline average?"
+            - **Positive SHAP value:** Pushes the prediction higher (e.g., towards "Cancer Signal Detected").
+            - **Negative SHAP value:** Pushes the prediction lower (e.g., towards "No Signal Detected").
+
+            **Procedure:**
+            1.  A pre-trained classifier and a sample of the training data are loaded.
+            2.  A SHAP `TreeExplainer` is created for the model.
+            3.  SHAP values are calculated for every feature for every sample in the dataset.
+            4.  A **summary plot** is generated. This plot shows the most important features overall and the distribution of their SHAP values.
+
+            **Significance of Results:**
+            The SHAP summary plot is incredibly insightful:
+            - **Feature Importance:** Features are ranked top-to-bottom by their importance.
+            - **Impact Direction:** The color shows whether a high (red) or low (blue) value of that feature resulted in a positive or negative SHAP value.
+            For our MCED test, we would expect to see known cancer-related methylation markers ranked as highly important. If a non-biological feature (like `batch_id`) appeared as important, it would be a major red flag for a confounding batch effect. This plot provides powerful, objective evidence that the model is learning biologically relevant patterns, which is a cornerstone of the analytical validation for the algorithm.
+            """)
+        
+        st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
+        X, y = ssm.get_data("ml_models", "classifier_data")
+        model = ssm.get_data("ml_models", "classifier_model")
+        
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X)
+        
+        # We plot the SHAP values for the "Cancer" class, which is typically the second class (index 1)
+        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+        fig_shap = create_shap_summary_plot(shap_values[1], X)
+        st.pyplot(fig_shap, use_container_width=True)
+        st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
+
+    # --- Tool 2: Predictive Operations ---
+    with ml_tabs[1]:
+        st.subheader("Predictive Operations: Sequencing Run Failure")
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            This tool uses machine learning to predict the likelihood of a sequencing run failing *before* it is started, based on pre-run QC metrics. Failed runs are a major source of cost and delay in a high-throughput lab. By identifying high-risk runs in advance, the lab can take preventive action (e.g., re-prepping the library, holding the run), saving significant resources.
+
+            **The Mathematical Basis & Method:**
+            A classification model (in this case, Logistic Regression) is trained on historical data.
+            - **Features (X):** Pre-run QC metrics like library concentration, fragment size (DV200), and adapter-dimer percentage.
+            - **Target (y):** The historical outcome of the run (Pass or Fail).
+            The model learns the relationship between the input QC values and the run outcome. A **confusion matrix** is used to evaluate the model's performance. It's a table that shows:
+            - **True Positives (TP):** Correctly predicted failures.
+            - **True Negatives (TN):** Correctly predicted passes.
+            - **False Positives (FP):** Incorrectly predicted failures (pass was predicted to fail).
+            - **False Negatives (FN):** Incorrectly predicted passes (fail was predicted to pass). This is the most costly error.
+
+            **Procedure:**
+            1.  Historical run QC data is loaded and split into training and testing sets.
+            2.  A Logistic Regression model is trained on the training set.
+            3.  The trained model makes predictions on the unseen test set.
+            4.  A confusion matrix is generated and plotted as a heatmap to visualize the model's performance.
+
+            **Significance of Results:**
+            The confusion matrix tells us how well the model can distinguish between runs that will pass and runs that will fail. The key goal is to minimize **False Negatives**—runs that the model predicted would pass but actually failed. By reviewing the model's performance, lab management can decide if it's reliable enough to be used in production. A good model can lead to substantial reductions in the Cost of Poor Quality (COPQ) by preventing wasted reagents and instrument time.
+            """)
+        
+        run_qc_data = ssm.get_data("ml_models", "run_qc_data")
+        df_run_qc = pd.DataFrame(run_qc_data)
+        
+        X = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
+        y = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
+        
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+        
+        model = LogisticRegression(random_state=42, class_weight='balanced')
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        
+        cm = confusion_matrix(y_test, y_pred)
+        
+        st.write("##### Run Failure Prediction Model Performance (on Test Set)")
+        fig_cm = create_confusion_matrix_heatmap(cm, ['Pass', 'Fail'])
+        st.plotly_chart(fig_cm, use_container_width=True)
+        
+        tn, fp, fn, tp = cm.ravel()
+        st.success(f"""
+        **Model Evaluation:**
+        - The model correctly identified **{tp}** out of **{tp+fn}** failing runs in the test set.
+        - It successfully avoided **{fn}** costly failures that would have otherwise occurred.
+        - This predictive tool shows promise for integration into the pre-run QC checklist to reduce overall COPQ.
+        """)
+        
+    # --- Tool 3: Time Series Forecasting ---
+    with ml_tabs[2]:
+        st.subheader("Time Series Forecasting for Lab Operations")
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            This tool forecasts future lab operational metrics, such as incoming sample volume, based on historical trends. Accurate forecasting is essential for resource planning, including staffing, reagent purchasing, and capacity management. It helps the business move from reactive to proactive operational management.
+
+            **The Mathematical Basis & Method:**
+            This tool uses an **ARIMA (AutoRegressive Integrated Moving Average)** model, a standard and powerful class of models for time series forecasting.
+            - **AR (AutoRegressive):** Assumes the current value depends on its own previous values.
+            - **I (Integrated):** Uses differencing of the raw observations to make the time series stationary (i.e., its mean and variance don't change over time).
+            - **MA (Moving Average):** Assumes the current value depends on past forecast errors.
+            The model is fitted to the historical data, and then it projects the learned patterns into the future, creating a forecast with associated confidence intervals.
+
+            **Procedure:**
+            1.  Historical daily sample volume data is loaded.
+            2.  An ARIMA model is fitted to this data.
+            3.  The model is used to forecast the next 30 days of sample volume.
+            4.  A plot is generated showing the historical data, the forecast, and the 95% confidence interval for the forecast.
+
+            **Significance of Results:**
+            The forecast plot provides an actionable estimate of future workload. Lab management can use this to:
+            - **Optimize Reagent Orders:** Purchase enough reagents to meet the expected demand without overstocking and risking expiration.
+            - **Schedule Staff:** Ensure adequate staffing levels for anticipated busy periods.
+            - **Capacity Planning:** Identify when future demand might exceed current lab capacity, signaling the need for investment in new equipment or process improvements.
+            The confidence interval provides a "worst-case" and "best-case" scenario, allowing for more robust planning.
+            """)
+        
+        ts_data = ssm.get_data("ml_models", "sample_volume_data")
+        df_ts = pd.DataFrame(ts_data)
+        df_ts['date'] = pd.to_datetime(df_ts['date'])
+        df_ts = df_ts.set_index('date')
+        
+        st.write("Fitting ARIMA model and forecasting next 30 days...")
+        try:
+            # A simple ARIMA model for demonstration
+            model = ARIMA(df_ts['samples'], order=(5, 1, 0))
+            model_fit = model.fit()
+            forecast = model_fit.get_forecast(steps=30)
+            
+            forecast_df = forecast.summary_frame()
+            forecast_df.index.name = "date"
+            
+            fig = create_forecast_plot(df_ts, forecast_df)
+            st.plotly_chart(fig, use_container_width=True)
+            st.success("The forecast projects a continued upward trend in sample volume, suggesting the need to review reagent inventory and staffing levels for the upcoming month.")
+        except Exception as e:
+            st.error(f"Could not generate time series forecast. Error: {e}")
+
+def render_compliance_guide_tab():
+    """Renders the educational guide to the regulatory landscape."""
+    st.header("🏛️ A Guide to the IVD & Genomics Regulatory Landscape")
+    st.markdown("This guide provides a high-level overview of the key regulations and standards governing the development of the GenomicsDx Sentry™ MCED Test. It is intended for educational purposes for the project team.")
+
+    with st.expander("⚖️ **FDA Regulations (Title 21, Code of Federal Regulations)**"):
+        st.subheader("21 CFR 820: Quality System Regulation (QSR)")
+        st.markdown("""
+        Also known as the Current Good Manufacturing Practice (cGMP), the QSR is the foundational regulation for medical device quality systems. It outlines the requirements for the procedures and facilities used in the design, manufacture, packaging, labeling, storage, installation, and servicing of all finished medical devices intended for human use.
+        - **Key Subpart C - Design Controls (§ 820.30):** This is the heart of the DHF and this dashboard. It mandates a formal process for:
+            - `(a)` General: Establish and maintain procedures to control the design of the device.
+            - `(b)` **Design and Development Planning:** What this project is based on.
+            - `(c)` **Design Input:** Defining all requirements.
+            - `(d)` **Design Output:** The specifications, drawings, and procedures that make up the device.
+            - `(e)` **Design Review:** Formal phase-gates to assess progress.
+            - `(f)` **Design Verification:** *Did we build the product right?* (Analytical Validation).
+            - `(g)` **Design Validation:** *Did we build the right product?* (Clinical & Usability Validation).
+            - `(h)` **Design Transfer:** Moving the design to manufacturing (the clinical lab).
+            - `(i)` **Design Changes:** Controlling changes after the design is locked.
+            - `(j)` **Design History File (DHF):** The compilation of all records demonstrating the design was developed in accordance with the plan. This dashboard *is* the living DHF.
+        """)
+        st.subheader("21 CFR 809: In Vitro Diagnostic (IVD) Products")
+        st.markdown("This part contains specific labeling requirements for IVDs, including Instructions For Use (IFU) and reagent labeling. (Ref: § 809.10)")
+
+    with st.expander("🌐 **International Standards (ISO)**"):
+        st.subheader("ISO 13485:2016 - Medical Devices Quality Management Systems")
+        st.markdown("This is the international standard for medical device QMS. While the FDA QSR is law in the US, ISO 13485 is often required for market access in other countries (e.g., Europe, Canada). It is highly aligned with 21 CFR 820 but has a broader scope, emphasizing a risk-based approach throughout the entire QMS.")
+        
+        st.subheader("ISO 14971:2019 - Application of Risk Management to Medical Devices")
+        st.markdown("This standard specifies the process for identifying, analyzing, evaluating, controlling, and monitoring risks associated with a medical device. It is the global benchmark for risk management and is a required process for both FDA and international submissions. The **Risk Management File** is the output of this process.")
+
+        st.subheader("ISO 62304:2006 - Medical Device Software - Software Life Cycle Processes")
+        st.markdown("This standard defines the lifecycle requirements for medical device software. It provides a framework for designing, developing, testing, and maintaining software in a safe and controlled manner. The required level of rigor depends on the **Software Safety Classification** (Class A, B, or C), which is based on the potential of the software to cause harm. Our SaMD is **Class C (High Risk)**, requiring the most stringent level of documentation and control.")
+
+    with st.expander("🔬 **US Laboratory Regulations (CLIA)**"):
+        st.subheader("Clinical Laboratory Improvement Amendments (CLIA)")
+        st.markdown("CLIA regulations establish quality standards for all laboratory testing performed on humans in the U.S. (except for clinical trials and basic research). For our LDT (Laboratory Developed Test) service to be offered commercially, the performing laboratory must be CLIA-certified. This involves demonstrating analytical validity, having qualified personnel, and adhering to strict quality control and proficiency testing procedures.")
+
+    with st.expander("📄 **PMA Submission Structure**"):
+        st.markdown("""
+        A Premarket Approval (PMA) is the most stringent type of device marketing application required by the FDA. It is required for Class III devices, like our MCED test. The submission is a comprehensive document that must provide reasonable assurance of the device's safety and effectiveness.
+        
+        A typical PMA for an IVD includes, but is not limited to:
+        1.  **Device Description & Intended Use:** What it is and how it's used.
+        2.  **Non-Clinical (Analytical) Studies:** The complete **Analytical Validation** package (Precision, LoD, Specificity, Robustness, etc.).
+        3.  **Software/Bioinformatics Validation:** The complete software V&V package as per ISO 62304.
+        4.  **Clinical Studies:** The full results and analysis from the pivotal clinical trial, including all patient data, statistical analysis plans, and outcomes.
+        5.  **Labeling:** The proposed Instructions for Use, box labels, and Clinical Report format.
+        6.  **Manufacturing Information:** A complete description of the laboratory process (Design Transfer, SOPs, QC procedures). This is the **Device Master Record (DMR)**.
+        7.  **Quality System Information:** Evidence of compliance with 21 CFR 820.
+        8.  **Risk Management File:** The complete file as per ISO 14971.
+        
+        This dashboard is designed to be the central repository for generating and organizing the evidence required for nearly every section of the PMA.
+        """)
+        
+# ==============================================================================
+# --- MAIN APPLICATION LOGIC ---
+# ==============================================================================
+def main() -> None:
+    """Main function to run the Streamlit application."""
+    st.set_page_config(layout="wide", page_title="GenomicsDx Command Center", page_icon="🧬")
+    try:
+        ssm = SessionStateManager()
+        logger.info("Application initialized. Session State Manager loaded.")
+    except Exception as e:
+        st.error("Fatal Error: Could not initialize Session State."); logger.critical(f"Failed to instantiate SessionStateManager: {e}", exc_info=True); st.stop()
+    try:
+        tasks_raw = ssm.get_data("project_management", "tasks")
+        tasks_df_processed = preprocess_task_data(tasks_raw)
+        docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
+        docs_by_phase = {phase: data for phase, data in docs_df.groupby('phase')} if 'phase' in docs_df.columns else {}
+    except Exception as e:
+        st.error("Failed to process initial project data for dashboard."); logger.error(f"Error during initial data pre-processing: {e}", exc_info=True)
+        tasks_df_processed = pd.DataFrame(); docs_by_phase = {}
+
+    st.title("🧬 GenomicsDx DHF Command Center")
+    project_name = ssm.get_data("design_plan", "project_name")
+    st.caption(f"Live QMS Monitoring for the **{project_name or 'GenomicsDx MCED Test'}** Program")
+
+    tab_names = ["📊 **Program Health Dashboard**", "🗂️ **DHF Explorer**", "🔬 **Advanced Analytics**", "📈 **Statistical Workbench**", "🤖 **ML & Bioinformatics Lab**", "🏛️ **Regulatory Guide**"]
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_names)
+
+    with tab1: render_health_dashboard_tab(ssm, tasks_df_processed, docs_by_phase)
+    with tab2: render_dhf_explorer_tab(ssm)
+    with tab3: render_advanced_analytics_tab(ssm)
+    with tab4: render_statistical_tools_tab(ssm)
+    with tab5: render_machine_learning_lab_tab(ssm)
+    with tab6: render_compliance_guide_tab()
+
+# ==============================================================================
+# --- SCRIPT EXECUTION ---
+# ==============================================================================
+if __name__ == "__main__":
+    main()
 
