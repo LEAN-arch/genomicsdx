@@ -276,12 +276,14 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
     title = "<b>Measurement System Analysis (Gauge R&R)</b>"
     results_df = pd.DataFrame(columns=['Source', 'Variance Component', '% Contribution']).set_index('Source')
     try:
-        model = ols(f'`{value_col}` ~ C(`{operator_col}`) + C(`{part_col}`) + C(`{operator_col}`):C(`{part_col}`)', data=df).fit()
+        # *** BUG FIX: Use standard formula string syntax without backticks for patsy ***
+        formula = f"{value_col} ~ C({operator_col}) + C({part_col}) + C({operator_col}):C({part_col})"
+        model = ols(formula, data=df).fit()
         anova_table = anova_lm(model, typ=2)
         
-        ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`)', 'df']
-        ms_part = anova_table.loc[f'C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{part_col}`)', 'df']
-        ms_interact = anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'df']
+        ms_operator = anova_table.loc[f'C({operator_col})', 'sum_sq'] / anova_table.loc[f'C({operator_col})', 'df']
+        ms_part = anova_table.loc[f'C({part_col})', 'sum_sq'] / anova_table.loc[f'C({part_col})', 'df']
+        ms_interact = anova_table.loc[f'C({operator_col}):C({part_col})', 'sum_sq'] / anova_table.loc[f'C({operator_col}):C({part_col})', 'df']
         ms_error = anova_table.loc['Residual', 'sum_sq'] / anova_table.loc['Residual', 'df']
 
         n_parts = df[part_col].nunique()
@@ -386,6 +388,11 @@ def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) ->
     try:
         import shap
         import matplotlib.pyplot as plt
+
+        # *** BUG FIX: Ensure shap_values and features have matching dimensions ***
+        if shap_values.shape[1] != features.shape[1]:
+            logger.error(f"SHAP plot error: Mismatch in shapes. SHAP values have {shap_values.shape[1]} features, data has {features.shape[1]}.")
+            return None
 
         fig, ax = plt.subplots()
         shap.summary_plot(shap_values, features, show=False)
