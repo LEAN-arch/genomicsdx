@@ -792,7 +792,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                 st.warning("Could not determine interaction effect from the model.")
         except Exception as e:
             st.error(f"Could not perform DOE analysis. Error: {e}")
-    def render_machine_learning_lab_tab(ssm: SessionStateManager):
+        def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
     st.info("Utilize and validate predictive models for operational efficiency and explore the classifier's behavior. Model explainability is key for regulatory review.")
@@ -1051,8 +1051,4 @@ def main() -> None:
 # ==============================================================================
 if __name__ == "__main__":
     main()
-    
-    
-
-
-    
+   
