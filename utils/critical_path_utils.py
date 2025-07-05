@@ -65,8 +65,8 @@ def find_critical_path(tasks_df: pd.DataFrame) -> List[TaskId]:
                       an empty list if the input DataFrame is empty, malformed,
                       or if any error occurs during calculation.
     """
-    if tasks_df.empty:
-        logger.info("Input tasks_df is empty, returning no critical path.")
+    if not isinstance(tasks_df, pd.DataFrame) or tasks_df.empty:
+        logger.info("Input tasks_df is not a valid, non-empty DataFrame. Returning no critical path.")
         return []
 
     try:
