@@ -139,11 +139,7 @@ def render_dhf_completeness_panel(ssm: SessionStateManager, tasks_df: pd.DataFra
             col1, col2 = st.columns([2, 1])
             with col1:
                 st.markdown("**Associated DHF Documents:**")
-                phase_docs = docs_by_phase.get(task_name)
-                if phase_docs is not None and not phase_docs.empty:
-                    st.dataframe(phase_docs[['id', 'title', 'status']], use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No documents for this phase yet.")
+                st.caption("Document-to-phase linkage not yet implemented. This is a placeholder.")
             with col2:
                 st.markdown("**Cross-Functional Sign-offs:**")
                 sign_offs = task.get('sign_offs', {})
@@ -251,7 +247,8 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
                 with col1:
                     st.markdown("**Reagent Lot Qualification**")
                     lot_qual = lab_ops_data.get('reagent_lot_qualification', {})
-                    total, passed = lot_qual.get('total', 0), lot_qual.get('passed', 0)
+                    total = lot_qual.get('total', 0)
+                    passed = lot_qual.get('passed', 0)
                     pass_rate = (passed / total) * 100 if total > 0 else 0
                     st.metric(f"Lot Qualification Pass Rate", f"{pass_rate:.1f}%", f"{passed}/{total} Passed")
                     st.progress(pass_rate / 100)
@@ -313,7 +310,7 @@ def render_audit_and_improvement_dashboard(ssm: SessionStateManager) -> None:
             with col2:
                 st.markdown("**Assay Control Process Capability**")
                 if spc_data and spc_data.get('measurements'):
-                    meas = np.array(spc_data['measurements']); usl, lsl = spc_data.get('usl',0), spc_data.get('lsl',0)
+                    meas = np.array(spc_data['measurements']); usl = spc_data.get('usl', 0); lsl = spc_data.get('lsl', 0)
                     mu, sigma = meas.mean(), meas.std()
                     cpk = min((usl - mu) / (3 * sigma), (mu - lsl) / (3 * sigma)) if sigma > 0 else 0
                     st.metric("Process Capability (Cpk)", f"{cpk:.2f}", delta=f"{cpk-1.33:.2f} vs. target 1.33", delta_color="normal", help="A Cpk > 1.33 indicates a capable process for this control metric. Calculated from live SPC data.")
@@ -329,40 +326,62 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     """Renders the main DHF Health Dashboard tab."""
     st.header("Executive Health Summary")
 
+    # Initialize all KPIs with default values
     schedule_score, risk_score, execution_score, av_pass_rate, trace_coverage, enrollment_rate, overdue_actions_count = 0, 0, 100, 0, 0, 0, 0
-    if not tasks_df.empty:
-        today = pd.Timestamp.now().floor('D')
-        overdue_in_progress = tasks_df[(tasks_df['status'] == 'In Progress') & (tasks_df['end_date'] < today)]
-        total_in_progress = tasks_df[tasks_df['status'] == 'In Progress']
-        schedule_score = (1 - (len(overdue_in_progress) / len(total_in_progress))) * 100 if not total_in_progress.empty else 100
-    hazards_df = get_cached_df(ssm.get_data("risk_management_file", "hazards"))
-    if not hazards_df.empty and all(c in hazards_df.columns for c in ['initial_S', 'initial_O', 'final_S', 'final_O']):
-        initial_rpn = hazards_df['initial_S'] * hazards_df['initial_O']
-        final_rpn = hazards_df['final_S'] * hazards_df['final_O']
-        initial_rpn_sum = initial_rpn.sum()
-        risk_reduction_pct = ((initial_rpn_sum - final_rpn.sum()) / initial_rpn_sum) * 100 if initial_rpn_sum > 0 else 100
-        risk_score = max(0, risk_reduction_pct)
-    reviews_data = ssm.get_data("design_reviews", "reviews")
-    original_action_items = [item for r in reviews_data for item in r.get("action_items", [])]
-    action_items_df = get_cached_df(original_action_items)
-    if not action_items_df.empty:
-        # Ensure 'status' column exists before filtering
-        if 'status' in action_items_df.columns:
+    weights = {'schedule': 0.4, 'quality': 0.4, 'execution': 0.2}
+
+    try:
+        # Schedule Score
+        if not tasks_df.empty:
+            today = pd.Timestamp.now().floor('D')
+            overdue_in_progress = tasks_df[(tasks_df['status'] == 'In Progress') & (tasks_df['end_date'] < today)]
+            total_in_progress = tasks_df[tasks_df['status'] == 'In Progress']
+            schedule_score = (1 - (len(overdue_in_progress) / len(total_in_progress))) * 100 if not total_in_progress.empty else 100
+        
+        # Risk Score
+        hazards_df = get_cached_df(ssm.get_data("risk_management_file", "hazards"))
+        if not hazards_df.empty and all(c in hazards_df.columns for c in ['initial_S', 'initial_O', 'final_S', 'final_O']):
+            initial_rpn = hazards_df['initial_S'] * hazards_df['initial_O']
+            final_rpn = hazards_df['final_S'] * hazards_df['final_O']
+            initial_rpn_sum = initial_rpn.sum()
+            risk_reduction_pct = ((initial_rpn_sum - final_rpn.sum()) / initial_rpn_sum) * 100 if initial_rpn_sum > 0 else 100
+            risk_score = max(0, risk_reduction_pct)
+        
+        # Execution Score & Overdue Items
+        all_actions = (ssm.get_data("quality_system", "capa_records") or []) + (ssm.get_data("design_reviews", "reviews") or [])
+        original_action_items = [item for r in all_actions for item in r.get("action_items", []) + r.get("action_plan", [])]
+        action_items_df = get_cached_df(original_action_items)
+        if not action_items_df.empty and 'status' in action_items_df.columns:
             open_items = action_items_df[action_items_df['status'] != 'Completed']
             if not open_items.empty:
-                # Check for 'Overdue' status; if not present, no items are overdue
-                overdue_items_count = len(open_items[open_items['status'] == 'Overdue']) if 'Overdue' in open_items['status'].unique() else 0
+                overdue_items_count = len(open_items[open_items['status'] == 'Overdue'])
                 execution_score = (1 - (overdue_items_count / len(open_items))) * 100 if len(open_items) > 0 else 100
-    weights = {'schedule': 0.4, 'quality': 0.4, 'execution': 0.2}
-    overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
-    ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
-    av_pass_rate = (len(ver_tests_df[ver_tests_df['result'] == 'Pass']) / len(ver_tests_df)) * 100 if not ver_tests_df.empty else 0
-    reqs_df = get_cached_df(ssm.get_data("design_inputs", "requirements"))
-    trace_coverage = (ver_tests_df.dropna(subset=['input_verified_id'])['input_verified_id'].nunique() / reqs_df['id'].nunique()) * 100 if not reqs_df.empty and reqs_df['id'].nunique() > 0 else 0
-    study_df = get_cached_df(ssm.get_data("clinical_study", "enrollment"))
-    if not study_df.empty: enrollment_rate = (study_df['enrolled'].sum() / study_df['target'].sum()) * 100 if study_df['target'].sum() > 0 else 0
-    overdue_actions_count = len(action_items_df[action_items_df['status'] == 'Overdue']) if 'status' in action_items_df.columns and not action_items_df.empty else 0
+        
+        # V&V and Clinical KPIs
+        ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
+        if not ver_tests_df.empty and 'result' in ver_tests_df.columns:
+            av_pass_rate = (len(ver_tests_df[ver_tests_df['result'] == 'Pass']) / len(ver_tests_df)) * 100
+
+        reqs_df = get_cached_df(ssm.get_data("design_inputs", "requirements"))
+        if not reqs_df.empty and not ver_tests_df.empty and 'id' in reqs_df.columns and 'input_verified_id' in ver_tests_df.columns:
+            if reqs_df['id'].nunique() > 0:
+                trace_coverage = (ver_tests_df.dropna(subset=['input_verified_id'])['input_verified_id'].nunique() / reqs_df['id'].nunique()) * 100
+        
+        study_df = get_cached_df(ssm.get_data("clinical_study", "enrollment"))
+        if not study_df.empty and 'enrolled' in study_df.columns and 'target' in study_df.columns:
+            if study_df['target'].sum() > 0:
+                enrollment_rate = (study_df['enrolled'].sum() / study_df['target'].sum()) * 100
+        
+        if not action_items_df.empty and 'status' in action_items_df.columns:
+            overdue_actions_count = len(action_items_df[action_items_df['status'] == 'Overdue'])
     
+    except Exception as e:
+        st.error("An error occurred while calculating dashboard KPIs.")
+        logger.error(f"Error in render_health_dashboard_tab KPI calculation: {e}", exc_info=True)
+        return
+
+    overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
+
     col1, col2 = st.columns([1.5, 2])
     with col1:
         fig = go.Figure(go.Indicator(mode="gauge+number", value=overall_health_score, title={'text': "<b>Overall Program Health Score</b>"}, number={'font': {'size': 48}}, domain={'x': [0, 1], 'y': [0, 1]}, gauge={'axis': {'range': [None, 100]}, 'bar': {'color': "green" if overall_health_score > 80 else "orange" if overall_health_score > 60 else "red"}, 'steps' : [{'range': [0, 60], 'color': "#fdecec"}, {'range': [60, 80], 'color': "#fef3e7"}, {'range': [80, 100], 'color': "#eaf5ea"}]}))
@@ -630,20 +649,23 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         eq_data = ssm.get_data("quality_system", "equivalence_data")
         margin_pct = st.slider("Select Equivalence Margin (%)", 5, 25, 10, key="tost_slider")
         
-        lot_a = np.array(eq_data['reagent_lot_a'])
-        lot_b = np.array(eq_data['reagent_lot_b'])
+        lot_a = np.array(eq_data.get('reagent_lot_a', []))
+        lot_b = np.array(eq_data.get('reagent_lot_b', []))
         
-        margin_abs = (margin_pct / 100) * lot_a.mean()
-        lower_bound, upper_bound = -margin_abs, margin_abs
-        
-        fig, p_value = create_tost_plot(lot_a, lot_b, lower_bound, upper_bound)
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        if p_value < 0.05:
-            st.success(f"**Conclusion:** Equivalence has been demonstrated (p = {p_value:.4f}). The difference between the lots is statistically smaller than the defined margin of {margin_pct}%.")
+        if lot_a.size > 0 and lot_b.size > 0:
+            margin_abs = (margin_pct / 100) * lot_a.mean()
+            lower_bound, upper_bound = -margin_abs, margin_abs
+            
+            fig, p_value = create_tost_plot(lot_a, lot_b, lower_bound, upper_bound)
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            if p_value < 0.05:
+                st.success(f"**Conclusion:** Equivalence has been demonstrated (p = {p_value:.4f}). The difference between the lots is statistically smaller than the defined margin of {margin_pct}%.")
+            else:
+                st.error(f"**Conclusion:** Equivalence could not be demonstrated (p = {p_value:.4f}). The confidence interval for the difference extends beyond the equivalence margin of {margin_pct}%.")
         else:
-            st.error(f"**Conclusion:** Equivalence could not be demonstrated (p = {p_value:.4f}). The confidence interval for the difference extends beyond the equivalence margin of {margin_pct}%.")
+            st.warning("Insufficient data for equivalence testing.")
     
     # --- Tool 4: Pareto Analysis ---
     with tool_tabs[3]:
@@ -756,37 +778,41 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         st.dataframe(df_doe, use_container_width=True)
         
         try:
-            model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
-            anova_table = anova_lm(model, typ=2)
-            
-            st.write("##### ANOVA Results")
-            st.dataframe(anova_table)
-            
-            st.write("##### 3D Response Surface Plot")
-            pcr_levels = df_doe['pcr_cycles'].unique()
-            dna_levels = df_doe['input_dna'].unique()
-            grid_x, grid_y = np.meshgrid(np.linspace(pcr_levels.min(), pcr_levels.max(), 10),
-                                         np.linspace(dna_levels.min(), dna_levels.max(), 10))
-            grid_df = pd.DataFrame({'pcr_cycles': grid_x.flatten(), 'input_dna': grid_y.flatten()})
-            grid_df['predicted_yield'] = model.predict(grid_df)
-            
-            fig = go.Figure(data=[go.Surface(z=grid_df['predicted_yield'].values.reshape(grid_x.shape),
-                                              x=grid_x, y=grid_y, colorscale='Viridis')])
-            fig.add_trace(go.Scatter3d(x=df_doe['pcr_cycles'], y=df_doe['input_dna'], z=df_doe['library_yield'],
-                                       mode='markers', marker=dict(size=5, color='red')))
-            fig.update_layout(title='Predicted Library Yield Response Surface',
-                              scene=dict(xaxis_title='PCR Cycles', yaxis_title='Input DNA (ng)', zaxis_title='Library Yield'),
-                              height=600)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            if 'C(pcr_cycles):C(input_dna)' in anova_table.index:
-                p_val_interaction = anova_table.loc['C(pcr_cycles):C(input_dna)', 'PR(>F)']
-                if p_val_interaction < 0.05:
-                    st.success("**Conclusion:** Both PCR cycles and input DNA amount, as well as their interaction, are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
-                else:
-                    st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield, but their interaction is not. The response surface plot can be used to identify optimal conditions.")
+            df_doe.dropna(subset=['library_yield', 'pcr_cycles', 'input_dna'], inplace=True)
+            if len(df_doe) < 4:
+                 st.warning("Insufficient data for DOE analysis after removing missing values.")
             else:
-                st.warning("Could not determine interaction effect from the model.")
+                model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
+                anova_table = anova_lm(model, typ=2)
+                
+                st.write("##### ANOVA Results")
+                st.dataframe(anova_table)
+                
+                st.write("##### 3D Response Surface Plot")
+                pcr_levels = df_doe['pcr_cycles'].unique()
+                dna_levels = df_doe['input_dna'].unique()
+                grid_x, grid_y = np.meshgrid(np.linspace(pcr_levels.min(), pcr_levels.max(), 10),
+                                             np.linspace(dna_levels.min(), dna_levels.max(), 10))
+                grid_df = pd.DataFrame({'pcr_cycles': grid_x.flatten(), 'input_dna': grid_y.flatten()})
+                grid_df['predicted_yield'] = model.predict(grid_df)
+                
+                fig = go.Figure(data=[go.Surface(z=grid_df['predicted_yield'].values.reshape(grid_x.shape),
+                                                  x=grid_x, y=grid_y, colorscale='Viridis')])
+                fig.add_trace(go.Scatter3d(x=df_doe['pcr_cycles'], y=df_doe['input_dna'], z=df_doe['library_yield'],
+                                           mode='markers', marker=dict(size=5, color='red')))
+                fig.update_layout(title='Predicted Library Yield Response Surface',
+                                  scene=dict(xaxis_title='PCR Cycles', yaxis_title='Input DNA (ng)', zaxis_title='Library Yield'),
+                                  height=600)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                if 'C(pcr_cycles):C(input_dna)' in anova_table.index:
+                    p_val_interaction = anova_table.loc['C(pcr_cycles):C(input_dna)', 'PR(>F)']
+                    if p_val_interaction < 0.05:
+                        st.success("**Conclusion:** Both PCR cycles and input DNA amount, as well as their interaction, are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
+                    else:
+                        st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield, but their interaction is not. The response surface plot can be used to identify optimal conditions.")
+                else:
+                    st.warning("Could not determine interaction effect from the model.")
         except Exception as e:
             st.error(f"Could not perform DOE analysis. Error: {e}")
 
@@ -842,7 +868,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         shap_values = explainer.shap_values(X)
         
         st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-        # *** BUG FIX: Check if plot generation failed ***
         fig_shap = create_shap_summary_plot(shap_values[1], X)
         if fig_shap:
             st.pyplot(fig_shap, use_container_width=True)
@@ -1023,8 +1048,6 @@ def main() -> None:
         tasks_raw = ssm.get_data("project_management", "tasks")
         tasks_df_processed = preprocess_task_data(tasks_raw)
         docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
-        # A more robust implementation would add a 'phase' key to documents upon creation
-        # to ensure this grouping is always accurate.
         docs_by_phase = {}
         if 'phase' in docs_df.columns:
             docs_by_phase = {phase: data for phase, data in docs_df.groupby('phase')}
