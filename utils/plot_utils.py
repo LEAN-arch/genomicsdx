@@ -375,8 +375,11 @@ def create_confusion_matrix_heatmap(cm: np.ndarray, class_names: List[str]) -> g
         logger.error(f"Error creating confusion matrix heatmap: {e}", exc_info=True)
         return _create_placeholder_figure("Confusion Matrix Error", "Confusion Matrix", "⚠️")
 
-def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) -> Any:
-    """Creates a SHAP summary plot as a Matplotlib figure object."""
+def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) -> Optional[Any]:
+    """
+    Creates a SHAP summary plot as a Matplotlib figure object.
+    Returns None on failure to prevent passing incorrect object types.
+    """
     try:
         import shap
         import matplotlib.pyplot as plt
@@ -388,7 +391,8 @@ def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) ->
         return fig
     except Exception as e:
         logger.error(f"Error creating SHAP summary plot: {e}", exc_info=True)
-        return _create_placeholder_figure("SHAP Plot Error", "SHAP Summary", "⚠️")
+        # *** BUG FIX: Return None on error instead of a Plotly figure ***
+        return None
 
 def create_forecast_plot(history_df: pd.DataFrame, forecast_df: pd.DataFrame) -> go.Figure:
     """Creates a time series forecast plot."""
