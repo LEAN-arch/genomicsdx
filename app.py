@@ -328,10 +328,9 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
 
     # Initialize all KPIs with default values
     schedule_score, risk_score, execution_score, av_pass_rate, trace_coverage, enrollment_rate = 0, 0, 100, 0, 0, 0
-    overdue_actions_count = 0 # *** BUG FIX: Initialize here ***
+    overdue_actions_count = 0
     weights = {'schedule': 0.4, 'quality': 0.4, 'execution': 0.2}
 
-    # *** BUG FIX: Move data fetching to the top level of the function ***
     reviews_data = ssm.get_data("design_reviews", "reviews") or []
     all_actions_sources = [
         ssm.get_data("quality_system", "capa_records"),
