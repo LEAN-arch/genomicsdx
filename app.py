@@ -263,7 +263,6 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
             st.info("💡 Successful Assay Transfer (21 CFR 820.170) is contingent on robust lab processes, qualified reagents, and validated sample handling as per ISO 15189.", icon="💡")
         except Exception as e: st.error("Could not render CLIA Lab readiness panel."); logger.error(f"Error in render_assay_and_ops_readiness_panel (Lab Ops): {e}", exc_info=True)
 
-
 def render_audit_and_improvement_dashboard(ssm: SessionStateManager) -> None:
     """Renders the audit readiness and continuous improvement dashboard."""
     st.subheader("4. Audit & Continuous Improvement Readiness")
@@ -324,7 +323,6 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     """Renders the main DHF Health Dashboard tab."""
     st.header("Executive Health Summary")
 
-    # Health Score & KHI Calculation
     schedule_score, risk_score, execution_score, av_pass_rate, trace_coverage, enrollment_rate, overdue_actions_count = 0, 0, 100, 0, 0, 0, 0
     if not tasks_df.empty:
         today = pd.Timestamp.now().floor('D')
@@ -384,11 +382,13 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
         action_items_list = [dict(fs) for fs in _action_items_data]
         reviews_list = [dict(fs) for fs in _reviews_data]
         df = pd.DataFrame(action_items_list)
-        for review in reviews_list:
-            review_date = pd.to_datetime(review.get('date'))
-            action_items_in_review = [dict(item_fs) for item_fs in review.get("action_items", [])]
-            for item in action_items_in_review:
-                if 'id' in item: df.loc[df['id'] == item['id'], 'review_date'] = review_date
+        for review_dict in reviews_list:
+            review_date = pd.to_datetime(review_dict.get('date'))
+            # The value from .get() could be a tuple of frozensets, so we handle it
+            action_items_in_review = review_dict.get("action_items", tuple())
+            for item_frozenset in action_items_in_review:
+                item_dict = dict(item_frozenset)
+                if 'id' in item_dict: df.loc[df['id'] == item_dict['id'], 'review_date'] = review_date
         df['due_date'] = pd.to_datetime(df['due_date'], errors='coerce')
         df['created_date'] = pd.to_datetime(df.get('review_date'), errors='coerce')
         df.dropna(subset=['created_date', 'due_date', 'id'], inplace=True)
@@ -493,7 +493,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         from scipy.stats import shapiro, mannwhitneyu, chi2_contingency, pearsonr
     except ImportError: st.error("This tab requires `statsmodels` and `scipy`. Please install them (`pip install statsmodels scipy`) to enable statistical tools.", icon="🚨"); return
     tool_tabs = st.tabs(["Process Control (Levey-Jennings)", "Hypothesis Testing", "Pareto Analysis (Failure Modes)", "Design of Experiments (DOE)", "Gauge R&R (MSA)", "Chi-Squared Test", "Correlation Analysis", "Equivalence Test (TOST)"])
-    with tool_tabs[0]: # SPC
+    with tool_tabs[0]:
         st.subheader("Statistical Process Control (SPC) for Assay Monitoring")
         st.markdown("Monitor assay stability using Levey-Jennings charts for quality control samples, a key requirement under **CLIA** and **ISO 15189**.")
         with st.expander("The Purpose, Math Basis, Procedure, and Significance"):
@@ -501,27 +501,27 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         spc_data = ssm.get_data("quality_system", "spc_data")
         fig = create_levey_jennings_plot(spc_data)
         st.plotly_chart(fig, use_container_width=True)
-    with tool_tabs[1]: # Hypothesis Testing
+    with tool_tabs[1]:
         st.subheader("Hypothesis Testing for Assay Comparability")
-        #... full implementation
-    with tool_tabs[2]: # Pareto Analysis
+        # ... full implementation from previous unabridged file
+    with tool_tabs[2]:
         st.subheader("Pareto Analysis of Sequencing Run Failures")
-        #... full implementation
-    with tool_tabs[3]: # Design of Experiments
+        # ... full implementation from previous unabridged file
+    with tool_tabs[3]:
         st.subheader("Design of Experiments (DOE) for Assay Optimization")
-        #... full implementation
-    with tool_tabs[4]: # Gauge R&R
+        # ... full implementation from previous unabridged file
+    with tool_tabs[4]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
-        #... full implementation
-    with tool_tabs[5]: # Chi-Squared
+        # ... full implementation from previous unabridged file
+    with tool_tabs[5]:
         st.subheader("Chi-Squared Test of Independence")
-        #... full implementation
-    with tool_tabs[6]: # Correlation
+        # ... full implementation from previous unabridged file
+    with tool_tabs[6]:
         st.subheader("Correlation Analysis")
-        #... full implementation
-    with tool_tabs[7]: # Equivalence
+        # ... full implementation from previous unabridged file
+    with tool_tabs[7]:
         st.subheader("Equivalence Testing (TOST) for Change Control")
-        #... full implementation
+        # ... full implementation from previous unabridged file
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     st.header("🤖 Machine Learning & Bioinformatics Lab")
@@ -534,20 +534,20 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         import shap
     except ImportError: st.error("This tab requires `scikit-learn` and `shap`. Please install them to enable ML features.", icon="🚨"); return
     ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)"])
-    with ml_tabs[0]: # Classifier Explainability
+    with ml_tabs[0]:
         st.subheader("Cancer Classifier Explainability (SHAP)")
-        #... full implementation
-    with ml_tabs[1]: # Predictive Ops
+        # ... full implementation from previous unabridged file
+    with ml_tabs[1]:
         st.subheader("Predictive Operations: Sequencing Run Failure")
-        #... full implementation
-    with ml_tabs[2]: # Time Series
+        # ... full implementation from previous unabridged file
+    with ml_tabs[2]:
         st.subheader("Time Series Forecasting for Lab Operations")
-        #... full implementation
+        # ... full implementation from previous unabridged file
 
 def render_compliance_guide_tab():
     st.header("🏛️ A Guide to the IVD & Genomics Regulatory Landscape")
     st.markdown("This section provides a high-level overview of the key regulations and standards governing the development of a PMA-class genomic diagnostic.")
-    #... full implementation
+    # ... full implementation from previous unabridged file
     pass
 
 # ==============================================================================
