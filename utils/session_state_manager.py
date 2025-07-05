@@ -1,4 +1,4 @@
-# --- SME OVERHAUL: Definitive, Compliance-Focused Version ---
+# --- SME OVERHAUL: Definitive, Compliance-Focused Version (Corrected) ---
 """
 Manages the application's session state, acting as an in-memory eQMS.
 
@@ -96,10 +96,45 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
                 {"id": "SPEC-SW-01", "type": "Software Spec", "title": "Bioinformatics Pipeline Software Design Specification (SDS)", "version": "2.1", "status": "Approved", "approval_date": str(base_date + timedelta(250)), "linked_input_id": "SW-001", "link_to_artifact": "https://github.com/genomicsdx/pipeline/docs/sds_v2.1.md"},
                 {"id": "MODEL-01", "type": "Algorithm", "title": "Locked Classifier Model v3.0", "version": "3.0", "status": "Approved", "approval_date": str(base_date + timedelta(365)), "linked_input_id": "SYS-001", "link_to_artifact": "/models/classifier_v3.0.pkl"},
             ]},
-        "design_reviews": { "reviews": [
-                {"id": "DR-001", "date": str(base_date + timedelta(180)), "type": "Phase-Gate", "phase": "Assay Freeze", "attendees": team_list, "independent_reviewer": "Dr. Kenji Tanaka", "scope": "Review of all AV data for assay v1.2.", "outcome": "Go", "notes": "AV performance meets targets. Approved to proceed with this assay version.", "action_items": []},
-                {"id": "DR-002", "date": str(base_date + timedelta(365)), "type": "Phase-Gate", "phase": "Algorithm Lock", "attendees": team_list, "independent_reviewer": "Dr. Sofia Chen", "scope": "Review of classifier performance on training data. Approval to lock model for clinical validation.", "outcome": "Go with Conditions", "notes": "Performance is acceptable. Condition: Finalize Software V&V report before starting patient enrollment.", "action_items": [{"id": "AI-DR002-01", "description": "Complete and approve SW-V&V-RPT-01", "owner": "Dr. Marcus Thorne", "due_date": str(base_date + timedelta(380)), "status": "In Progress", "risk_priority": "High"}]},
-            ]},
+        "design_reviews": {
+            "reviews": [
+                {
+                    "id": "DR-001",
+                    "date": str(demo_current_date - timedelta(days=270)),
+                    "attendees": ["Dr. Elena Reyes", "Dr. Sofia Chen", "Laura Vance"],
+                    "type": "Technical", "phase": "Assay Concept", "independent_reviewer": "Laura Vance",
+                    "scope": "Initial review of assay chemistry and biomarker panel.",
+                    "outcome": "Go",
+                    "notes": "Concept review complete. Feasibility approved.",
+                    "action_items": [
+                        {"id": "AI-DR001-01", "description": "Source alternative polymerase for improved stability.", "owner": "Dr. Sofia Chen", "due_date": str(demo_current_date - timedelta(days=255)), "status": "Completed", "risk_priority": "Medium"}
+                    ]
+                },
+                {
+                    "id": "DR-002",
+                    "date": str(base_date + timedelta(180)),
+                    "attendees": team_list,
+                    "type": "Phase-Gate", "phase": "Assay Freeze", "independent_reviewer": "Dr. Kenji Tanaka",
+                    "scope": "Review of all AV data for assay v1.2. Decision to lock assay design for pivotal studies.",
+                    "outcome": "Go",
+                    "notes": "AV performance meets all primary endpoints for LoD and Precision. Approved to proceed with this assay version for clinical validation.",
+                    "action_items": []
+                },
+                {
+                    "id": "DR-003",
+                    "date": str(base_date + timedelta(365)),
+                    "attendees": team_list,
+                    "type": "Phase-Gate", "phase": "Algorithm Lock", "independent_reviewer": "Dr. Sofia Chen",
+                    "scope": "Review of classifier performance on training data. Approval to lock model for clinical validation.",
+                    "outcome": "Go with Conditions",
+                    "notes": "Performance is acceptable. Condition: Finalize Software V&V report before starting patient enrollment.",
+                    "action_items": [
+                        {"id": "AI-DR003-01", "description": "Complete and approve SW-V&V-RPT-01.", "owner": "Dr. Marcus Thorne", "due_date": str(base_date + timedelta(380)), "status": "In Progress", "risk_priority": "High"},
+                        {"id": "AI-DR003-02", "description": "Update risk file with residual software risks.", "owner": "Laura Vance", "due_date": str(base_date + timedelta(375)), "status": "Open", "risk_priority": "Medium"}
+                    ]
+                }
+            ]
+        },
         "design_verification": { "tests": [
                 {"id": "AV-LOD-01", "test_type": "Limit of Detection (LoD)", "test_name": "LoD Study by Probit Analysis using Contrived Samples", "input_verified_id": "ASY-001", "output_verified_id": "SPEC-ASY-01", "status": "Completed", "result": "Pass", "report_link": "/reports/AV-LOD-01.pdf"},
                 {"id": "AV-PREC-01", "test_type": "Intermediate Precision", "test_name": "Precision Study across 3 operators, 3 lots, 5 days", "input_verified_id": "ASY-001", "output_verified_id": "SPEC-ASY-01", "status": "In Progress", "result": "Pending", "report_link": ""},
@@ -152,7 +187,7 @@ class SessionStateManager:
     Handles the initialization and access of the application's session state.
     """
     _DHF_DATA_KEY = "dhf_data"
-    _CURRENT_DATA_VERSION = 24 # Incremented for new MCED data model
+    _CURRENT_DATA_VERSION = 25 # Incremented for corrected data model
 
     def __init__(self):
         """
