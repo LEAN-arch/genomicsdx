@@ -22,11 +22,6 @@ from pandas.api.types import is_numeric_dtype
 from sklearn.metrics import roc_curve, auc, precision_recall_curve
 from scipy import stats
 
-# --- SYNTAX CORRECTION ---
-# 'probit' has been moved to scipy.special in modern versions.
-from scipy.special import probit
-# --- END CORRECTION ---
-
 # --- Setup Logging ---
 logger = logging.getLogger(__name__)
 
@@ -160,13 +155,15 @@ def create_lod_probit_plot(df: pd.DataFrame, conc_col: str, hit_rate_col: str, t
         if df_filtered.empty or len(df_filtered) < 2:
             return _create_placeholder_figure("Insufficient data for Probit plot.", title)
 
-        # Using the corrected probit import from scipy.special
-        df_filtered['probit_hit_rate'] = probit(df_filtered[hit_rate_col])
+        # --- FINAL CORRECTION ---
+        # The modern equivalent of probit is the Percent Point Function (ppf) of the normal distribution.
+        df_filtered['probit_hit_rate'] = stats.norm.ppf(df_filtered[hit_rate_col])
+        # --- END CORRECTION ---
         
         log_conc = np.log10(df_filtered[conc_col])
         slope, intercept, _, _, _ = stats.linregress(log_conc, df_filtered['probit_hit_rate'])
         
-        lod_95 = 10**((probit(0.95) - intercept) / slope)
+        lod_95 = 10**((stats.norm.ppf(0.95) - intercept) / slope)
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df_filtered[conc_col], y=df_filtered[hit_rate_col], mode='markers', name='Observed Data', marker=dict(size=10)))
