@@ -40,12 +40,12 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         # --- 1. Load Data ---
         transfer_data: Dict[str, Any] = ssm.get_data("lab_operations") or {}
         personnel_data = ssm.get_data("design_plan", "team_members") or []
+        sop_data = transfer_data.get("sops", [])
         lab_techs = [p.get('name') for p in personnel_data if 'Tech' in p.get('role', '')]
         logger.info("Loaded lab operations and design transfer data.")
 
         # --- 2. High-Level Readiness KPIs ---
         st.subheader("Launch Readiness Dashboard")
-        sop_data = transfer_data.get("sops", [])
         infra_data = transfer_data.get("infrastructure", [])
         ppq_data = transfer_data.get("ppq_runs", [])
 
@@ -59,7 +59,7 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         
         ppq_required = 3
         ppq_passed = len([p for p in ppq_data if p.get('result') == 'Pass'])
-        ppq_progress = (ppq_passed / ppq_required) * 100
+        ppq_progress = (ppq_passed / ppq_required) * 100 if ppq_required > 0 else 0
 
         kpi_cols = st.columns(3)
         with kpi_cols[0]:
@@ -89,9 +89,14 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
             data_list = transfer_data.get(df_key, [])
             df = pd.DataFrame(data_list)
             
-            # *** BUG FIX: Check if column exists and then convert to datetime for editor ***
-            for col, config in column_config.items():
-                if isinstance(config, st.column_config.DateColumn) and col in df.columns:
+            # *** BUG FIX: Check column config to identify date columns robustly ***
+            date_columns = [
+                col for col, config in column_config.items() 
+                if isinstance(config, dict) and config.get("type") == "date"
+            ]
+            
+            for col in date_columns:
+                if col in df.columns:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
             
             edited_df = st.data_editor(
@@ -99,11 +104,10 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
                 key=f"transfer_editor_{df_key}", column_config=column_config, hide_index=True
             )
             
-            # Convert back to storable format before checking for changes
             df_to_save = edited_df.copy()
-            for col, config in column_config.items():
-                if isinstance(config, st.column_config.DateColumn) and col in df_to_save.columns:
-                    df_to_save[col] = df_to_save[col].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+            for col in date_columns:
+                if col in df_to_save.columns:
+                     df_to_save[col] = df_to_save[col].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
 
             if df_to_save.to_dict('records') != data_list:
                 ssm.update_data(df_to_save.to_dict('records'), "lab_operations", df_key)
@@ -152,7 +156,7 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
             st.subheader("Bioinformatics Pipeline & Classifier Deployment (ISO 62304)")
             st.caption("Track the formal, controlled deployment of the locked bioinformatics pipeline and classifier algorithm to the validated production infrastructure.")
             render_editor_tab("software_deployment", {
-                "component": "Software Component", "version": "Deployed Version/Hash", "deployment_date": st.column_config.DateColumn("Deployment Date"),
+                "component": "Software Component", "version": "Deployed Version/Hash", "deployment_date": st.column_config.DateColumn("Deployment Date", format="YYYY-MM-DD"),
                 "validation_protocol": "Validation Protocol ID", "validation_report_link": st.column_config.LinkColumn("Validation Report")
             })
 
@@ -162,7 +166,7 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
             st.markdown("**PPQ Runs**")
             render_editor_tab("ppq_runs", {
                 "run_id": "PPQ Run ID", "description": st.column_config.TextColumn("Run Description", width="large"),
-                "run_date": st.column_config.DateColumn("Run Date"), "result": st.column_config.SelectboxColumn("Result", options=["Not Started", "In Progress", "Pass", "Fail"]),
+                "run_date": st.column_config.DateColumn("Run Date", format="YYYY-MM-DD"), "result": st.column_config.SelectboxColumn("Result", options=["Not Started", "In Progress", "Pass", "Fail"]),
                 "summary_report_link": st.column_config.LinkColumn("Summary Report")
             })
             st.markdown("**Stability Program**")
