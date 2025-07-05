@@ -33,8 +33,8 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
     
     try:
         # --- 1. Load All Relevant Data ---
-        rmf_data: Dict[str, Any] = ssm.get_data("risk_management_file")
-        v_and_v_data: List[Dict[str, Any]] = ssm.get_data("design_verification", "tests") + ssm.get_data("clinical_study", "hf_studies")
+        rmf_data: Dict[str, Any] = ssm.get_data("risk_management_file") or {}
+        v_and_v_data: List[Dict[str, Any]] = (ssm.get_data("design_verification", "tests") or []) + (ssm.get_data("clinical_study", "hf_studies") or [])
         vv_protocol_ids: List[str] = [""] + sorted([p.get('id', '') for p in v_and_v_data if p.get('id')])
 
         # --- 2. Risk Analytics Dashboard ---
@@ -75,8 +75,8 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 
                 untraced_controls = [
                     rc for rc in all_risk_controls 
-                    if rc.get('mitigation') or rc.get('risk_control_measure') # It has a mitigation
-                    and not rc.get('verification_link') # But the link is empty
+                    if rc.get('mitigation') or rc.get('risk_control_measure')
+                    and not rc.get('verification_link')
                 ]
                 
                 total_controls = len([rc for rc in all_risk_controls if rc.get('mitigation') or rc.get('risk_control_measure')])
@@ -86,7 +86,10 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 st.metric("V&V Coverage of Risk Controls", f"{coverage:.1f}%", delta=f"-{untraced_count} Untraced", delta_color="inverse")
                 with st.expander("View Untraced Risk Controls"):
                     if untraced_controls:
-                        st.dataframe(pd.DataFrame(untraced_controls)[['id', 'risk_control_measure', 'mitigation']], hide_index=True)
+                        # *** BUG FIX: Defensively select available columns ***
+                        df_untraced = pd.DataFrame(untraced_controls)
+                        display_cols = [col for col in ['id', 'risk_control_measure', 'mitigation'] if col in df_untraced.columns]
+                        st.dataframe(df_untraced[display_cols], hide_index=True)
                     else:
                         st.success("All risk controls are traced to a V&V activity.")
 
