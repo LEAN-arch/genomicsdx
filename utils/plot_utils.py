@@ -1,4 +1,3 @@
-
 # --- SME OVERHAUL: Definitive, Compliance-Focused, and Unabridged Version ---
 """
 Plotting utilities for creating standardized, publication-quality visualizations.
