@@ -32,16 +32,35 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     choice = random.choice
     team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista"]
 
-    # --- ML Data Generation (with fix) ---
+    # --- ML Data Generation (SME Robust Refactor) ---
     np.random.seed(42)
     num_samples = 100
-    # Base features
-    X_df = pd.DataFrame(np.random.rand(num_samples, 7), columns=[f'biomarker_{i}' for i in range(7)])
-    # Engineered features that will have high importance
-    y_series = pd.Series(np.random.randint(0, 2, num_samples))
-    X_df['promoter_A_met'] = y_series * 0.5 + np.random.normal(0.2, 0.1, num_samples)
-    X_df['enhancer_B_met'] = y_series * 0.3 + np.random.normal(0.1, 0.05, num_samples)
-    X_df['junk_dna_met'] = np.random.rand(num_samples) * 0.1 # Noise feature
+    
+    # Generate target variable first
+    y_series = pd.Series(np.random.randint(0, 2, num_samples), name='target')
+    
+    # Generate feature components separately for clarity and robustness
+    base_features = pd.DataFrame(
+        np.random.rand(num_samples, 7), 
+        columns=[f'biomarker_{i}' for i in range(7)]
+    )
+    # Engineer features that will have high importance (correlated with target)
+    promo_a = pd.Series(
+        y_series * 0.5 + np.random.normal(0.2, 0.1, num_samples), 
+        name='promoter_A_met'
+    )
+    enhancer_b = pd.Series(
+        y_series * 0.3 + np.random.normal(0.1, 0.05, num_samples), 
+        name='enhancer_B_met'
+    )
+    # Noise feature
+    noise_feature = pd.Series(
+        np.random.rand(num_samples) * 0.1, 
+        name='junk_dna_met'
+    )
+    
+    # Concatenate all features into a single, reliable DataFrame
+    X_df = pd.concat([base_features, promo_a, enhancer_b, noise_feature], axis=1)
 
     # --- Data Model Generation ---
     return {
@@ -219,7 +238,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
 class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
-    _CURRENT_DATA_VERSION = 47 # Incremented for final bug fixes
+    _CURRENT_DATA_VERSION = 48 # Incremented for data generation fix
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
