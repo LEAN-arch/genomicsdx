@@ -274,7 +274,8 @@ def create_pareto_chart(df: pd.DataFrame, category_col: str, title: str) -> go.F
 def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, value_col: str) -> Tuple[go.Figure, pd.DataFrame]:
     """Performs Gauge R&R analysis and returns a summary plot and results table."""
     title = "<b>Measurement System Analysis (Gauge R&R)</b>"
-    results_df = pd.DataFrame()
+    # *** BUG FIX: Initialize results_df with a defined structure to ensure consistent return type ***
+    results_df = pd.DataFrame(columns=['Source', 'Variance Component', '% Contribution']).set_index('Source')
     try:
         model = ols(f'{value_col} ~ C({operator_col}) + C({part_col}) + C({operator_col}):C({part_col})', data=df).fit()
         anova_table = anova_lm(model, typ=2)
@@ -317,6 +318,7 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
         return fig, results_df.round(4)
     except Exception as e:
         logger.error(f"Error creating Gauge R&R plot: {e}", exc_info=True)
+        # Return a placeholder figure and the empty (but structured) DataFrame
         return _create_placeholder_figure("Gauge R&R Error", title, "⚠️"), results_df
 
 def create_tost_plot(a: np.ndarray, b: np.ndarray, low: float, high: float) -> Tuple[go.Figure, float]:
