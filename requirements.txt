@@ -5,7 +5,7 @@
 streamlit>=1.25.0
 
 # --- Data Handling & Manipulation ---
-# Pinning NumPy to a version < 2.0 to ensure compatibility with shap release` is definitive. The version of `shap` (0.45.0) that I recommended, while solving the previous `llvmlite` problem, is itself incompatible with the newest versions of NumPy (2.0 and later==0.45.0
+# Pinning NumPy to a version < 2.0 to ensure compatibility with shap==0.45.0
 pandas>=2.0.0
 numpy<2.0
 
@@ -19,9 +19,7 @@ scipy>=1.10.0
 statsmodels>=0.14.0
 
 # --- Machine Learning & Explainability ---
-# Required for the "ML & Bioinformatics Lab). The code inside `shap` is calling a function that no longer exists in NumPy 2.0.
-
-This is a classic and difficult dependency hell problem. It's not a syntax error in my generated code, but a fundamental"
+# Required for the "ML & Bioinformatics Lab"
 # Pinned to a known stable version compatible with Python 3.11 and NumPy < 2.0
 scikit-learn>=1.3.0
 shap==0.45.0
