@@ -10,10 +10,12 @@ a comprehensive impact assessment and traceable linkage to validation activities
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List, Optional
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
@@ -121,7 +123,7 @@ def render_design_changes(ssm: SessionStateManager) -> None:
             approval_status = approval_cols[0].selectbox("Status", options=status_options, index=status_options.index(current_status))
             
             approval_date_val = pd.to_datetime(dcr_to_edit.get("approval_date"), errors='coerce')
-            approval_date = approval_cols[1].date_input("Approval Date", value=approval_date_val)
+            approval_date = approval_cols[1].date_input("Approval Date", value=approval_date_val if pd.notna(approval_date_val) else None)
             
             if st.form_submit_button("Save Design Change Record", use_container_width=True):
                 # --- 4. Validate and Persist Data ---
@@ -159,6 +161,10 @@ def render_design_changes(ssm: SessionStateManager) -> None:
                     st.toast(f"DCR '{dcr_id}' saved successfully!", icon="✅")
                     st.session_state.selected_dcr_id = None # Clear selection
                     st.rerun()
+
+    except Exception as e:
+        st.error("An error occurred while displaying the Design Changes section. The data may be malformed.")
+        logger.error(f"Failed to render design changes: {e}", exc_info=True)
 
     except Exception as e:
         st.error("An error occurred while displaying the Design Changes section. The data may be malformed.")
