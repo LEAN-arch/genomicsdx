@@ -11,11 +11,13 @@ a genomic diagnostic service.
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
@@ -36,7 +38,7 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
         # --- 1. Load All Relevant Data ---
         rmf_data: Dict[str, Any] = ssm.get_data("risk_management_file")
         inputs_data: List[Dict[str, Any]] = ssm.get_data("design_inputs", "requirements")
-        v_and_v_data: List[Dict[str, Any]] = ssm.get_data("design_verification", "tests") + ssm.get_data("design_validation", "studies")
+        v_and_v_data: List[Dict[str, Any]] = ssm.get_data("design_verification", "tests") + ssm.get_data("clinical_study", "hf_studies")
         
         # --- Prepare Dependency Lists for Dropdowns ---
         risk_control_reqs = [req for req in inputs_data if req.get('is_risk_control')]
@@ -57,48 +59,59 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
         # --- Tab 1: Risk Plan & Acceptability Matrix ---
         with tab1:
             st.subheader("Risk Management Plan Summary & Acceptability Criteria")
-            st.text_area(
-                "**Risk Management Plan Scope & Objectives**",
-                value=rmf_data.get("plan_scope", ""),
-                key="rmf_plan_scope",
-                height=150,
-                help="Define the scope of risk management activities for the entire product lifecycle."
-            )
             
-            st.markdown("**Risk Acceptability Matrix**")
-            st.caption("This matrix defines the policy for risk acceptability. It is the basis for evaluating all identified risks.")
-            
-            # Displaying the risk matrix visually
-            s_labels = ['5: Catastrophic', '4: Critical', '3: Serious', '2: Minor', '1: Negligible']
-            o_labels = ['1: Improbable', '2: Remote', '3: Occasional', '4: Probable', '5: Frequent']
-            
-            # Example matrix data
-            matrix_data = [
-                ['Acceptable', 'Acceptable', 'Acceptable', 'Review', 'Unacceptable'],
-                ['Acceptable', 'Acceptable', 'Review', 'Unacceptable', 'Unacceptable'],
-                ['Acceptable', 'Review', 'Unacceptable', 'Unacceptable', 'Unacceptable'],
-                ['Review', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable'],
-                ['Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable']
-            ]
-            
-            color_map = {'Acceptable': 'rgba(44, 160, 44, 0.6)', 'Review': 'rgba(255, 215, 0, 0.6)', 'Unacceptable': 'rgba(214, 39, 40, 0.6)'}
-            z_color = [[color_map[cell] for cell in row] for row in matrix_data]
+            # Use st.form to batch updates for this tab
+            with st.form("risk_plan_form"):
+                plan_scope_val = st.text_area(
+                    "**Risk Management Plan Scope & Objectives**",
+                    value=rmf_data.get("plan_scope", ""),
+                    height=150,
+                    help="Define the scope of risk management activities for the entire product lifecycle."
+                )
+                
+                st.markdown("**Risk Acceptability Matrix**")
+                st.caption("This matrix defines the policy for risk acceptability. It is the basis for evaluating all identified risks.")
+                
+                # Displaying the risk matrix visually
+                s_labels = ['5: Catastrophic', '4: Critical', '3: Serious', '2: Minor', '1: Negligible']
+                o_labels = ['1: Improbable', '2: Remote', '3: Occasional', '4: Probable', '5: Frequent']
+                
+                matrix_data = [
+                    ['Acceptable', 'Acceptable', 'Acceptable', 'Review', 'Unacceptable'],
+                    ['Acceptable', 'Acceptable', 'Review', 'Unacceptable', 'Unacceptable'],
+                    ['Acceptable', 'Review', 'Unacceptable', 'Unacceptable', 'Unacceptable'],
+                    ['Review', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable'],
+                    ['Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable']
+                ]
+                
+                color_map = {'Acceptable': 'rgba(44, 160, 44, 0.6)', 'Review': 'rgba(255, 215, 0, 0.6)', 'Unacceptable': 'rgba(214, 39, 40, 0.6)'}
+                z_color = [[color_map[cell] for cell in row] for row in matrix_data]
 
-            fig = go.Figure(data=go.Heatmap(
-                z=[[3, 3, 2, 1, 1], [3, 2, 2, 1, 1], [2, 2, 1, 1, 1], [2, 1, 1, 1, 1], [1, 1, 1, 1, 1]], # Dummy numeric data for hover
-                x=o_labels, y=s_labels,
-                text=matrix_data,
-                texttemplate="%{text}",
-                textfont={"size":12},
-                marker=dict(colors=z_color),
-                showscale=False
-            ))
-            fig.update_layout(title="Severity vs. Occurrence", xaxis_title="Occurrence", yaxis_title="Severity of Harm")
-            st.plotly_chart(fig, use_container_width=True)
+                fig = go.Figure(data=go.Heatmap(
+                    z=[[1,1,2,3,3], [1,2,2,3,3], [2,2,3,3,3], [2,3,3,3,3], [3,3,3,3,3]],
+                    x=o_labels, y=s_labels,
+                    text=matrix_data,
+                    texttemplate="%{text}",
+                    textfont={"size":12},
+                    colorscale=[[0, 'rgba(44, 160, 44, 0.6)'], [0.5, 'rgba(255, 215, 0, 0.6)'], [1, 'rgba(214, 39, 40, 0.6)']],
+                    showscale=False
+                ))
+                fig.update_layout(title="Severity vs. Occurrence", xaxis_title="Occurrence", yaxis_title="Severity of Harm")
+                st.plotly_chart(fig, use_container_width=True)
+
+                submitted = st.form_submit_button("Save Plan Scope")
+                if submitted:
+                    rmf_data["plan_scope"] = plan_scope_val
+                    ssm.update_data(rmf_data, "risk_management_file")
+                    st.toast("Risk Management Plan scope saved!", icon="✅")
+
 
         # --- Helper Function for Risk Tables ---
         def render_risk_table(table_title: str, table_key: str, df: pd.DataFrame, column_config: dict):
             st.subheader(table_title)
+            # Make a copy to compare against for changes
+            original_data = df.to_dict('records')
+            
             edited_df = st.data_editor(
                 df,
                 num_rows="dynamic",
@@ -107,8 +120,9 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 column_config=column_config,
                 hide_index=True
             )
+            
             # Persist changes
-            if not df.equals(edited_df):
+            if edited_df.to_dict('records') != original_data:
                 rmf_data[table_key] = edited_df.to_dict('records')
                 ssm.update_data(rmf_data, "risk_management_file")
                 st.toast(f"{table_title} data updated!", icon="✅")
@@ -180,16 +194,18 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
             st.subheader("Overall Residual Risk-Benefit Analysis & Conclusion")
             st.markdown("This is the final conclusion of the risk management process, required by ISO 14971. It should be a formal statement declaring whether the overall residual risk (the sum of all individual residual risks) is acceptable in relation to the documented clinical benefits of the device.")
             
-            rmf_data["overall_risk_benefit_analysis"] = st.text_area(
-                "**Risk-Benefit Analysis Statement:**",
-                value=rmf_data.get("overall_risk_benefit_analysis", ""),
-                key="rmf_overall_analysis",
-                height=200,
-                help="Example: 'The overall residual risk of the GenomicsDx Sentry™ Test, considering all identified hazards and the effectiveness of the implemented risk controls, is judged to be acceptable in relation to the substantial clinical benefit of early cancer detection...'"
-            )
-            if st.button("Save Risk-Benefit Statement"):
-                ssm.update_data(rmf_data, "risk_management_file")
-                st.toast("Risk-Benefit statement saved!", icon="✅")
+            with st.form("risk_benefit_form"):
+                analysis_val = st.text_area(
+                    "**Risk-Benefit Analysis Statement:**",
+                    value=rmf_data.get("overall_risk_benefit_analysis", ""),
+                    height=200,
+                    help="Example: 'The overall residual risk of the GenomicsDx Sentry™ Test, considering all identified hazards and the effectiveness of the implemented risk controls, is judged to be acceptable in relation to the substantial clinical benefit of early cancer detection...'"
+                )
+                submitted = st.form_submit_button("Save Risk-Benefit Statement")
+                if submitted:
+                    rmf_data["overall_risk_benefit_analysis"] = analysis_val
+                    ssm.update_data(rmf_data, "risk_management_file")
+                    st.toast("Risk-Benefit statement saved!", icon="✅")
 
     except Exception as e:
         st.error("An error occurred while displaying the Risk Management section. The data may be malformed.")
