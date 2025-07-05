@@ -1,3 +1,4 @@
+
 # --- SME OVERHAUL: Definitive, Compliance-Focused, and Unabridged Version ---
 """
 Plotting utilities for creating standardized, publication-quality visualizations.
@@ -276,14 +277,14 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
     title = "<b>Measurement System Analysis (Gauge R&R)</b>"
     results_df = pd.DataFrame(columns=['Source', 'Variance Component', '% Contribution']).set_index('Source')
     try:
-        # *** BUG FIX: Use standard formula string syntax without backticks for patsy ***
-        formula = f"`{value_col}` ~ C(`{operator_col}`) + C(`{part_col}`) + C(`{operator_col}`):C(`{part_col}`)"
+        # *** SME FIX: Use robust Q() syntax for patsy formula to handle all column names ***
+        formula = f"Q('{value_col}') ~ C(Q('{operator_col}')) + C(Q('{part_col}')) + C(Q('{operator_col}')):C(Q('{part_col}'))"
         model = ols(formula, data=df).fit()
         anova_table = anova_lm(model, typ=2)
         
-        ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`)', 'df']
-        ms_part = anova_table.loc[f'C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{part_col}`)', 'df']
-        ms_interact = anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'df']
+        ms_operator = anova_table.loc[f"C(Q('{operator_col}'))", 'sum_sq'] / anova_table.loc[f"C(Q('{operator_col}'))", 'df']
+        ms_part = anova_table.loc[f"C(Q('{part_col}'))", 'sum_sq'] / anova_table.loc[f"C(Q('{part_col}'))", 'df']
+        ms_interact = anova_table.loc[f"C(Q('{operator_col}')):C(Q('{part_col}'))", 'sum_sq'] / anova_table.loc[f"C(Q('{operator_col}')):C(Q('{part_col}'))", 'df']
         ms_error = anova_table.loc['Residual', 'sum_sq'] / anova_table.loc['Residual', 'df']
 
         n_parts = df[part_col].nunique()
