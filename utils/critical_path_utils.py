@@ -1,6 +1,5 @@
 # --- SME REVIEW: No changes required. This is a domain-agnostic utility. ---
 # File: dhf_dashboard/utils/critical_path_utils.py
-# --- Enhanced Version ---
 """
 Utility for calculating the critical path of a project plan.
 
