@@ -206,7 +206,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
                 {"parameter": "Mean Target Coverage", "links_to_req": "SYS-002", "control_metric": "Mean sequencing depth across target regions", "acceptance_criteria": "> 500x"}
             ]},
         "ml_models": {
-            "classifier_data": (X_df, y_series),
+            "classifier_data": (X_df, y_series.values),
             "classifier_model": None, # Will be populated in __init__
             "run_qc_data": [{"library_concentration": gauss(50,5), "dv200_percent": gauss(85,5), "adapter_dimer_percent": gauss(2,1), "outcome": "Pass"} for _ in range(80)] + [{"library_concentration": gauss(20,5), "dv200_percent": gauss(60,10), "adapter_dimer_percent": gauss(10,3), "outcome": "Fail"} for _ in range(20)],
             "sample_volume_data": pd.DataFrame({
@@ -220,7 +220,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
 class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
-    _CURRENT_DATA_VERSION = 44 # Incremented for bug fix
+    _CURRENT_DATA_VERSION = 45 # Incremented for final bug fixes
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
