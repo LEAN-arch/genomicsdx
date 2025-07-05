@@ -10,13 +10,11 @@ required by 21 CFR 820.30(e).
 # --- Standard Library Imports ---
 import logging
 from typing import Dict, List, Any
-
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-
-# --- Local Application Imports ---
-from dhf_dashboard.utils.session_state_manager import SessionStateManager
+# --- Local Application Imports (CORRECTED) ---
+from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
 logger = logging.getLogger(__name__)
