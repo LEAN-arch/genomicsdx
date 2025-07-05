@@ -274,15 +274,14 @@ def create_pareto_chart(df: pd.DataFrame, category_col: str, title: str) -> go.F
 def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, value_col: str) -> Tuple[go.Figure, pd.DataFrame]:
     """Performs Gauge R&R analysis and returns a summary plot and results table."""
     title = "<b>Measurement System Analysis (Gauge R&R)</b>"
-    # *** BUG FIX: Initialize results_df with a defined structure to ensure consistent return type ***
     results_df = pd.DataFrame(columns=['Source', 'Variance Component', '% Contribution']).set_index('Source')
     try:
-        model = ols(f'{value_col} ~ C({operator_col}) + C({part_col}) + C({operator_col}):C({part_col})', data=df).fit()
+        model = ols(f'`{value_col}` ~ C(`{operator_col}`) + C(`{part_col}`) + C(`{operator_col}`):C(`{part_col}`)', data=df).fit()
         anova_table = anova_lm(model, typ=2)
         
-        ms_operator = anova_table.loc[f'C({operator_col})', 'sum_sq'] / anova_table.loc[f'C({operator_col})', 'df']
-        ms_part = anova_table.loc[f'C({part_col})', 'sum_sq'] / anova_table.loc[f'C({part_col})', 'df']
-        ms_interact = anova_table.loc[f'C({operator_col}):C({part_col})', 'sum_sq'] / anova_table.loc[f'C({operator_col}):C({part_col})', 'df']
+        ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`)', 'df']
+        ms_part = anova_table.loc[f'C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{part_col}`)', 'df']
+        ms_interact = anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'sum_sq'] / anova_table.loc[f'C(`{operator_col}`):C(`{part_col}`)', 'df']
         ms_error = anova_table.loc['Residual', 'sum_sq'] / anova_table.loc['Residual', 'df']
 
         n_parts = df[part_col].nunique()
@@ -292,8 +291,8 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
         var_repeat = ms_error
         var_repro = (ms_operator - ms_interact) / (n_parts * reps)
         var_interact = (ms_interact - ms_error) / reps
-        var_repro += var_interact  # Full reproducibility includes interaction
-        var_repro = max(0, var_repro) # variance cannot be negative
+        var_repro += var_interact
+        var_repro = max(0, var_repro)
         var_part = (ms_part - ms_interact) / (n_ops * reps)
         var_part = max(0, var_part)
         
@@ -304,8 +303,11 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
             'Source': ['Total Gauge R&R', '  Repeatability', '  Reproducibility', 'Part-to-Part', 'Total Variation'],
             'Variance Component': [var_grr, var_repeat, var_repro, var_part, total_var],
             '% Contribution': [
-                (var_grr / total_var) * 100, (var_repeat / total_var) * 100, (var_repro / total_var) * 100,
-                (var_part / total_var) * 100, 100
+                (var_grr / total_var) * 100 if total_var > 0 else 0, 
+                (var_repeat / total_var) * 100 if total_var > 0 else 0, 
+                (var_repro / total_var) * 100 if total_var > 0 else 0,
+                (var_part / total_var) * 100 if total_var > 0 else 0, 
+                100 if total_var > 0 else 0
             ]
         }
         results_df = pd.DataFrame(results_data).set_index('Source')
@@ -318,7 +320,6 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
         return fig, results_df.round(4)
     except Exception as e:
         logger.error(f"Error creating Gauge R&R plot: {e}", exc_info=True)
-        # Return a placeholder figure and the empty (but structured) DataFrame
         return _create_placeholder_figure("Gauge R&R Error", title, "⚠️"), results_df
 
 def create_tost_plot(a: np.ndarray, b: np.ndarray, low: float, high: float) -> Tuple[go.Figure, float]:
@@ -328,14 +329,16 @@ def create_tost_plot(a: np.ndarray, b: np.ndarray, low: float, high: float) -> T
         diff = a.mean() - b.mean()
         n1, n2 = len(a), len(b)
         s_pool = np.sqrt(((n1 - 1) * a.var() + (n2 - 1) * b.var()) / (n1 + n2 - 2))
-        t_stat1 = (diff - low) / (s_pool * np.sqrt(1/n1 + 1/n2))
-        t_stat2 = (diff - high) / (s_pool * np.sqrt(1/n1 + 1/n2))
+        se_diff = s_pool * np.sqrt(1/n1 + 1/n2)
+        
+        t_stat1 = (diff - low) / se_diff
+        t_stat2 = (diff - high) / se_diff
         
         p1 = stats.t.sf(t_stat1, df=n1 + n2 - 2)
         p2 = stats.t.cdf(t_stat2, df=n1 + n2 - 2)
         p_value = max(p1, p2)
 
-        ci_90 = stats.t.interval(0.90, df=n1+n2-2, loc=diff, scale=s_pool * np.sqrt(1/n1 + 1/n2))
+        ci_90 = stats.t.interval(0.90, df=n1+n2-2, loc=diff, scale=se_diff)
         
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=[ci_90[0], ci_90[1]], y=[1, 1], mode='lines', line=dict(color='blue', width=5), name='90% CI of Difference'))
@@ -391,7 +394,6 @@ def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) ->
         return fig
     except Exception as e:
         logger.error(f"Error creating SHAP summary plot: {e}", exc_info=True)
-        # *** BUG FIX: Return None on error instead of a Plotly figure ***
         return None
 
 def create_forecast_plot(history_df: pd.DataFrame, forecast_df: pd.DataFrame) -> go.Figure:
