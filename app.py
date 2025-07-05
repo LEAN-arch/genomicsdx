@@ -128,7 +128,7 @@ def render_dhf_completeness_panel(ssm: SessionStateManager, tasks_df: pd.DataFra
     st.subheader("1. DHF Completeness & Phase Gate Readiness")
     st.markdown("Monitor the flow of Design Controls from inputs to outputs, including cross-functional sign-offs and DHF document status.")
     try:
-        tasks_raw = ssm.get_data("project_management", "tasks")
+        tasks_raw = ssm.get_data("project_management", "tasks") or []
         if not tasks_raw:
             st.warning("No project management tasks found.")
             return
@@ -225,7 +225,7 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
         st.markdown("**Tracking Critical Assay Parameters (CAPs) & Performance**")
         st.caption("Monitoring the key assay characteristics that ensure robust and reliable performance.")
         try:
-            assay_params = ssm.get_data("assay_performance", "parameters")
+            assay_params = ssm.get_data("assay_performance", "parameters") or []
             if not assay_params: st.warning("No Critical Assay Parameters have been defined.")
             else:
                 for param in assay_params:
@@ -240,7 +240,7 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
         st.markdown("**Tracking Key Lab Operations & Validation Status**")
         st.caption("Ensuring the laboratory environment is validated and ready for high-throughput clinical testing.")
         try:
-            lab_ops_data = ssm.get_data("lab_operations", "readiness")
+            lab_ops_data = ssm.get_data("lab_operations", "readiness") or {}
             if not lab_ops_data: st.warning("No Lab Operations readiness data available.")
             else:
                 col1, col2 = st.columns(2)
@@ -330,6 +330,21 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     schedule_score, risk_score, execution_score, av_pass_rate, trace_coverage, enrollment_rate, overdue_actions_count = 0, 0, 100, 0, 0, 0, 0
     weights = {'schedule': 0.4, 'quality': 0.4, 'execution': 0.2}
 
+    # *** BUG FIX: Move data fetching to the top level of the function ***
+    reviews_data = ssm.get_data("design_reviews", "reviews") or []
+    all_actions_sources = [
+        ssm.get_data("quality_system", "capa_records"),
+        ssm.get_data("quality_system", "ncr_records"),
+        ssm.get_data("design_reviews", "reviews"),
+        ssm.get_data("design_changes", "changes")
+    ]
+    original_action_items = [
+        item for source in all_actions_sources if source
+        for r in source
+        for item in r.get("action_items", []) + r.get("action_plan", []) + r.get("correction_actions", [])
+    ]
+    action_items_df = get_cached_df(original_action_items)
+
     try:
         # Schedule Score
         if not tasks_df.empty:
@@ -344,24 +359,24 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
             initial_rpn = hazards_df['initial_S'] * hazards_df['initial_O']
             final_rpn = hazards_df['final_S'] * hazards_df['final_O']
             initial_rpn_sum = initial_rpn.sum()
-            risk_reduction_pct = ((initial_rpn_sum - final_rpn.sum()) / initial_rpn_sum) * 100 if initial_rpn_sum > 0 else 100
-            risk_score = max(0, risk_reduction_pct)
+            if initial_rpn_sum > 0:
+                risk_reduction_pct = ((initial_rpn_sum - final_rpn.sum()) / initial_rpn_sum) * 100
+                risk_score = max(0, risk_reduction_pct)
         
         # Execution Score & Overdue Items
-        all_actions = (ssm.get_data("quality_system", "capa_records") or []) + (ssm.get_data("design_reviews", "reviews") or [])
-        original_action_items = [item for r in all_actions for item in r.get("action_items", []) + r.get("action_plan", [])]
-        action_items_df = get_cached_df(original_action_items)
         if not action_items_df.empty and 'status' in action_items_df.columns:
             open_items = action_items_df[action_items_df['status'] != 'Completed']
             if not open_items.empty:
                 overdue_items_count = len(open_items[open_items['status'] == 'Overdue'])
                 execution_score = (1 - (overdue_items_count / len(open_items))) * 100 if len(open_items) > 0 else 100
         
+        overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
+        
         # V&V and Clinical KPIs
         ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
         if not ver_tests_df.empty and 'result' in ver_tests_df.columns:
-            av_pass_rate = (len(ver_tests_df[ver_tests_df['result'] == 'Pass']) / len(ver_tests_df)) * 100
-
+            av_pass_rate = (len(ver_tests_df[ver_tests_df['result'] == 'Pass']) / len(ver_tests_df)) * 100 if len(ver_tests_df) > 0 else 0
+        
         reqs_df = get_cached_df(ssm.get_data("design_inputs", "requirements"))
         if not reqs_df.empty and not ver_tests_df.empty and 'id' in reqs_df.columns and 'input_verified_id' in ver_tests_df.columns:
             if reqs_df['id'].nunique() > 0:
@@ -379,8 +394,6 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
         st.error("An error occurred while calculating dashboard KPIs.")
         logger.error(f"Error in render_health_dashboard_tab KPI calculation: {e}", exc_info=True)
         return
-
-    overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
 
     col1, col2 = st.columns([1.5, 2])
     with col1:
@@ -497,7 +510,7 @@ def render_advanced_analytics_tab(ssm: SessionStateManager):
         st.subheader("Project Timeline and Task Editor")
         st.warning("Directly edit project timelines, statuses, and dependencies. All changes are logged and versioned under the QMS.", icon="⚠️")
         try:
-            tasks_data_to_edit = ssm.get_data("project_management", "tasks")
+            tasks_data_to_edit = ssm.get_data("project_management", "tasks") or []
             if not tasks_data_to_edit: st.info("No tasks to display or edit."); return
             tasks_df_to_edit = pd.DataFrame(tasks_data_to_edit)
             tasks_df_to_edit['start_date'] = pd.to_datetime(tasks_df_to_edit['start_date'], errors='coerce')
@@ -815,6 +828,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                     st.warning("Could not determine interaction effect from the model.")
         except Exception as e:
             st.error(f"Could not perform DOE analysis. Error: {e}")
+            logger.error(f"DOE analysis failed: {e}", exc_info=True)
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
@@ -1045,11 +1059,11 @@ def main() -> None:
     except Exception as e:
         st.error("Fatal Error: Could not initialize Session State."); logger.critical(f"Failed to instantiate SessionStateManager: {e}", exc_info=True); st.stop()
     try:
-        tasks_raw = ssm.get_data("project_management", "tasks")
+        tasks_raw = ssm.get_data("project_management", "tasks") or []
         tasks_df_processed = preprocess_task_data(tasks_raw)
         docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
         docs_by_phase = {}
-        if 'phase' in docs_df.columns:
+        if not docs_df.empty and 'phase' in docs_df.columns:
             docs_by_phase = {phase: data for phase, data in docs_df.groupby('phase')}
 
     except Exception as e:
