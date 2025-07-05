@@ -32,6 +32,18 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     choice = random.choice
     team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista"]
 
+    # --- ML Data Generation (with fix) ---
+    # *** BUG FIX: Ensure X and y generation are coupled to avoid shape mismatch ***
+    np.random.seed(42)
+    num_samples = 100
+    # Base features
+    X_df = pd.DataFrame(np.random.rand(num_samples, 7), columns=[f'biomarker_{i}' for i in range(7)])
+    # Engineered features that will have high importance
+    y_series = pd.Series(np.random.randint(0, 2, num_samples))
+    X_df['promoter_A_met'] = y_series * 0.5 + np.random.normal(0.2, 0.1, num_samples)
+    X_df['enhancer_B_met'] = y_series * 0.3 + np.random.normal(0.1, 0.05, num_samples)
+    X_df['junk_dna_met'] = np.random.rand(num_samples) * 0.1 # Noise feature
+
     # --- Data Model Generation ---
     return {
         "data_version": version,
@@ -172,9 +184,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
         },
         "quality_system": {
             "capa_records": [{"id": "CAPA-01", "status": "Closed", "source": "Internal Audit A-001", "description": "Procedure for reagent labeling was not consistently followed.", "action_plan": []}, {"id": "CAPA-02", "status": "Open", "source": "Supplier Corrective Action for IDT-Lot-123", "description": "High rate of oligo synthesis failure in a critical reagent lot from supplier IDT.", "action_plan": [{"id": "AI-CAPA02-01", "description": "Qualify new reagent lot from alt supplier", "owner": "Sofia Chen, PhD", "due_date": str(demo_current_date + timedelta(days=30)), "status": "Open", "risk_priority": "High", "voe_status": "N/A"}]}],
-            # *** BUG FIX APPLIED HERE ***
             "ncr_records": [{"id": "NCR-001", "status": "Closed", "description": "Temperature excursion in Refrigerator RF-02.", "correction_actions": [{"id":"AI-NCR01-01", "description":"Discard affected reagents", "owner":"Sofia Chen, PhD", "due_date": str(base_date + timedelta(days=100)), "status":"Completed", "risk_priority":"High", "voe_status":"N/A"}]}],
-            # *** END BUG FIX ***
             "supplier_audits": [{"supplier": "IDT", "status": "Pass with Observations", "date": str(base_date + timedelta(days=20)), "report_id": "AUD-SUP-001"}, {"supplier": "Illumina", "status": "Pass", "date": str(base_date + timedelta(days=35)), "report_id": "AUD-SUP-002"}, {"supplier": "LabVantage", "status": "Pass", "date": str(base_date + timedelta(days=50)), "report_id": "AUD-SUP-003"}],
             "continuous_improvement": [{"date": str(demo_current_date - timedelta(days=d)), "ftr_rate": 95 - (d/30)*0.5, "copq_cost": 50000 - (d/30)*1000} for d in range(0, 181, 30)],
             "spc_data": {"target": 98.5, "stdev": 0.5, "measurements": [gauss(98.5, 0.5) for _ in range(50)], "usl": 100.0, "lsl": 97.0},
@@ -196,12 +206,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
                 {"parameter": "Mean Target Coverage", "links_to_req": "SYS-002", "control_metric": "Mean sequencing depth across target regions", "acceptance_criteria": "> 500x"}
             ]},
         "ml_models": {
-            "classifier_data": (pd.DataFrame(np.random.rand(100, 10), columns=[f'biomarker_{i}' for i in range(10)]).assign(
-                promoter_A_met=lambda x: x.biomarker_0 * 2,
-                enhancer_B_met=lambda x: x.biomarker_1 * 1.5,
-                junk_dna_met=lambda x: x.biomarker_2 * 0.1
-            ).drop(columns=['biomarker_0', 'biomarker_1', 'biomarker_2']), 
-            np.random.randint(0, 2, 100)),
+            "classifier_data": (X_df, y_series),
             "classifier_model": None, # Will be populated in __init__
             "run_qc_data": [{"library_concentration": gauss(50,5), "dv200_percent": gauss(85,5), "adapter_dimer_percent": gauss(2,1), "outcome": "Pass"} for _ in range(80)] + [{"library_concentration": gauss(20,5), "dv200_percent": gauss(60,10), "adapter_dimer_percent": gauss(10,3), "outcome": "Fail"} for _ in range(20)],
             "sample_volume_data": pd.DataFrame({
@@ -215,7 +220,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
 class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
-    _CURRENT_DATA_VERSION = 43 # Incremented for bug fix
+    _CURRENT_DATA_VERSION = 44 # Incremented for bug fix
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
