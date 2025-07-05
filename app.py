@@ -29,36 +29,38 @@ from scipy import stats
 import matplotlib.pyplot as plt
 
 # --- Robust Path Correction Block ---
-# Ensures modules are found, critical for structured applications.
+# This block ensures that the 'genomicsdx' package can be found.
+# It adds the parent directory of 'genomicsdx' to the system path.
 try:
-    current_file_path = os.path.abspath(__file__)
-    project_root = os.path.dirname(os.path.dirname(current_file_path))
+    # .../genomicsdx/app.py -> .../genomicsdx/ -> .../
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 except Exception as e:
     st.warning(f"Could not adjust system path. Module imports may fail. Error: {e}")
 # --- End of Path Correction Block ---
 
-# --- Local Application Imports (with error handling) ---
+# --- Local Application Imports (with corrected paths) ---
 try:
-    from dhf_dashboard.analytics.action_item_tracker import render_action_item_tracker
-    from dhf_dashboard.analytics.traceability_matrix import render_traceability_matrix
-    from dhf_dashboard.dhf_sections import (
+    from genomicsdx.analytics.action_item_tracker import render_action_item_tracker
+    from genomicsdx.analytics.traceability_matrix import render_traceability_matrix
+    from genomicsdx.dhf_sections import (
         design_changes, design_inputs, design_outputs, design_plan, design_reviews,
         design_risk_management, design_transfer, design_validation,
         design_verification, human_factors
     )
     # Ref: ISO 62304 / 21 CFR 820.30 - These utilities support V&V and project planning.
-    from dhf_dashboard.utils.critical_path_utils import find_critical_path
-    from dhf_dashboard.utils.plot_utils import (
+    from genomicsdx.utils.critical_path_utils import find_critical_path
+    from genomicsdx.utils.plot_utils import (
         _RISK_CONFIG,
-        create_action_item_chart, create_progress_donut, create_risk_profile_chart,
+        create_action_item_chart, create_risk_profile_chart,
         create_roc_curve, create_levey_jennings_plot, create_lod_probit_plot, create_bland_altman_plot
     )
-    from dhf_dashboard.utils.session_state_manager import SessionStateManager
+    from genomicsdx.utils.session_state_manager import SessionStateManager
 except ImportError as e:
     st.error(f"Fatal Error: A required local module could not be imported: {e}. "
-             "Please ensure the application is run from the correct directory and all submodules exist.")
+             "Please ensure the application is run from the project's root directory and that all subdirectories contain an `__init__.py` file.")
     logging.critical(f"Fatal module import error: {e}", exc_info=True)
     st.stop()
 
@@ -435,10 +437,10 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
         schedule_score = (1 - (len(overdue_in_progress) / len(total_in_progress))) * 100 if not total_in_progress.empty else 100
 
     hazards_df = get_cached_df(ssm.get_data("risk_management_file", "hazards")); risk_score = 0
-    if not hazards_df.empty and all(c in hazards_df.columns for c in ['initial_S', 'initial_O', 'initial_D', 'final_S', 'final_O', 'final_D']):
-        hazards_df['initial_rpn'] = hazards_df['initial_S'] * hazards_df['initial_O'] * hazards_df['initial_D']
-        hazards_df['final_rpn'] = hazards_df['final_S'] * hazards_df['final_O'] * hazards_df['final_D']
-        initial_rpn_sum = hazards_df['initial_rpn'].sum(); final_rpn_sum = hazards_df['final_rpn'].sum()
+    if not hazards_df.empty and all(c in hazards_df.columns for c in ['initial_S', 'initial_O', 'final_S', 'final_O']):
+        initial_rpn = hazards_df['initial_S'] * hazards_df['initial_O']
+        final_rpn = hazards_df['final_S'] * hazards_df['final_O']
+        initial_rpn_sum = initial_rpn.sum(); final_rpn_sum = final_rpn.sum()
         risk_reduction_pct = ((initial_rpn_sum - final_rpn_sum) / initial_rpn_sum) * 100 if initial_rpn_sum > 0 else 100
         risk_score = max(0, risk_reduction_pct)
 
@@ -458,9 +460,8 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
 
     # --- MCED-SPECIFIC KHIs ---
     ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
-    val_studies_df = get_cached_df(ssm.get_data("design_validation", "studies"))
     total_av = len(ver_tests_df)
-    passed_av = len(ver_tests_df[ver_tests_df['status'] == 'Completed'])
+    passed_av = len(ver_tests_df[ver_tests_df['result'] == 'Pass'])
     av_pass_rate = (passed_av / total_av) * 100 if total_av > 0 else 0
 
     reqs_df = get_cached_df(ssm.get_data("design_inputs", "requirements"))
@@ -1173,7 +1174,7 @@ def render_compliance_guide_tab():
     st.markdown("The V-Model visualizes the Design Controls process, linking the design definition (left side) to the testing and validation activities (right side).")
     try:
         # Assuming a v-model image exists, relabeled for genomics
-        v_model_image_path = os.path.join(project_root, "dhf_dashboard", "v_model_diagram_genomics.png") # A new, specific diagram
+        v_model_image_path = os.path.join(project_root, "genomicsdx", "dhf_dashboard", "v_model_diagram_genomics.png") # Corrected path
         if os.path.exists(v_model_image_path):
             _, img_col, _ = st.columns([1, 2, 1])
             img_col.image(v_model_image_path, caption="The V-Model for a genomic diagnostic service, linking requirements to V&V.", width=600)
