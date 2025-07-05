@@ -2,9 +2,10 @@
 """
 Renders the Design and Development Plan section of the DHF dashboard.
 
-This module provides a comprehensive UI for creating and editing the foundational
-planning document for the MCED diagnostic program, as required by 21 CFR 820.30(b)
-and ISO 13485:2016, Section 7.3.1.
+This module provides a comprehensive, visually-driven UI for creating and editing
+the foundational planning document for the MCED diagnostic program, as required
+by 21 CFR 820.30(b) and ISO 13485:2016, Section 7.3.1. It features interactive
+visualizations for the org chart and project phasing.
 """
 
 # --- Standard Library Imports ---
@@ -14,6 +15,8 @@ from typing import Any, Dict, List
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
+import plotly.express as px
 
 # --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
@@ -21,6 +24,39 @@ from ..utils.session_state_manager import SessionStateManager
 # --- Setup Logging ---
 logger = logging.getLogger(__name__)
 
+def create_org_chart(team_df: pd.DataFrame) -> go.Figure:
+    """Creates a hierarchical organization chart."""
+    if team_df.empty or 'role' not in team_df.columns or 'name' not in team_df.columns:
+        return go.Figure()
+    
+    # Simple hierarchy: Program Lead at the top
+    parents = []
+    for role in team_df['role']:
+        if 'Lead' in role and 'Program Lead' not in role:
+            parents.append("Program Lead")
+        elif 'Program Lead' in role:
+            parents.append("") # Root node
+        else:
+            # Default to Program Lead if no other logic fits
+            parents.append("Program Lead")
+
+    fig = go.Figure(go.Treemap(
+        ids=team_df['role'],
+        labels=team_df.apply(lambda x: f"<b>{x['role']}</b><br>{x['name']}", axis=1),
+        parents=parents,
+        root_color="lightgrey",
+        hovertemplate='<b>%{label}</b><br>Responsibility: %{customdata}<extra></extra>',
+        customdata=team_df['responsibility'],
+        textinfo="label",
+        pathbar=dict(visible=True)
+    ))
+    fig.update_layout(
+        margin=dict(t=20, l=10, r=10, b=10),
+        title_text="<b>Project Organization Chart</b>",
+        title_x=0.5,
+        height=400
+    )
+    return fig
 
 def render_design_plan(ssm: SessionStateManager) -> None:
     """
@@ -32,7 +68,7 @@ def render_design_plan(ssm: SessionStateManager) -> None:
 
     This is the master plan that describes and references all design and development activities. It outlines the project scope, team, regulatory pathway, and the strategies for proving the safety and effectiveness of the **GenomicsDx Sentry™ MCED Test**. This living document will be updated as the project evolves.
     """)
-    st.info("Use the sections below to manage the plan. Use the 'Save Plan Changes' button at the bottom to commit all edits.", icon="ℹ️")
+    st.info("Use the sections below to manage the plan. Use the 'Save Plan Changes' button at the bottom to commit all edits.", icon="📝")
     st.divider()
 
     try:
@@ -42,132 +78,113 @@ def render_design_plan(ssm: SessionStateManager) -> None:
 
         # --- 2. Render UI Sections within a single form for atomic updates ---
         with st.form("design_plan_form"):
-            with st.expander("**1.1 Project Overview & Scope**", expanded=True):
-                project_name_val = st.text_input(
-                    "**Project Name**",
-                    value=plan_data.get("project_name", ""),
-                )
-                scope_val = st.text_area(
-                    "**Project Scope**",
-                    value=plan_data.get("scope", ""),
-                    height=120,
-                )
-                # --- SYNTAX CORRECTION: Terminated the string literal ---
-                intended_use_val = st.text_area(
-                    "**Intended Use / Indications for Use Statement**",
-                    value=plan_data.get("intended_use", ""),
-                    height=150,
-                    help="This is a formal regulatory statement. E.g., 'The GenomicsDx Sentry™ Test is a qualitative, blood-based, multi-cancer early detection (MCED) screening test...'"
-                )
-                # --- END CORRECTION ---
+            
+            # --- Project Overview & Strategy ---
+            st.subheader("Project Charter & Strategy")
+            col1, col2 = st.columns(2)
+            with col1:
+                project_name_val = st.text_input("**Project Name**", value=plan_data.get("project_name", ""))
+                intended_use_val = st.text_area("**Intended Use Statement**", value=plan_data.get("intended_use", ""), height=200, help="This is a formal regulatory statement.")
+            with col2:
+                scope_val = st.text_area("**Project Scope**", value=plan_data.get("scope", ""), height=300)
 
-            with st.expander("**1.2 Regulatory Strategy & Compliance Framework**", expanded=True):
-                cols = st.columns(3)
-                cols[0].text_input("**Device Classification**", value="Class III", disabled=True)
-                cols[1].text_input("**Submission Pathway**", value="Premarket Approval (PMA)", disabled=True)
-                cols[2].text_input("**Special Designations**", value="Breakthrough Device Designation", disabled=True)
+            # --- Team & Phasing Visualizations ---
+            st.subheader("Project Organization & Phasing")
+            vis_col1, vis_col2 = st.columns(2)
+            with vis_col1:
+                team_df_vis = pd.DataFrame(plan_data.get("team_members", []))
+                st.plotly_chart(create_org_chart(team_df_vis), use_container_width=True)
+            with vis_col2:
+                reviews_df_vis = pd.DataFrame(plan_data.get("design_review_plan", []))
+                if not reviews_df_vis.empty:
+                    reviews_df_vis['planned_date'] = pd.to_datetime(reviews_df_vis['planned_date'])
+                    reviews_df_vis['end_date'] = reviews_df_vis['planned_date'] + pd.Timedelta(days=5)
+                    fig = px.timeline(reviews_df_vis, x_start="planned_date", x_end="end_date", y="phase_name", title="<b>Planned Project Phase Gates</b>")
+                    fig.update_yaxes(autorange="reversed")
+                    fig.update_layout(height=400, margin=dict(t=50, l=10, r=10, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            st.divider()
+
+            # --- Detailed Planning Editors ---
+            st.subheader("Plan Details & Configuration")
+            with st.expander("Expand to Edit Detailed Plan Sections"):
+                # --- Regulatory & Compliance ---
+                st.markdown("**Regulatory Strategy & Compliance Framework**")
+                reg_cols = st.columns(3)
+                reg_cols[0].text_input("**Device Classification**", value="Class III", disabled=True)
+                reg_cols[1].text_input("**Submission Pathway**", value="Premarket Approval (PMA)", disabled=True)
+                reg_cols[2].text_input("**Special Designations**", value="Breakthrough Device Designation", disabled=True)
                 
                 st.markdown("**Applicable Standards & Guidance Documents**")
                 standards_df = pd.DataFrame(plan_data.get("standards", []))
                 edited_standards_df = st.data_editor(
-                    standards_df,
-                    num_rows="dynamic",
-                    use_container_width=True,
+                    standards_df, num_rows="dynamic", use_container_width=True, key="dp_standards_editor",
                     column_config={
                         "id": st.column_config.TextColumn("Document ID", required=True),
                         "title": st.column_config.TextColumn("Title/Description", required=True, width="large"),
-                        "category": st.column_config.SelectboxColumn("Category", options=["Regulation", "ISO Standard", "FDA Guidance", "CLSI Guideline"], required=True)
-                    },
-                    key="dp_standards_editor"
+                        "category": st.column_config.SelectboxColumn("Category", options=["Regulation", "ISO Standard", "IEC Standard", "FDA Guidance", "CLSI Guideline"], required=True)
+                    }
                 )
 
-            with st.expander("**1.3 Clinical & Analytical Development Strategy**", expanded=True):
-                clinical_dev_plan_val = st.text_area(
-                    "**Clinical Strategy Summary**",
-                    value=plan_data.get("clinical_dev_plan", ""),
-                    height=150,
-                )
-                av_master_plan_ref_val = st.text_input(
-                    "**AV Master Plan Document ID**",
-                    value=plan_data.get("av_master_plan_ref", ""),
-                )
-            
-            with st.expander("**1.4 Software & Bioinformatics Development Plan (ISO 62304)**", expanded=True):
+                # --- V&V and Other Plans ---
+                st.markdown("**Development, V&V, and Lifecycle Plans**")
+                plan_cols = st.columns(2)
+                clinical_dev_plan_val = plan_cols[0].text_area("**Clinical Strategy Summary**", value=plan_data.get("clinical_dev_plan", ""), height=150)
+                av_master_plan_ref_val = plan_cols[1].text_input("**AV Master Plan Document ID**", value=plan_data.get("av_master_plan_ref", ""))
+                
                 loc_options = ["Major", "Moderate", "Minor"]
                 current_loc = plan_data.get("software_level_of_concern", "Major")
                 loc_index = loc_options.index(current_loc) if current_loc in loc_options else 0
-                software_level_of_concern_val = st.selectbox(
-                    "**Software Level of Concern (per FDA Guidance):**",
-                    options=loc_options,
-                    index=loc_index,
-                )
-                st.text_input("**Software as a Medical Device (SaMD) Classification**", value="Class C (High Risk) per IMDRF", disabled=True)
-                sw_dev_plan_val = st.text_area(
-                    "**Bioinformatics & Software Development Lifecycle (SDLC) Summary**",
-                    value=plan_data.get("sw_dev_plan", ""),
-                    height=150,
-                )
+                software_level_of_concern_val = plan_cols[0].selectbox("**Software Level of Concern (per FDA Guidance):**", options=loc_options, index=loc_index)
+                sw_dev_plan_val = plan_cols[0].text_area("**Bioinformatics & SDLC Summary**", value=plan_data.get("sw_dev_plan", ""), height=150)
 
-            with st.expander("**1.5 Risk Management Plan (ISO 14971)**", expanded=True):
-                risk_management_plan_ref_val = st.text_input(
-                    "**Risk Management Plan Document ID**",
-                    value=plan_data.get("risk_management_plan_ref", "RMP-001"),
-                )
-            
-            with st.expander("**1.6 Design Review Plan**", expanded=True):
-                st.markdown("Define the major, formal Design Reviews that serve as project phase-gates.")
-                
+                plan_cols[1].text_input("**Risk Management Plan Document ID**", value=plan_data.get("risk_management_plan_ref", "RMP-001"))
+                plan_cols[1].text_input("**Human Factors Plan Document ID**", value=plan_data.get("human_factors_plan_ref", "HFE-PLAN-001"))
+                plan_cols[1].text_input("**Configuration Management Plan Document ID**", value=plan_data.get("config_management_plan_ref", "CM-PLAN-001"))
+
+                # --- Design Review Plan Editor ---
+                st.markdown("**Design Review Plan**")
                 reviews_df = pd.DataFrame(plan_data.get("design_review_plan", []))
                 if 'planned_date' in reviews_df.columns:
                     reviews_df['planned_date'] = pd.to_datetime(reviews_df['planned_date'], errors='coerce')
-
                 edited_reviews_df = st.data_editor(
-                    reviews_df,
-                    num_rows="dynamic",
-                    use_container_width=True,
+                    reviews_df, num_rows="dynamic", use_container_width=True, key="dp_reviews_editor",
                     column_config={
                         "phase_name": st.column_config.TextColumn("Phase/Gate Name", required=True),
                         "description": st.column_config.TextColumn("Description", width="large"),
                         "planned_date": st.column_config.DateColumn("Planned Date", format="YYYY-MM-DD")
-                    },
-                    key="dp_reviews_editor"
+                    }
                 )
 
-            with st.expander("**1.7 Team and Responsibilities**", expanded=True):
-                st.markdown("Define roles, assign team members, and outline their key responsibilities for the program.")
+                # --- Team Editor ---
+                st.markdown("**Team and Responsibilities**")
                 team_df = pd.DataFrame(plan_data.get("team_members", []))
                 edited_team_df = st.data_editor(
-                    team_df,
-                    num_rows="dynamic",
-                    use_container_width=True,
+                    team_df, num_rows="dynamic", use_container_width=True, key="design_plan_team_editor",
                     column_config={
-                        "role": st.column_config.TextColumn("Role", required=True),
-                        "name": st.column_config.TextColumn("Assigned Member", required=True),
+                        "role": st.column_config.TextColumn("Role", required=True), "name": st.column_config.TextColumn("Assigned Member", required=True),
                         "responsibility": st.column_config.TextColumn("Key Responsibilities", width="large"),
-                    },
-                    key="design_plan_team_editor",
-                    hide_index=True
+                    }, hide_index=True
                 )
             
-            submitted = st.form_submit_button("Save Plan Changes", use_container_width=True, type="primary")
+            # --- Save Button ---
+            submitted = st.form_submit_button("Save All Plan Changes", use_container_width=True, type="primary")
             if submitted:
-                plan_data["project_name"] = project_name_val
-                plan_data["scope"] = scope_val
-                plan_data["intended_use"] = intended_use_val
-                plan_data["standards"] = edited_standards_df.to_dict('records')
-                plan_data["clinical_dev_plan"] = clinical_dev_plan_val
-                plan_data["av_master_plan_ref"] = av_master_plan_ref_val
-                plan_data["software_level_of_concern"] = software_level_of_concern_val
-                plan_data["sw_dev_plan"] = sw_dev_plan_val
-                plan_data["risk_management_plan_ref"] = risk_management_plan_ref_val
-                
+                # Aggregate all changes into the plan_data dictionary
+                plan_data.update({
+                    "project_name": project_name_val, "scope": scope_val, "intended_use": intended_use_val,
+                    "standards": edited_standards_df.to_dict('records'), "clinical_dev_plan": clinical_dev_plan_val,
+                    "av_master_plan_ref": av_master_plan_ref_val, "software_level_of_concern": software_level_of_concern_val,
+                    "sw_dev_plan": sw_dev_plan_val, "team_members": edited_team_df.to_dict('records')
+                })
+                # Handle date conversion for review plan
                 reviews_to_save_df = edited_reviews_df.copy()
                 if 'planned_date' in reviews_to_save_df.columns:
                      reviews_to_save_df['planned_date'] = reviews_to_save_df['planned_date'].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
                 plan_data["design_review_plan"] = reviews_to_save_df.to_dict('records')
-
-                plan_data["team_members"] = edited_team_df.to_dict('records')
-
+                
+                # Update session state
                 ssm.update_data(plan_data, "design_plan")
                 logger.info("Design plan data updated in session state.")
                 st.toast("Design & Development Plan saved!", icon="✅")
