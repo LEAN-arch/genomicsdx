@@ -11,12 +11,10 @@ factors (usability) studies, as required by 21 CFR 820.30(g) and FDA guidance.
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List
-
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-
-# --- Local Application Imports ---
+# --- Local Application Imports (CORRECTED) ---
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
