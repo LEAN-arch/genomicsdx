@@ -276,7 +276,7 @@ def create_gauge_rr_plot(df: pd.DataFrame, part_col: str, operator_col: str, val
     title = "<b>Measurement System Analysis (Gauge R&R)</b>"
     results_df = pd.DataFrame(columns=['Source', 'Variance Component', '% Contribution']).set_index('Source')
     try:
-        # *** SME FIX: Use robust Q() syntax for patsy formula to handle all column names ***
+        # SME FIX: Use robust Q() syntax for patsy formula to handle all column names
         formula = f"Q('{value_col}') ~ C(Q('{operator_col}')) + C(Q('{part_col}')) + C(Q('{operator_col}')):C(Q('{part_col}'))"
         model = ols(formula, data=df).fit()
         anova_table = anova_lm(model, typ=2)
@@ -423,3 +423,31 @@ def create_forecast_plot(history_df: pd.DataFrame, forecast_df: pd.DataFrame) ->
     except Exception as e:
         logger.error(f"Error creating forecast plot: {e}", exc_info=True)
         return _create_placeholder_figure("Forecast Plot Error", title, "⚠️")
+
+def create_doe_interaction_plot(df: pd.DataFrame, factor1_col: str, factor2_col: str, response_col: str) -> go.Figure:
+    """
+    Creates a 2D interaction plot for DOE as a fallback visualization.
+    This plot shows the raw relationship between factors and the response,
+    and does not depend on a statistical model, making it robust to data issues.
+    """
+    title = f"<b>Interaction Plot: {factor1_col} & {factor2_col} vs. {response_col}</b>"
+    try:
+        fig = px.line(
+            df,
+            x=factor1_col,
+            y=response_col,
+            color=factor2_col,
+            markers=True,
+            title=title,
+            labels={
+                factor1_col: f"Factor: {factor1_col}",
+                response_col: f"Response: {response_col}",
+                factor2_col: f"Factor: {factor2_col}"
+            }
+        )
+        fig.update_layout(**_PLOT_LAYOUT_CONFIG, height=500)
+        fig.update_traces(marker=dict(size=10), line=dict(width=3))
+        return fig
+    except Exception as e:
+        logger.error(f"Error creating DOE interaction plot: {e}", exc_info=True)
+        return _create_placeholder_figure("Interaction Plot Error", title, icon="⚠️")
