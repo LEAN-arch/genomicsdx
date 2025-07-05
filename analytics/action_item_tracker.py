@@ -52,14 +52,12 @@ def render_action_item_tracker(ssm: SessionStateManager) -> None:
                 if not isinstance(action, dict): continue
                 action_copy = action.copy()
                 
-                # --- SYNTAX CORRECTION ---
-                # The nested f-string has been replaced with a clear if/else block.
+                # Corrected logic to avoid nested f-strings
                 review_type = review.get('type')
                 if review_type:
                     action_copy['source'] = f"Review: {review_type}"
                 else:
                     action_copy['source'] = f"Review on {review.get('date', 'N/A')}"
-                # --- END CORRECTION ---
 
                 action_copy['type'] = action.get('type', 'Action Item') # Default type
                 all_actions.append(action_copy)
