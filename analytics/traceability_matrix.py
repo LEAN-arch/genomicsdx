@@ -132,8 +132,11 @@ def generate_all_trace_data(
     
     # --- 4. Risk Control Traceability (Hazards -> Verification) ---
     if not risk_df.empty:
-        risk_matrix_df = create_wide_matrix(risk_df, ver_df, 'verification_link', 'result', 'id')
-        risk_matrix_df.index.names = ['id', 'risk_control_measure', 'is_risk_control'] # Adjust index names to match
+        # Use a copy to avoid SettingWithCopyWarning
+        risk_df_copy = risk_df.copy()
+        risk_df_copy['is_risk_control'] = True # Add this column for consistent styling
+        risk_matrix_df = create_wide_matrix(risk_df_copy, ver_df, 'verification_link', 'result', 'id')
+        risk_matrix_df.index.names = ['id', 'description', 'is_risk_control']
     else:
         risk_matrix_df = pd.DataFrame()
 
@@ -151,12 +154,14 @@ def render_traceability_matrix(ssm: SessionStateManager):
     st.divider()
 
     try:
-        all_verifications = ssm.get_data("design_verification", "tests")
-        all_validations = ssm.get_data("clinical_study", "hf_studies")
-        all_hazards = ssm.get_data("risk_management_file", "hazards")
+        # Defensive data loading with .get() and providing default empty lists
+        all_requirements = ssm.get_data("design_inputs", "requirements") or []
+        all_verifications = ssm.get_data("design_verification", "tests") or []
+        all_validations = ssm.get_data("clinical_study", "hf_studies") or []
+        all_hazards = ssm.get_data("risk_management_file", "hazards") or []
         
         clinical_matrix, analytical_matrix, sw_matrix, risk_matrix = generate_all_trace_data(
-            ssm.get_data("design_inputs", "requirements"),
+            all_requirements,
             all_verifications,
             all_validations,
             all_hazards
@@ -179,7 +184,6 @@ def render_traceability_matrix(ssm: SessionStateManager):
             if is_wide:
                 traced_items = matrix_df.notna().any(axis=1).sum()
                 has_pass = matrix_df.apply(lambda row: row.str.contains('✅', na=False).any(), axis=1).sum()
-                has_fail = matrix_df.apply(lambda row: row.str.contains('❌', na=False).any(), axis=1).sum()
                 passing_items = has_pass
             else:
                 trace_col_name = matrix_df.columns[0]
@@ -213,9 +217,9 @@ def render_traceability_matrix(ssm: SessionStateManager):
             if not matrix_df.empty:
                 render_kpis(matrix_df, is_wide=True)
                 display_df = matrix_df.reset_index().fillna('N/A')
-                display_df.rename(columns={'id_x': 'id', 'description_x': 'description'}, inplace=True)
+                display_df.rename(columns={'id_x': 'id', 'description_x': 'description'}, inplace=True, errors='ignore')
                 
-                trace_cols = [col for col in display_df.columns if col not in ['id', 'description', 'is_risk_control', 'risk_control_measure']]
+                trace_cols = [col for col in display_df.columns if col not in ['id', 'description', 'is_risk_control']]
                 styler = display_df.style.apply(highlight_risk_control, axis=1)
                 styler = styler.map(style_trace_cell, subset=trace_cols)
 
@@ -230,14 +234,14 @@ def render_traceability_matrix(ssm: SessionStateManager):
             render_wide_matrix("Software Requirements vs. Software V&V Tests", "Answers: 'Did we build the software correctly?' This matrix links each software requirement to the test proving its implementation (Ref: ISO 62304).", sw_matrix)
         with tab4:
             st.subheader("Risk Controls vs. Verification & Validation")
-            st.caption("Answers: 'Have we proven our risk mitigations are effective?' This matrix links each risk control measure from the hazard analysis to the V&V activity that proves it works.")
+            st.caption("Answers: 'Have we proven our risk mitigations are effective?' This matrix links each hazard's risk control measure to the V&V activity that proves it works.")
             if not risk_matrix.empty:
                 render_kpis(risk_matrix, is_wide=True)
                 display_df = risk_matrix.reset_index().fillna('N/A')
-                trace_cols = [col for col in display_df.columns if col not in ['id', 'risk_control_measure', 'is_risk_control']]
+                trace_cols = [col for col in display_df.columns if col not in ['id', 'description', 'is_risk_control']]
                 styler = display_df.style.map(style_trace_cell, subset=trace_cols)
                 st.dataframe(styler, use_container_width=True, hide_index=True,
-                            column_config={"id": "Hazard ID", "risk_control_measure": "Risk Control Measure Description", "is_risk_control": None})
+                            column_config={"id": "Hazard ID", "description": "Risk Control Measure Description", "is_risk_control": None})
             else:
                 st.warning("No risk control measures with verification links found in the Risk Management File.")
         
@@ -246,11 +250,11 @@ def render_traceability_matrix(ssm: SessionStateManager):
             st.info("Select any DHF artifact to see all its upstream and downstream connections. This is a powerful tool for impact analysis and audit preparation.")
             
             all_artifacts = []
-            req_df = pd.DataFrame(ssm.get_data("design_inputs", "requirements"))
+            req_df = pd.DataFrame(all_requirements)
             ver_df = pd.DataFrame(all_verifications)
             val_df = pd.DataFrame(all_validations)
             haz_df = pd.DataFrame(all_hazards)
-            out_df = pd.DataFrame(ssm.get_data("design_outputs", "documents"))
+            out_df = pd.DataFrame(ssm.get_data("design_outputs", "documents") or [])
             
             if not req_df.empty: all_artifacts.extend([f"REQ: {id}" for id in req_df['id']])
             if not ver_df.empty: all_artifacts.extend([f"VER: {id}" for id in ver_df['id']])
@@ -267,22 +271,25 @@ def render_traceability_matrix(ssm: SessionStateManager):
                 # Upstream Traces
                 with st.container(border=True):
                     st.write("##### 🔼 **Upstream Traces (What does this fulfill?)**")
-                    if art_type == "VER" and not ver_df.empty:
-                        req_id = ver_df[ver_df['id'] == art_id]['input_verified_id'].iloc[0]
+                    found_upstream = False
+                    if art_type == "VER" and not ver_df.empty and 'input_verified_id' in ver_df.columns:
+                        req_id = ver_df.loc[ver_df['id'] == art_id, 'input_verified_id'].iloc[0]
                         st.write(f"- Verifies Requirement: **REQ: {req_id}**")
-                    elif art_type == "VAL" and not val_df.empty:
-                        need_id = val_df[val_df['id'] == art_id]['user_need_validated'].iloc[0]
+                        found_upstream = True
+                    if art_type == "VAL" and not val_df.empty and 'user_need_validated' in val_df.columns:
+                        need_id = val_df.loc[val_df['id'] == art_id, 'user_need_validated'].iloc[0]
                         st.write(f"- Validates User Need: **REQ: {need_id}**")
-                    elif art_type == "OUT" and not out_df.empty:
-                        req_id = out_df[out_df['id'] == art_id]['linked_input_id'].iloc[0]
+                        found_upstream = True
+                    if art_type == "OUT" and not out_df.empty and 'linked_input_id' in out_df.columns:
+                        req_id = out_df.loc[out_df['id'] == art_id, 'linked_input_id'].iloc[0]
                         st.write(f"- Fulfills Requirement: **REQ: {req_id}**")
-                    elif art_type == "REQ" and not req_df.empty:
-                        parent_id = req_df[req_df['id'] == art_id]['parent_id'].iloc[0]
+                        found_upstream = True
+                    if art_type == "REQ" and not req_df.empty and 'parent_id' in req_df.columns:
+                        parent_id = req_df.loc[req_df['id'] == art_id, 'parent_id'].iloc[0]
                         if parent_id:
                             st.write(f"- Decomposes from Parent Requirement: **REQ: {parent_id}**")
-                        else:
-                            st.caption("No upstream parent requirement (this is a top-level need).")
-                    else:
+                            found_upstream = True
+                    if not found_upstream:
                         st.caption("No upstream traces found.")
                 
                 # Downstream Traces
@@ -290,28 +297,29 @@ def render_traceability_matrix(ssm: SessionStateManager):
                     st.write("##### 🔽 **Downstream Traces (How is this fulfilled?)**")
                     found_downstream = False
                     if art_type == "REQ":
-                        child_reqs = req_df[req_df['parent_id'] == art_id]
-                        if not child_reqs.empty:
-                            found_downstream = True
-                            for child_id in child_reqs['id']: st.write(f"- Decomposed into Requirement: **REQ: {child_id}**")
-                        
-                        child_vers = ver_df[ver_df['input_verified_id'] == art_id]
-                        if not child_vers.empty:
-                            found_downstream = True
-                            for child_id in child_vers['id']: st.write(f"- Verified by Protocol: **VER: {child_id}**")
-                        
-                        child_vals = val_df[val_df['user_need_validated'] == art_id]
-                        if not child_vals.empty:
-                            found_downstream = True
-                            for child_id in child_vals['id']: st.write(f"- Validated by Study: **VAL: {child_id}**")
+                        if 'parent_id' in req_df.columns:
+                            child_reqs = req_df[req_df['parent_id'] == art_id]
+                            if not child_reqs.empty:
+                                found_downstream = True
+                                for child_id in child_reqs['id']: st.write(f"- Decomposed into Requirement: **REQ: {child_id}**")
+                        if 'input_verified_id' in ver_df.columns:
+                            child_vers = ver_df[ver_df['input_verified_id'] == art_id]
+                            if not child_vers.empty:
+                                found_downstream = True
+                                for child_id in child_vers['id']: st.write(f"- Verified by Protocol: **VER: {child_id}**")
+                        if 'user_need_validated' in val_df.columns:
+                            child_vals = val_df[val_df['user_need_validated'] == art_id]
+                            if not child_vals.empty:
+                                found_downstream = True
+                                for child_id in child_vals['id']: st.write(f"- Validated by Study: **VAL: {child_id}**")
+                        if 'linked_input_id' in out_df.columns:
+                            child_outs = out_df[out_df['linked_input_id'] == art_id]
+                            if not child_outs.empty:
+                                found_downstream = True
+                                for child_id in child_outs['id']: st.write(f"- Realized by Output: **OUT: {child_id}**")
                             
-                        child_outs = out_df[out_df['linked_input_id'] == art_id]
-                        if not child_outs.empty:
-                            found_downstream = True
-                            for child_id in child_outs['id']: st.write(f"- Realized by Output: **OUT: {child_id}**")
-                            
-                    if art_type == "HAZ" and not haz_df.empty and not ver_df.empty:
-                        ver_link = haz_df[haz_df['id'] == art_id]['verification_link'].iloc[0]
+                    if art_type == "HAZ" and not haz_df.empty and 'verification_link' in haz_df.columns and not ver_df.empty:
+                        ver_link = haz_df.loc[haz_df['id'] == art_id, 'verification_link'].iloc[0]
                         if ver_link:
                             found_downstream = True
                             st.write(f"- Risk Control Verified by: **VER: {ver_link}**")
