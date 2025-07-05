@@ -87,7 +87,6 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 with st.expander("View Untraced Risk Controls"):
                     if untraced_controls:
                         df_untraced = pd.DataFrame(untraced_controls)
-                        # Defensively select available columns to prevent KeyErrors
                         display_cols = [col for col in ['id', 'risk_control_measure', 'mitigation'] if col in df_untraced.columns]
                         st.dataframe(df_untraced[display_cols], hide_index=True, use_container_width=True)
                     else:
@@ -102,8 +101,35 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
             st.subheader("Risk Management Plan Summary & Acceptability Criteria")
             with st.form("risk_plan_form"):
                 plan_scope_val = st.text_area("**Risk Management Plan Scope**", value=rmf_data.get("plan_scope", ""), height=150)
-                st.markdown("**Risk Acceptability Matrix** (Severity vs. Occurrence)")
-                st.image("https://i.imgur.com/Wk12F1q.png", caption="This matrix defines the policy for risk acceptability. (Image is for display; logic is hard-coded).")
+                
+                st.markdown("**Risk Acceptability Matrix**")
+                st.caption("This matrix defines the policy for risk acceptability. It is the basis for evaluating all identified risks.")
+                
+                # *** BUG FIX: Generate matrix with Plotly instead of using image link ***
+                s_labels = ['1: Negligible', '2: Minor', '3: Serious', '4: Critical', '5: Catastrophic']
+                o_labels = ['1: Improbable', '2: Remote', '3: Occasional', '4: Probable', '5: Frequent']
+                matrix_text = [
+                    ['Acceptable', 'Acceptable', 'Review', 'Review', 'Unacceptable'],
+                    ['Acceptable', 'Acceptable', 'Review', 'Unacceptable', 'Unacceptable'],
+                    ['Acceptable', 'Review', 'Unacceptable', 'Unacceptable', 'Unacceptable'],
+                    ['Review', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable'],
+                    ['Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable']
+                ]
+                # Map text to a numeric value for color scale
+                color_map_numeric = {'Acceptable': 1, 'Review': 2, 'Unacceptable': 3}
+                z_numeric = [[color_map_numeric[cell] for cell in row] for row in matrix_text]
+
+                fig = go.Figure(data=go.Heatmap(
+                    z=z_numeric, x=o_labels, y=s_labels,
+                    text=matrix_text,
+                    texttemplate="%{text}",
+                    textfont={"size":12},
+                    colorscale=[[0, 'rgba(44, 160, 44, 0.7)'], [0.5, 'rgba(255, 215, 0, 0.7)'], [1, 'rgba(214, 39, 40, 0.7)']],
+                    showscale=False
+                ))
+                fig.update_layout(title_text="<b>Severity of Harm vs. Probability of Occurrence</b>", title_x=0.5, yaxis_autorange='reversed')
+                st.plotly_chart(fig, use_container_width=True)
+                
                 if st.form_submit_button("Save Plan Scope"):
                     rmf_data["plan_scope"] = plan_scope_val
                     ssm.update_data(rmf_data, "risk_management_file")
@@ -112,13 +138,12 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
         def render_risk_table(table_key: str, df: pd.DataFrame, column_config: dict):
             if df.empty:
                 st.info(f"No data available for {table_key.replace('_', ' ').title()}. You can add new records below.")
-                df = pd.DataFrame([{}]) # Provide an empty row to start adding data
+                df = pd.DataFrame([{}]) 
             
             original_data = df.to_dict('records')
             edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key=f"risk_editor_{table_key}", column_config=column_config, hide_index=True)
             
             if edited_df.to_dict('records') != original_data:
-                # Filter out any completely empty rows before saving
                 cleaned_records = [record for record in edited_df.to_dict('records') if any(val not in [None, ''] for val in record.values())]
                 rmf_data[table_key] = cleaned_records
                 ssm.update_data(rmf_data, "risk_management_file")
