@@ -75,10 +75,10 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
     
     try:
         # --- 1. Load Data and Prepare Dependencies ---
-        reviews = ssm.get_data("design_reviews", "reviews")
-        team_members_data = ssm.get_data("design_plan", "team_members")
+        reviews = ssm.get_data("design_reviews", "reviews") or []
+        team_members_data = ssm.get_data("design_plan", "team_members") or []
         owner_options = sorted([member.get('name') for member in team_members_data if member.get('name')])
-        all_outputs = ssm.get_data("design_outputs", "documents")
+        all_outputs = ssm.get_data("design_outputs", "documents") or []
         output_options = sorted([f"{o.get('id')}: {o.get('title')}" for o in all_outputs])
         
         # --- 2. High-Level Analytics ---
@@ -86,20 +86,23 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
         all_actions = [item for r in reviews for item in r.get("action_items", [])]
         if all_actions:
             df_actions = pd.DataFrame(all_actions)
-            now = pd.to_datetime(date.today())
-            df_actions.loc[(pd.to_datetime(df_actions['due_date']) < now) & (df_actions['status'] != 'Completed'), 'status'] = 'Overdue'
+            if 'due_date' in df_actions.columns:
+                now = pd.to_datetime(date.today())
+                df_actions.loc[(pd.to_datetime(df_actions['due_date']) < now) & (df_actions['status'] != 'Completed'), 'status'] = 'Overdue'
             
-            status_counts = df_actions['status'].value_counts()
+            status_counts = df_actions['status'].value_counts() if 'status' in df_actions.columns else pd.Series()
             
             kpi_cols = st.columns(4)
+            overdue_count = int(status_counts.get("Overdue", 0)) # *** BUG FIX: Cast to int ***
             kpi_cols[0].metric("Total Actions", len(df_actions))
-            kpi_cols[1].metric("Completed", status_counts.get("Completed", 0))
-            kpi_cols[2].metric("Open", status_counts.get("Open", 0) + status_counts.get("In Progress", 0))
-            kpi_cols[3].metric("Overdue", status_counts.get("Overdue", 0), delta=status_counts.get("Overdue", 0), delta_color="inverse")
+            kpi_cols[1].metric("Completed", int(status_counts.get("Completed", 0)))
+            kpi_cols[2].metric("Open", int(status_counts.get("Open", 0) + status_counts.get("In Progress", 0)))
+            kpi_cols[3].metric("Overdue", overdue_count, delta=overdue_count, delta_color="inverse")
             
-            fig = px.pie(df_actions, names='status', title='Action Items by Status',
-                         color='status', color_discrete_map={'Completed':'green', 'Open':'orange', 'In Progress':'blue', 'Overdue':'red'})
-            st.plotly_chart(fig, use_container_width=True)
+            if not status_counts.empty:
+                fig = px.pie(df_actions, names='status', title='Action Items by Status',
+                             color='status', color_discrete_map={'Completed':'green', 'Open':'orange', 'In Progress':'blue', 'Overdue':'red'})
+                st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No action items have been generated from design reviews yet.")
 
@@ -114,13 +117,13 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
         else:
             review_options = {f"{pd.to_datetime(r.get('date')).strftime('%Y-%m-%d')}: {r.get('type', 'Review')} ({r.get('id')})": r.get('id') for r in reviews}
             selected_review_display = st.selectbox("**Select a Design Review to View/Edit**", options=review_options.keys())
-            selected_review_id = review_options[selected_review_display]
-            review = next((r for r in reviews if r.get('id') == selected_review_id), None)
-            
-            # --- Detailed View of Selected Review ---
-            if review:
-                with st.container(border=True):
-                    render_review_form(review, reviews, ssm, owner_options, output_options)
+            if selected_review_display:
+                selected_review_id = review_options[selected_review_display]
+                review = next((r for r in reviews if r.get('id') == selected_review_id), None)
+                
+                if review:
+                    with st.container(border=True):
+                        render_review_form(review, reviews, ssm, owner_options, output_options)
 
         # Button to start a new review log
         if st.button("📝 Log New Design Review", use_container_width=True):
@@ -140,7 +143,7 @@ def render_design_reviews(ssm: SessionStateManager) -> None:
 
 def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateManager, owner_options: List, output_options: List):
     """Renders the form for a single design review."""
-    with st.form(key=f"review_form_{review['id']}"):
+    with st.form(key=f"review_form_{review.get('id')}"):
         st.subheader(f"Design Review Record: {review.get('id')}")
 
         # --- Review Metadata ---
@@ -193,23 +196,23 @@ def render_review_form(review: Dict, all_reviews: List[Dict], ssm: SessionStateM
             for item in edited_actions_list: # Ensure date is serialized correctly
                 item['due_date'] = str(pd.to_datetime(item['due_date']).date()) if pd.notna(item['due_date']) else None
             
-            review_index = next((i for i, r in enumerate(all_reviews) if r.get('id') == review['id']), None)
+            review_index = next((i for i, r in enumerate(all_reviews) if r.get('id') == review.get('id')), None)
             if review_index is not None:
                 all_reviews[review_index] = {
-                    "id": review['id'], "date": str(date_val), "type": type_val, "phase": phase_val,
+                    "id": review.get('id'), "date": str(date_val), "type": type_val, "phase": phase_val,
                     "scope": scope_val, "documents_reviewed": docs_val, "attendees": attendees_val,
                     "independent_reviewer": independent_reviewer_val, "outcome": outcome_val,
                     "notes": notes_val, "action_items": edited_actions_list
                 }
                 ssm.update_data(all_reviews, "design_reviews", "reviews")
-                st.toast(f"Design Review {review['id']} updated!", icon="✅")
+                st.toast(f"Design Review {review.get('id')} updated!", icon="✅")
                 st.rerun()
 
     # --- Meeting Minutes Generation (Outside the form) ---
     form_cols[1].download_button(
         label="📄 Generate Minutes",
         data=generate_meeting_minutes(review),
-        file_name=f"Minutes_{review['id']}_{review.get('date')}.md",
+        file_name=f"Minutes_{review.get('id')}_{review.get('date')}.md",
         mime="text/markdown",
         use_container_width=True
     )
