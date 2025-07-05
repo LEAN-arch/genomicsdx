@@ -10,7 +10,7 @@ and integrated management of action items required to implement the change.
 
 # --- Standard Library Imports ---
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from datetime import date
 
 # --- Third-party Imports ---
@@ -80,6 +80,7 @@ def render_design_changes(ssm: SessionStateManager) -> None:
                     "initiator": "Initiator",
                     "approval_status": "Status",
                     "approval_date": "Approval Date",
+                    # Hide other columns from this summary view
                     "reason": None, "request_date": None, "impact_analytical": None,
                     "impact_risk": None, "vv_plan": None, "approvers": None,
                     "action_items": None, "impact_clinical": None, "impact_software": None,
@@ -147,11 +148,11 @@ def render_dcr_dossier_view(dcr: Dict[str, Any]):
 
     st.markdown("**Impact Analysis:**")
     impact_cols = st.columns(2)
-    impact_cols[0].checkbox("Clinical/Regulatory Impact", value=dcr.get("impact_clinical"), disabled=True)
-    impact_cols[1].checkbox("Analytical Performance Impact", value=dcr.get("impact_analytical"), disabled=True)
-    impact_cols[0].checkbox("Software/Bioinformatics Impact", value=dcr.get("impact_software"), disabled=True)
-    impact_cols[1].checkbox("Lab Operations Impact", value=dcr.get("impact_lab_ops"), disabled=True)
-    impact_cols[0].checkbox("Risk Management Impact", value=dcr.get("impact_risk"), disabled=True)
+    impact_cols[0].checkbox("Clinical/Regulatory Impact", value=dcr.get("impact_clinical", False), disabled=True)
+    impact_cols[1].checkbox("Analytical Performance Impact", value=dcr.get("impact_analytical", False), disabled=True)
+    impact_cols[0].checkbox("Software/Bioinformatics Impact", value=dcr.get("impact_software", False), disabled=True)
+    impact_cols[1].checkbox("Lab Operations Impact", value=dcr.get("impact_lab_ops", False), disabled=True)
+    impact_cols[0].checkbox("Risk Management Impact", value=dcr.get("impact_risk", False), disabled=True)
     with st.expander("View Impact Analysis Details"):
         st.markdown(dcr.get('impact_analysis_details', '*No details provided.*'))
 
