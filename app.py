@@ -887,9 +887,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         shap_values = explainer.shap_values(X)
         
         st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-        fig_shap = create_shap_summary_plot(shap_values[1], X)
-        if fig_shap:
-            st.pyplot(fig_shap, use_container_width=True)
+        plot_buffer = create_shap_summary_plot(shap_values[1], X)
+        if plot_buffer:
+            st.image(plot_buffer)
             st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
         else:
             st.error("Could not generate SHAP summary plot.")
