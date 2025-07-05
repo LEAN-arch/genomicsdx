@@ -11,11 +11,14 @@ traceably linked to a design input, as required by 21 CFR 820.30(d).
 # --- Standard Library Imports ---
 import logging
 from typing import Any, Dict, List
+
 # --- Third-party Imports ---
 import pandas as pd
 import streamlit as st
-# --- Local Application Imports (CORRECTED) ---
+
+# --- Local Application Imports ---
 from ..utils.session_state_manager import SessionStateManager
+
 # --- Setup Logging ---
 logger = logging.getLogger(__name__)
 
@@ -87,7 +90,13 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
             # Ensure the required columns exist before editing
             for col, config in column_config.items():
                 if col not in df_display.columns and config is not None:
-                    df_display[col] = pd.NA
+                    # Initialize with a default value appropriate for the column type
+                    if isinstance(config, (st.column_config.TextColumn, st.column_config.LinkColumn)):
+                        df_display[col] = ""
+                    elif isinstance(config, st.column_config.SelectboxColumn):
+                        df_display[col] = config.default if config.default is not None else (config.options[0] if config.options else None)
+                    else:
+                        df_display[col] = pd.NA
             
             # Define a consistent column order for the editor
             column_order = [
