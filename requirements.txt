@@ -1,25 +1,23 @@
-# This file lists the Python packages required by the GenomicsDx Command Center.
-# To install, run: pip install -r requirements.txt
-
 # --- Core Application Framework ---
-streamlit>=1.25.0
+streamlit==1.33.0
 
-# --- Data Handling & Manipulation ---
-# Pinning NumPy to a version < 2.0 to ensure compatibility with shap==0.45.0
-pandas>=2.0.0
-numpy<2.0
+# --- Data Handling and Numerical Operations ---
+pandas==2.2.1
+numpy==1.26.4
 
-# --- Visualization & Plotting ---
-plotly>=5.15.0
-matplotlib>=3.7.0
+# --- Visualization Engine ---
+plotly==5.22.0
 
-# --- Statistical Analysis & Modeling ---
-# Required for the "Statistical Workbench" tab
-scipy>=1.10.0
-statsmodels>=0.14.0
+# --- Statistical Analysis ---
+# For advanced stats: ANOVA, hypothesis testing, power analysis, etc.
+scipy==1.13.0
+statsmodels==0.14.1
 
 # --- Machine Learning & Explainability ---
-# Required for the "ML & Bioinformatics Lab"
-# Pinned to a known stable version compatible with Python 3.11 and NumPy < 2.0
-scikit-learn>=1.3.0
+# For predictive models and SHAP (classifier explainability)
+scikit-learn==1.4.2
 shap==0.45.0
+
+# Note: matplotlib is a dependency of `shap` for plotting, 
+# but it's good practice to list it explicitly if used.
+matplotlib==3.8.4
