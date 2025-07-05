@@ -48,8 +48,8 @@ def render_design_changes(ssm: SessionStateManager) -> None:
 
     try:
         # --- 1. Load Data & Initialize State ---
-        changes_data: List[Dict[str, Any]] = ssm.get_data("design_changes", "changes")
-        team_members_data = ssm.get_data("design_plan", "team_members")
+        changes_data: List[Dict[str, Any]] = ssm.get_data("design_changes", "changes") or []
+        team_members_data = ssm.get_data("design_plan", "team_members") or []
         owner_options = sorted([member.get('name') for member in team_members_data if member.get('name')])
 
         if "selected_dcr_id" not in st.session_state:
@@ -71,34 +71,45 @@ def render_design_changes(ssm: SessionStateManager) -> None:
             changes_df = pd.DataFrame(changes_data)
             changes_df['approval_date'] = pd.to_datetime(changes_df['approval_date'], errors='coerce').dt.date
             
-            st.dataframe(
-                changes_df[['id', 'description', 'initiator', 'approval_status', 'approval_date']],
-                use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row",
-                key="dcr_selection_table",
-                column_config={"id": "DCR ID", "approval_date": "Approval Date"}
+            # *** BUG FIX: Use st.data_editor to enable on_select functionality ***
+            st.data_editor(
+                changes_df,
+                column_config={
+                    "id": "DCR ID",
+                    "description": "Description",
+                    "initiator": "Initiator",
+                    "approval_status": "Status",
+                    "approval_date": "Approval Date",
+                    "reason": None, "request_date": None, "impact_analytical": None,
+                    "impact_risk": None, "vv_plan": None, "approvers": None,
+                    "action_items": None, "impact_clinical": None, "impact_software": None,
+                    "impact_lab_ops": None, "impact_analysis_details": None
+                },
+                column_order=['id', 'description', 'initiator', 'approval_status', 'approval_date'],
+                use_container_width=True, hide_index=True, on_select="rerun",
+                selection_mode="single-row", key="dcr_selection_table",
             )
-            if st.session_state.dcr_selection_table['selection']['rows']:
-                selected_index = st.session_state.dcr_selection_table['selection']['rows'][0]
+            
+            selection = st.session_state.get("dcr_selection_table", {}).get("selection", {})
+            if selection.get("rows"):
+                selected_index = selection["rows"][0]
                 newly_selected_id = changes_df.iloc[selected_index]['id']
                 if st.session_state.selected_dcr_id != newly_selected_id:
                     st.session_state.selected_dcr_id = newly_selected_id
-                    st.session_state.dcr_edit_mode = False # Reset edit mode on new selection
+                    st.session_state.dcr_edit_mode = False
             
         # --- 3. DCR Creation/Editing ---
         st.divider()
 
-        # Button to start a new DCR log
         if st.button("📝 Log New Design Change Request"):
             new_id = f"DCR-{len(changes_data) + 1:03d}"
             st.session_state.selected_dcr_id = new_id
             st.session_state.dcr_edit_mode = True
-            # Add a placeholder to the data to be filled out
             new_dcr = {"id": new_id, "description": "", "reason": "", "initiator": "", "request_date": str(date.today()), "impact_clinical": False, "impact_analytical": False, "impact_software": False, "impact_lab_ops": False, "impact_risk": False, "impact_analysis_details": "", "vv_plan": "", "approval_status": "Pending", "approval_date": None, "action_items": [], "approvers": []}
             changes_data.append(new_dcr)
             ssm.update_data(changes_data, "design_changes", "changes")
             st.rerun()
 
-        # Find the full dictionary for the selected DCR
         dcr_to_display = next((d for d in changes_data if d.get('id') == st.session_state.selected_dcr_id), None)
         
         if not dcr_to_display:
@@ -165,27 +176,23 @@ def render_dcr_edit_form(dcr: Dict[str, Any], all_dcrs: List[Dict[str, Any]], ss
     st.subheader(f"Editing DCR: {dcr.get('id', 'N/A')}")
 
     with st.form(key=f"dcr_form_{dcr.get('id')}"):
-        # --- DCR Details ---
-        dcr_id = dcr.get("id") # ID is not editable
+        dcr_id = dcr.get("id")
         description = st.text_area("**Change Description**", value=dcr.get("description", ""), height=100)
-        reason = st.text_area("**Reason for Change**", value=dcr.get("reason", ""), height=100, help="Justification, e.g., 'Corrective action from CAPA-012', 'Improved LoD from R&D experiment', 'Reagent supplier change'.")
+        reason = st.text_area("**Reason for Change**", value=dcr.get("reason", ""), height=100)
         initiator = st.selectbox("**Initiator**", options=owner_options, index=owner_options.index(dcr.get("initiator")) if dcr.get("initiator") in owner_options else 0)
 
-        # --- Structured Impact Analysis ---
         st.markdown("**Impact Analysis (Required)**")
         impact_cols = st.columns(2)
-        impact_clinical = impact_cols[0].checkbox("Clinical/Regulatory Impact", value=dcr.get("impact_clinical", False), help="Does this change affect the Intended Use, Indications for Use, or require a new regulatory submission/supplement?")
-        impact_analytical = impact_cols[1].checkbox("Analytical Performance Impact", value=dcr.get("impact_analytical", False), help="Does this change affect Sensitivity, Specificity, LoD, Precision, etc.?")
-        impact_software = impact_cols[0].checkbox("Software/Bioinformatics Impact", value=dcr.get("impact_software", False), help="Does this change affect the classifier algorithm, pipeline, or data integrity? (Ref: ISO 62304)")
-        impact_lab_ops = impact_cols[1].checkbox("Lab Operations Impact", value=dcr.get("impact_lab_ops", False), help="Does this change affect SOPs, LIMS, reagents, or personnel training? (Ref: CLIA/ISO 15189)")
-        impact_risk = impact_cols[0].checkbox("Risk Management Impact", value=dcr.get("impact_risk", False), help="Does this change introduce new hazards or affect existing risk controls? (Ref: ISO 14971)")
-        impact_analysis_details = st.text_area("Impact Analysis Details", value=dcr.get("impact_analysis_details", ""), height=150, help="Provide a detailed summary of all checked impacts.")
+        impact_clinical = impact_cols[0].checkbox("Clinical/Regulatory Impact", value=dcr.get("impact_clinical", False))
+        impact_analytical = impact_cols[1].checkbox("Analytical Performance Impact", value=dcr.get("impact_analytical", False))
+        impact_software = impact_cols[0].checkbox("Software/Bioinformatics Impact", value=dcr.get("impact_software", False))
+        impact_lab_ops = impact_cols[1].checkbox("Lab Operations Impact", value=dcr.get("impact_lab_ops", False))
+        impact_risk = impact_cols[0].checkbox("Risk Management Impact", value=dcr.get("impact_risk", False))
+        impact_analysis_details = st.text_area("Impact Analysis Details", value=dcr.get("impact_analysis_details", ""), height=150)
 
-        # --- V&V Planning ---
         st.markdown("**Required Verification & Validation Activities**")
-        vv_plan = st.text_area("V&V Plan", value=dcr.get("vv_plan", ""), height=150, help="List the specific tests and validation studies required to approve this change. E.g., 'Execute VER-105: Regression test on pipeline', 'Execute VAL-021: Bridging study for new reagent'.")
+        vv_plan = st.text_area("V&V Plan", value=dcr.get("vv_plan", ""), height=150)
 
-        # --- Action Items Editor ---
         st.markdown("**Implementation Action Items**")
         action_items_df = pd.DataFrame(dcr.get("action_items", []))
         edited_actions_df = st.data_editor(
@@ -197,7 +204,6 @@ def render_dcr_edit_form(dcr: Dict[str, Any], all_dcrs: List[Dict[str, Any]], ss
             }
         )
         
-        # --- Approval Section ---
         st.markdown("**Approval**")
         approval_cols = st.columns(3)
         status_options = ["Pending", "Approved", "Rejected", "Implementation Pending", "Closed"]
@@ -209,10 +215,8 @@ def render_dcr_edit_form(dcr: Dict[str, Any], all_dcrs: List[Dict[str, Any]], ss
         
         approvers = approval_cols[2].multiselect("Approvers", options=owner_options, default=dcr.get("approvers", []))
         
-        # --- Form Submission ---
         submit_cols = st.columns(2)
         if submit_cols[0].form_submit_button("✅ Save & Exit Edit Mode", use_container_width=True, type="primary"):
-            # Find and update existing DCR
             updated_dcr_data = dcr.copy()
             updated_dcr_data.update({
                 "description": description, "reason": reason, "initiator": initiator, "impact_clinical": impact_clinical,
@@ -229,13 +233,12 @@ def render_dcr_edit_form(dcr: Dict[str, Any], all_dcrs: List[Dict[str, Any]], ss
             ssm.update_data(all_dcrs, "design_changes", "changes")
             logger.info(f"Design change record '{dcr_id}' saved/updated.")
             st.toast(f"DCR '{dcr_id}' saved successfully!", icon="✅")
-            st.session_state.dcr_edit_mode = False # Exit edit mode
+            st.session_state.dcr_edit_mode = False
             st.rerun()
 
         if submit_cols[1].form_submit_button("❌ Cancel", use_container_width=True):
             st.session_state.dcr_edit_mode = False
-            # If it was a new DCR that was cancelled, remove the placeholder
-            if not dcr.get('description'): # A proxy for a new, unfilled DCR
+            if not dcr.get('description'):
                 all_dcrs.pop()
                 ssm.update_data(all_dcrs, "design_changes", "changes")
                 st.session_state.selected_dcr_id = None
