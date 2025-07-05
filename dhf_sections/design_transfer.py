@@ -38,9 +38,9 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
     
     try:
         # --- 1. Load Data ---
-        transfer_data: Dict[str, Any] = ssm.get_data("lab_operations")
-        personnel_data = ssm.get_data("design_plan", "team_members")
-        lab_techs = [p['name'] for p in personnel_data if 'Tech' in p.get('role', '')]
+        transfer_data: Dict[str, Any] = ssm.get_data("lab_operations") or {}
+        personnel_data = ssm.get_data("design_plan", "team_members") or []
+        lab_techs = [p.get('name') for p in personnel_data if 'Tech' in p.get('role', '')]
         logger.info("Loaded lab operations and design transfer data.")
 
         # --- 2. High-Level Readiness KPIs ---
@@ -57,7 +57,7 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         infra_qualified = len([i for i in infra_data if i.get('status') == 'PQ Complete'])
         infra_progress = (infra_qualified / infra_total) * 100 if infra_total > 0 else 0
         
-        ppq_required = 3 # Standard number of PPQ runs
+        ppq_required = 3
         ppq_passed = len([p for p in ppq_data if p.get('result') == 'Pass'])
         ppq_progress = (ppq_passed / ppq_required) * 100
 
@@ -86,20 +86,26 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         tabs = st.tabs(tab_titles)
 
         def render_editor_tab(df_key: str, column_config: Dict):
-            data = transfer_data.get(df_key, [])
-            df = pd.DataFrame(data)
+            data_list = transfer_data.get(df_key, [])
+            df = pd.DataFrame(data_list)
             
+            # *** BUG FIX: Check if column exists and then convert to datetime for editor ***
             for col, config in column_config.items():
                 if isinstance(config, st.column_config.DateColumn) and col in df.columns:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
             
-            edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key=f"transfer_editor_{df_key}", column_config=column_config, hide_index=True)
+            edited_df = st.data_editor(
+                df, num_rows="dynamic", use_container_width=True, 
+                key=f"transfer_editor_{df_key}", column_config=column_config, hide_index=True
+            )
             
-            if edited_df.to_dict('records') != df.to_dict('records'):
-                df_to_save = edited_df.copy()
-                for col, config in column_config.items():
-                    if isinstance(config, st.column_config.DateColumn) and col in df_to_save.columns:
-                         df_to_save[col] = df_to_save[col].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+            # Convert back to storable format before checking for changes
+            df_to_save = edited_df.copy()
+            for col, config in column_config.items():
+                if isinstance(config, st.column_config.DateColumn) and col in df_to_save.columns:
+                    df_to_save[col] = df_to_save[col].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+
+            if df_to_save.to_dict('records') != data_list:
                 ssm.update_data(df_to_save.to_dict('records'), "lab_operations", df_key)
                 st.toast(f"{df_key.replace('_', ' ').title()} updated!", icon="✅"); st.rerun()
 
@@ -114,18 +120,24 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         with tabs[1]:
             st.subheader("Personnel Qualification & Training Matrix")
             st.caption("Track and document that all lab personnel are trained on all effective, approved SOPs before performing patient testing.")
-            training_matrix_df = pd.DataFrame(index=[s['doc_id'] for s in sop_data if s['status']=='Approved'], columns=lab_techs).fillna(False)
-            st.data_editor(training_matrix_df, disabled=False, use_container_width=True)
+            approved_sops = [s.get('doc_id') for s in sop_data if s.get('status') == 'Approved']
+            if approved_sops and lab_techs:
+                training_matrix_df = pd.DataFrame(index=approved_sops, columns=lab_techs).fillna(False)
+                st.data_editor(training_matrix_df, use_container_width=True)
+            else:
+                st.info("Define approved SOPs and lab technologists to generate the training matrix.")
 
         with tabs[2]:
             st.subheader("Critical Materials & Supplier Management")
             st.caption("Manage the list of critical reagents and consumables, the qualification status of their suppliers, and the testing of incoming lots.")
-            supplier_audits = ssm.get_data("quality_system", "supplier_audits")
+            supplier_audits = ssm.get_data("quality_system", "supplier_audits") or []
             st.markdown("**Supplier Qualification Status**")
             st.dataframe(pd.DataFrame(supplier_audits), use_container_width=True, hide_index=True)
             st.markdown("**Incoming Reagent Lot Qualification**")
             lot_qual = transfer_data.get("readiness", {}).get("reagent_lot_qualification", {})
-            st.metric(f"Lot Qualification Pass Rate", f"{(lot_qual.get('passed', 0) / lot_qual.get('total', 1)) * 100:.1f}%", f"{lot_qual.get('passed', 0)}/{lot_qual.get('total', 0)} Passed")
+            total = lot_qual.get('total', 0)
+            passed = lot_qual.get('passed', 0)
+            st.metric(f"Lot Qualification Pass Rate", f"{(passed / total) * 100 if total > 0 else 0:.1f}%", f"{passed}/{total} Passed")
 
         with tabs[3]:
             st.subheader("Laboratory Equipment & LIMS Qualification")
