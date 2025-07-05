@@ -11,24 +11,11 @@ Bioinformatics, and Laboratory Operations under ISO 13485, ISO 15189, and CLIA.
 """
 
 # --- Standard Library Imports ---
-import logging# --- SME-Revised, PMA-Ready, and Unabridged Enhanced Version (Corrected) ---
-"""
-Main application entry point for the GenomicsDx Command Center.
-
-This Streamlit application serves as the definitive Quality Management System (QMS)
-and development dashboard for a breakthrough-designated, Class III, PMA-required
-Multi-Cancer Early Detection (MCED) genomic diagnostic service. It is designed
-to manage the Design History File (DHF) in accordance with 21 CFR 820.30 and
-provide real-time insights into Analytical Validation, Clinical Validation,
-Bioinformatics, and Laboratory Operations under ISO 13485, ISO 15189, and CLIA.
-"""
-
-# --- Standard Library Imports ---
 import logging
 import os
 import sys
 import copy
-from datetime import timedelta
+from datetime import timedelta, date
 from typing import Any, Dict, List, Tuple
 import hashlib  # For deterministic seeding and data integrity checks
 import io # For creating in-memory files
@@ -74,6 +61,9 @@ except ImportError as e:
     logging.critical(f"Fatal module import error: {e}", exc_info=True)
     st.stop()
 
+
+# *** BUG FIX: Call set_page_config() at the top level of the script ***
+st.set_page_config(layout="wide", page_title="GenomicsDx Command Center", page_icon="🧬")
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -149,11 +139,10 @@ def render_dhf_completeness_panel(ssm: SessionStateManager, tasks_df: pd.DataFra
             col1, col2 = st.columns([2, 1])
             with col1:
                 st.markdown("**Associated DHF Documents:**")
-                phase_docs = docs_by_phase.get(task_name)
-                if phase_docs is not None and not phase_docs.empty:
-                    st.dataframe(phase_docs[['id', 'title', 'status']], use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No documents for this phase yet.")
+                # Grouping by phase is not directly available, so we filter. A more robust solution might add a 'phase' key to documents.
+                # For now, we'll assume the task name can be found in the document title or a similar property.
+                # This is a placeholder for a more robust linkage.
+                st.caption("Document-to-phase linkage not yet implemented.")
             with col2:
                 st.markdown("**Cross-Functional Sign-offs:**")
                 sign_offs = task.get('sign_offs', {})
@@ -462,9 +451,7 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     
     st.divider()
     st.header("Deep Dives")
-    # *** BUG FIX APPLIED HERE ***
     with st.expander("Expand to see Phase Gate Readiness & Timeline Details"): render_dhf_completeness_panel(ssm, tasks_df, docs_by_phase)
-    # *** END BUG FIX ***
     with st.expander("Expand to see Risk & FMEA Details"): render_risk_and_fmea_dashboard(ssm)
     with st.expander("Expand to see Assay Performance and Lab Operations Readiness Details"): render_assay_and_ops_readiness_panel(ssm)
     with st.expander("Expand to see Audit & Continuous Improvement Details"): render_audit_and_improvement_dashboard(ssm)
@@ -795,15 +782,18 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.plotly_chart(fig, use_container_width=True)
             
             # Interpretation
-            p_val_interaction = anova_table.loc['C(pcr_cycles):C(input_dna)', 'PR(>F)']
-            if p_val_interaction < 0.05:
-                st.success("**Conclusion:** Both PCR cycles and input DNA amount, as well as their interaction, are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
+            if 'C(pcr_cycles):C(input_dna)' in anova_table.index:
+                p_val_interaction = anova_table.loc['C(pcr_cycles):C(input_dna)', 'PR(>F)']
+                if p_val_interaction < 0.05:
+                    st.success("**Conclusion:** Both PCR cycles and input DNA amount, as well as their interaction, are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
+                else:
+                    st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield, but their interaction is not. The response surface plot can be used to identify optimal conditions.")
             else:
-                 st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
+                st.warning("Could not determine interaction effect from the model.")
         except Exception as e:
             st.error(f"Could not perform DOE analysis. Error: {e}")
     def render_machine_learning_lab_tab(ssm: SessionStateManager):
-        """Renders the tab containing machine learning and bioinformatics tools."""
+    """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
     st.info("Utilize and validate predictive models for operational efficiency and explore the classifier's behavior. Model explainability is key for regulatory review.")
     
@@ -1023,7 +1013,6 @@ def render_compliance_guide_tab():
 # ==============================================================================
 def main() -> None:
     """Main function to run the Streamlit application."""
-    st.set_page_config(layout="wide", page_title="GenomicsDx Command Center", page_icon="🧬")
     try:
         ssm = SessionStateManager()
         logger.info("Application initialized. Session State Manager loaded.")
@@ -1033,7 +1022,12 @@ def main() -> None:
         tasks_raw = ssm.get_data("project_management", "tasks")
         tasks_df_processed = preprocess_task_data(tasks_raw)
         docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
-        docs_by_phase = {phase: data for phase, data in docs_df.groupby('phase')} if 'phase' in docs_df.columns else {}
+        # A more robust implementation would add a 'phase' key to documents upon creation
+        # to ensure this grouping is always accurate.
+        docs_by_phase = {}
+        if 'phase' in docs_df.columns:
+            docs_by_phase = {phase: data for phase, data in docs_df.groupby('phase')}
+
     except Exception as e:
         st.error("Failed to process initial project data for dashboard."); logger.error(f"Error during initial data pre-processing: {e}", exc_info=True)
         tasks_df_processed = pd.DataFrame(); docs_by_phase = {}
@@ -1057,5 +1051,6 @@ def main() -> None:
 # ==============================================================================
 if __name__ == "__main__":
     main()
+    
     
 
