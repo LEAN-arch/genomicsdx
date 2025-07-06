@@ -1089,30 +1089,41 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         
     try:
         # --- Create a dedicated function for SHAP plot generation ---
-        # This helps isolate the matplotlib logic and makes the main flow cleaner.
         @st.cache_data
-        def generate_shap_plot(_model, _X_sample):
+        def generate_shap_image(_model, _X_sample):
             """
+            Generates and returns a SHAP summary plot as a static in-memory image.
+            This completely isolates the plotting and prevents state leakage between tabs.
+            """
+            import io
+            import matplotlib.pyplot as plt
+            import shap
 
-            Generates and returns a matplotlib figure object for the SHAP summary plot.
-            This function is cached to avoid re-calculating SHAP values on every interaction.
-            """
-            explainer = shap.TreeExplainer(_model)
-            shap_values = explainer(_X_sample)
-            
-            # Create a new figure object for this specific plot
+            # 1. Create a new figure object for this specific plot
             fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             
-            # Generate the plot onto the figure object
+            # 2. Generate the plot onto the figure object
+            explainer = shap.TreeExplainer(_model)
+            shap_values = explainer.shap_values(_X_sample)
+            
             shap.summary_plot(
-                shap_values[:,:,1],  # Use the Explanation object for the positive class
+                shap_values[1],  # Use values for the positive class
                 _X_sample,
                 show=False,
                 plot_type="dot"
             )
             fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
             plt.tight_layout()
-            return fig
+            
+            # 3. Save the plot to an in-memory buffer instead of showing it
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight")
+            buf.seek(0)
+            
+            # 4. Explicitly close the figure to release memory
+            plt.close(fig)
+            
+            return buf
 
         # --- Main logic for the tab ---
         with st.spinner("Calculating SHAP values for a data sample..."):
@@ -1121,16 +1132,13 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             
             X_sample = X.sample(n=n_samples_for_shap, random_state=42)
             
-            # Call the cached function to get the figure
-            shap_fig = generate_shap_plot(model, X_sample)
+            # Call the cached function to get the image buffer
+            image_buffer = generate_shap_image(model, X_sample)
             
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
             
-            # Display the figure and ensure it's cleared from memory afterward
-            st.pyplot(shap_fig, clear_figure=True)
-            
-            # Explicitly close the figure just in case clear_figure isn't sufficient
-            plt.close(shap_fig)
+            # Display the buffer using st.image()
+            st.image(image_buffer, use_column_width=True)
 
         st.success(
             "The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, "
