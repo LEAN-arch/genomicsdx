@@ -719,29 +719,6 @@ def render_advanced_analytics_tab(ssm: SessionStateManager):
                 st.toast("Project tasks updated! Rerunning...", icon="✅"); st.rerun()
         except Exception as e: st.error("Could not load the Project Task Editor."); logger.error(f"Error in task editor: {e}", exc_info=True)
 
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import streamlit as st
-import logging
-
-# Assume these helper functions exist to create plots and handle data
-from your_utils import (
-    create_levey_jennings_plot,
-    create_tost_plot,
-    create_pareto_chart,
-    create_gauge_rr_plot,
-    create_doe_effects_plot,
-    create_rsm_plots,
-    create_confusion_matrix_heatmap,
-    create_shap_summary_plot,
-    create_forecast_plot
-)
-# Assume ssm is a SessionStateManager instance
-# from your_ssm_class import SessionStateManager
-
-logger = logging.getLogger(__name__)
 
 def render_statistical_tools_tab(ssm): # ssm: SessionStateManager
     """
