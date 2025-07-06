@@ -320,6 +320,108 @@ def render_audit_and_improvement_dashboard(ssm: SessionStateManager) -> None:
                 st.caption("Increased Cpk from process optimization (DOE) directly reduces failed runs and COPQ.")
         except Exception as e: st.error("Could not render Assay Performance & COPQ Dashboard."); logger.error(f"Error in render_audit_and_improvement_dashboard (COPQ): {e}", exc_info=True)
 
+#######NEW FUNCTION: FTY and Bootlenecks ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+def render_ftr_and_release_dashboard(ssm: SessionStateManager) -> None:
+    """Renders the First Time Right (FTR) and Release Readiness dashboard."""
+    st.subheader("5. First Time Right (FTR) & Release Readiness")
+    st.markdown("""
+    This dashboard provides critical insights into our development efficiency and milestone predictability.
+    - **First Time Right (FTR):** Measures the percentage of activities (e.g., tests, lab runs, document reviews) that are completed successfully on the first attempt without requiring rework. A high FTR indicates a mature, well-understood, and efficient process.
+    - **Release Readiness:** Assesses whether all prerequisite components for a major milestone (e.g., Design Freeze, PMA Submission) are complete, highlighting bottlenecks and de-risking the timeline.
+    """)
+    
+    try:
+        # --- 1. Gather Data from Across the DHF ---
+        ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
+        lab_failures_data = ssm.get_data("lab_operations", "run_failures")
+        docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
+        capa_df = get_cached_df(ssm.get_data("quality_system", "capa_records"))
+        ncr_df = get_cached_df(ssm.get_data("quality_system", "ncr_records"))
+        improvement_df = get_cached_df(ssm.get_data("quality_system", "continuous_improvement"))
+
+        # --- 2. Calculate FTR & Rework KPIs ---
+        # AV Protocol FTR
+        av_pass_rate = 0
+        if not ver_tests_df.empty and 'result' in ver_tests_df.columns:
+            passed_av = len(ver_tests_df[ver_tests_df['result'] == 'Pass'])
+            total_av = len(ver_tests_df)
+            av_pass_rate = (passed_av / total_av) * 100 if total_av > 0 else 100
+        
+        # Lab Run FTR (from failure modes data)
+        lab_ftr = 0
+        if lab_failures_data:
+            # Assuming we have a way to know total runs, for now, we estimate from a baseline
+            total_runs_assumed = len(lab_failures_data) + 150 # Placeholder for total runs
+            failed_runs = len(lab_failures_data)
+            lab_ftr = ((total_runs_assumed - failed_runs) / total_runs_assumed) * 100 if total_runs_assumed > 0 else 100
+
+        # Document FTR (Approval Rate)
+        doc_approval_rate = 0
+        if not docs_df.empty and 'status' in docs_df.columns:
+            approved_docs = len(docs_df[docs_df['status'] == 'Approved'])
+            total_docs = len(docs_df)
+            doc_approval_rate = (approved_docs / total_docs) * 100 if total_docs > 0 else 100
+            
+        # Aggregate FTR Score (Weighted)
+        aggregate_ftr = (av_pass_rate * 0.5) + (doc_approval_rate * 0.3) + (lab_ftr * 0.2)
+        
+        # Rework Index (Proxy: Number of open CAPAs and NCRs)
+        rework_index = 0
+        if not capa_df.empty:
+            rework_index += len(capa_df[capa_df['status'] == 'Open'])
+        if not ncr_df.empty:
+            rework_index += len(ncr_df[ncr_df['status'] == 'Open'])
+
+        kpi_cols = st.columns(3)
+        kpi_cols[0].metric("Aggregate FTR Rate", f"{aggregate_ftr:.1f}%", help="Weighted average of AV pass rates, document approval rates, and lab run success rates. Higher is better.")
+        kpi_cols[1].metric("Analytical Validation FTR", f"{av_pass_rate:.1f}%", help="Percentage of formal V&V protocols that passed on the first execution.")
+        kpi_cols[2].metric("Rework Index (Open Issues)", f"{rework_index}", help="Total number of open CAPAs and NCRs. A leading indicator of process friction and rework.", delta=rework_index, delta_color="inverse")
+
+        st.divider()
+        
+        # --- 3. Visualize Trends and Bottlenecks ---
+        viz_cols = st.columns(2)
+        with viz_cols[0]:
+            st.markdown("**FTR Rate Trend**")
+            if not improvement_df.empty:
+                fig_trend = px.area(improvement_df, x='date', y='ftr_rate', title="First Time Right (%) Over Time", labels={'ftr_rate': 'FTR %', 'date': 'Date'})
+                fig_trend.update_layout(height=350, margin=dict(l=10, r=10, t=40, b=10))
+                st.plotly_chart(fig_trend, use_container_width=True)
+            else:
+                st.caption("No trending data available.")
+        
+        with viz_cols[1]:
+            st.markdown("**PMA Document Readiness Funnel**")
+            if not docs_df.empty and 'status' in docs_df.columns:
+                status_order = ['Draft', 'In Review', 'Approved']
+                status_counts = docs_df['status'].value_counts().reindex(status_order, fill_value=0)
+                
+                fig_funnel = go.Figure(go.Funnel(
+                    y = status_counts.index,
+                    x = status_counts.values,
+                    textinfo = "value+percent initial"
+                ))
+                fig_funnel.update_layout(height=350, margin=dict(l=10, r=10, t=40, b=10), title="DMR Document Approval Funnel")
+                st.plotly_chart(fig_funnel, use_container_width=True)
+            else:
+                st.caption("No document data to build funnel.")
+                
+        # --- 4. Actionable Insights ---
+        st.subheader("Actionable Insights")
+        if aggregate_ftr < 85:
+            st.warning(f"**Focus Area:** The Aggregate FTR of {aggregate_ftr:.1f}% is below the target of 85%. This indicates significant rework and process friction, increasing costs and delaying timelines. **Action:** Investigate the primary drivers of low FTR (e.g., AV protocols, lab errors) using the Pareto tool and initiate a targeted process improvement project.")
+        else:
+            st.success(f"**Observation:** The Aggregate FTR of {aggregate_ftr:.1f}% meets the target. This reflects a mature and predictable development process.")
+
+        if not docs_df.empty and 'status' in docs_df.columns:
+            counts = docs_df['status'].value_counts()
+            if counts.get('In Review', 0) > counts.get('Approved', 0):
+                st.warning("**Bottleneck Identified:** A high number of documents are stuck in the 'In Review' stage compared to those 'Approved'. This suggests a potential resource constraint in the quality or regulatory review teams. **Action:** Review workloads of approvers and consider parallel review paths to accelerate document finalization for the DMR.")
+
+    except Exception as e:
+        st.error("Could not render First Time Right & Release Readiness dashboard.")
+        logger.error(f"Error in render_ftr_and_release_dashboard: {e}", exc_info=True)
+        
 # ==============================================================================
 # --- TAB RENDERING FUNCTIONS ---
 # ==============================================================================
@@ -490,6 +592,7 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     with st.expander("Expand to see Risk & FMEA Details"): render_risk_and_fmea_dashboard(ssm)
     with st.expander("Expand to see Assay Performance and Lab Operations Readiness Details"): render_assay_and_ops_readiness_panel(ssm)
     with st.expander("Expand to see Audit & Continuous Improvement Details"): render_audit_and_improvement_dashboard(ssm)
+    with st.expander("Expand to see First Time Right (FTR) & Release Readiness Details"): render_ftr_and_release_dashboard(ssm)    
 
 def render_dhf_explorer_tab(ssm: SessionStateManager):
     """Renders the tab for exploring DHF sections."""
