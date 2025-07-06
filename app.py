@@ -815,7 +815,7 @@ def render_compliance_guide_tab():
     st.header("🏛️ The Regulatory & Methodological Compendium")
     st.markdown("This guide serves as the definitive reference for the regulatory, scientific, and statistical frameworks governing the GenomicsDx Sentry™ program. It is designed for the scientific and engineering leads, principal investigators, and decision-makers responsible for program execution and technical integrity.")
 
-    with st.expander("⭐ **The GxP Paradigm: Proactive Quality by Design & The Role of the DHF**", expanded=True):
+    with st.expander("⭐ **I. The GxP Paradigm: Proactive Quality by Design & The Role of the DHF**", expanded=True):
         st.info("The entire regulatory structure is predicated on the principle of **Quality by Design (QbD)**: quality, safety, and effectiveness must be designed and built into the product, not merely inspected or tested into it after the fact. This proactive paradigm is enforced through Design Controls.")
         
         st.subheader("The Design Controls Framework (21 CFR 820.30)")
@@ -837,7 +837,7 @@ def render_compliance_guide_tab():
         **This dashboard is architected as our program's living, interactive DHF.** The approved documents in the **Design Outputs** section form the basis of our DMR.
         """)
 
-    with st.expander("⚖️ **I. The Regulatory Framework: Mandated Compliance**", expanded=False):
+    with st.expander("⚖️ **II. The Regulatory Framework: Mandated Compliance**", expanded=False):
         st.info("This section details the specific regulations and standards that form our compliance obligations. These are not guidelines; they are the legal and internationally recognized requirements for market access.")
         
         st.subheader("A. United States FDA Regulations")
@@ -855,7 +855,7 @@ def render_compliance_guide_tab():
         - **CLIA (Clinical Laboratory Improvement Amendments):** Federal regulations that govern US laboratory operations. FDA approval addresses the *test system design*, while CLIA certification addresses the *laboratory's validated ability* to perform that test accurately, precisely, and reliably in a production environment.
         """)
 
-    with st.expander("🔬 **II. Methodologies & Statistical Foundations: The Evidentiary Toolkit**", expanded=False):
+    with st.expander("🔬 **III. Methodologies & Statistical Foundations: The Evidentiary Toolkit**", expanded=False):
         st.info("This section details the scientific and statistical methods used to generate the objective evidence required for our regulatory submissions. A deep understanding of their principles and limitations is essential for all technical leads.")
 
         st.subheader("A. Risk Analysis: Failure Mode and Effects Analysis (FMEA)")
@@ -896,7 +896,7 @@ def render_compliance_guide_tab():
         **Interpretation & Strategic Implications:** These tools satisfy two distinct but equally important validation requirements. A high AUC demonstrates *what* the model can do (its clinical performance). SHAP values demonstrate *how* it does it (its scientific and biological plausibility). Providing strong evidence that the model's predictions are driven by mechanistically relevant biomarkers and not by confounding artifacts is essential for de-risking the AI/ML component of our submission.
         **Dashboard Link:** ***ML & Bioinformatics Lab*** tab.""")
 
-    with st.expander("📄 **III. The Regulatory Submission: Constructing the PMA**", expanded=False):
+    with st.expander("📄 **IV. The Regulatory Submission: Constructing the PMA**", expanded=False):
         st.info("The PMA is not a data dump; it is a structured scientific and regulatory argument. The DHF provides the evidentiary basis for every assertion made in this argument, answering the fundamental questions of safety and effectiveness.")
         
         st.markdown("""
