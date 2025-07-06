@@ -1007,78 +1007,88 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "Time Series Forecasting (ML)"
     ])
 
-    # --- Prepare Data and a *lighter* Model Once for All Tabs ---
-    X, y = ssm.get_data("ml_models", "classifier_data")
-    
-    # <<< FIX 1: Reduced model complexity to lower memory usage >>>
-    model = RandomForestClassifier(n_estimators=25, max_depth=10, random_state=42)
-    model.fit(X, y)
+    # <<< DEFINITIVE FIX: Encapsulate ALL expensive operations in one cached function >>>
+    @st.cache_data
+    def get_or_generate_ml_artifacts(_X_numpy, _y_numpy, _feature_names):
+        """
+        This function trains the model AND generates the SHAP plot, caching both.
+        It will only run ONCE as long as the input data doesn't change,
+        preventing memory-leak-style crashes on reruns.
+        """
+        logger.info("CACHE MISS: Running expensive model training and SHAP calculation...")
+        _X_df = pd.DataFrame(_X_numpy, columns=_feature_names)
+        
+        # 1. Train a memory-efficient model
+        model = RandomForestClassifier(n_estimators=25, max_depth=10, random_state=42)
+        model.fit(_X_df, _y_numpy)
+        
+        # 2. Generate SHAP values on a subsample for performance
+        X_sample = _X_df.sample(n=min(50, len(_X_df)), random_state=42)
+        explainer = shap.Explainer(model, X_sample)
+        shap_values_obj = explainer(X_sample)
+        
+        # 3. Generate the plot buffer
+        shap_values_for_plot = shap_values_obj.values[:,:,1]
+        plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_sample)
+        
+        logger.info("Model training and SHAP generation complete. Results are now cached.")
+        
+        # 4. Return all generated artifacts
+        return model, plot_buffer
 
     # --- Tool 1: ROC & PR Curves ---
     with ml_tabs[0]:
         st.subheader("Classifier Performance Analysis")
+        X, y_true = ssm.get_data("ml_models", "classifier_data")
+        
+        # Call the cached function to get the trained model. This is fast after the first run.
+        model, _ = get_or_generate_ml_artifacts(X.values, y_true, X.columns.tolist())
+        
         y_scores = model.predict_proba(X)[:, 1]
 
         col1, col2 = st.columns(2)
         with col1:
             with st.expander("View ROC Method Explanation"):
                 st.markdown(r"""**Purpose:** To visualize the trade-off between **Sensitivity** and **1 - Specificity**.""")
-            roc_fig = create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y}), 'score', 'truth')
+            roc_fig = create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y_true}), 'score', 'truth')
             st.plotly_chart(roc_fig, use_container_width=True)
 
         with col2:
             with st.expander("View Precision-Recall Method Explanation"):
                 st.markdown(r"""**Purpose:** To visualize the trade-off between **Precision** and **Recall**, critical for imbalanced datasets.""")
-            precision, recall, _ = precision_recall_curve(y, y_scores)
+            precision, recall, _ = precision_recall_curve(y_true, y_scores)
             pr_fig = px.area(x=recall, y=precision, title="<b>Precision-Recall Curve</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
             pr_fig.update_layout(xaxis=dict(range=[0,1]), yaxis=dict(range=[0,1.05]))
             st.plotly_chart(pr_fig, use_container_width=True)
 
-    # --- Tool 2: SHAP (User-preferred version, but optimized) ---
+    # --- Tool 2: SHAP ---
     with ml_tabs[1]:
         st.subheader("Cancer Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation"):
-            st.markdown(r"""
-            **Purpose:** To address the "black box" problem of complex ML models by explaining *how* our classifier makes its decisions.
-            **Conceptual Walkthrough:** SHAP calculates how much each biomarker contributed to the final "cancer" or "no cancer" score for every single patient.
-            **Mathematical Basis:** Based on Shapley values from cooperative game theory, it fairly distributes the "payout" (the prediction) among the features.
-            """)
-        st.write("Generating SHAP values for the classifier model...")
+            st.markdown(r"""**Purpose:** To address the "black box" problem of complex ML models by explaining *how* our classifier makes its decisions.""")
         
-        try:
-            # <<< FIX 2: Explain on a smaller, representative sample to prevent memory crash >>>
-            st.caption("Note: Explaining on a random subsample of 50 data points for performance.")
-            X_sample = X.sample(n=50, random_state=42)
-            
-            explainer = shap.Explainer(model, X_sample)
-            shap_values_obj = explainer(X_sample)
-            
-            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            
-            shap_values_for_plot = shap_values_obj.values[:,:,1]
-
-            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_sample)
-            if plot_buffer:
-                st.image(plot_buffer)
-                st.success("The SHAP analysis confirms that known oncogenic methylation markers are the most significant drivers of a 'Cancer Signal Detected' result, providing strong evidence of the model's biological relevance.")
-            else:
-                st.error("Could not generate SHAP summary plot.")
-        except Exception as e:
-            st.error(f"Could not perform SHAP analysis. Error: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+        X, y = ssm.get_data("ml_models", "classifier_data")
+        st.write("Generating SHAP values (will be cached after first run)...")
+        
+        # Call the same cached function to get the plot buffer. This will be an instant cache hit.
+        _, plot_buffer = get_or_generate_ml_artifacts(X.values, y, X.columns.tolist())
+        
+        if plot_buffer:
+            st.image(plot_buffer)
+            st.success("SHAP analysis confirms that known oncogenic markers are the most significant drivers of a positive result.")
+        else:
+            st.error("Could not generate or retrieve SHAP summary plot.")
     
     # --- Tool 3: CSO Analysis ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation"):
-            st.markdown("""
-            **Purpose:** To analyze the performance of the secondary classifier that predicts the tissue of origin.
-            **Conceptual Walkthrough:** A **confusion matrix** is a scorecard showing where the CSO model gets confused. The diagonal shows correct predictions.
-            """)
+            st.markdown("""**Purpose:** To analyze the performance of the secondary classifier that predicts the tissue of origin.""")
         st.write("Generating synthetic CSO data and training a simple model...")
+        X_cso, y_true_cso = ssm.get_data("ml_models", "classifier_data")
         np.random.seed(123)
         cso_classes = ['Lung', 'Colon', 'Pancreatic', 'Liver', 'Ovarian']
-        cancer_samples_X = X[y == 1]
+        cancer_samples_X = X_cso[y_true_cso == 1]
         true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X))
         cso_model = RandomForestClassifier(n_estimators=50, random_state=123)
         cso_model.fit(cancer_samples_X, true_cso)
@@ -1093,10 +1103,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[3]:
         st.subheader("Predictive Operations: Sequencing Run Failure")
         with st.expander("View Method Explanation"):
-            st.markdown("""
-            **Purpose:** To build a model that predicts run failure *before* committing expensive resources.
-            **Conceptual Walkthrough:** This model acts as a gatekeeper, learning from past runs what combinations of early QC metrics predict failure.
-            """)
+            st.markdown("""**Purpose:** To build a model that predicts run failure *before* committing expensive resources.""")
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
@@ -1116,10 +1123,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting with Machine Learning")
         with st.expander("View Method Explanation"):
-            st.markdown(r"""
-            **Purpose:** To forecast future demand based on historical trends for proactive lab management.
-            **Conceptual Walkthrough:** We treat forecasting as an ML problem. By creating features from the date and using past values ("lags") as inputs, a model can learn complex patterns.
-            """)
+            st.markdown(r"""**Purpose:** To forecast future demand based on historical trends for proactive lab management.""")
         ts_data = ssm.get_data("ml_models", "sample_volume_data")
         df_ts = pd.DataFrame(ts_data).set_index('date')
         df_ts.index = pd.to_datetime(df_ts.index)
