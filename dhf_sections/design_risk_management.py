@@ -1,3 +1,5 @@
+# genomicsdx/dhf_sections/design_risk_management.py 
+#--- SME OVERHAUL: Definitive, Compliance-Focused Version ---
 # --- SME OVERHAUL: Definitive, Compliance-Focused Version ---
 """
 Renders the Risk Management File (RMF) section of the DHF dashboard.
@@ -205,6 +207,34 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
         with tab_tools:
             st.subheader("Risk Analysis Tools")
             
+            # --- RPN Significance Chart ---
+            st.markdown("#### RPN Significance Chart")
+            st.caption("This chart defines the action levels for Risk Priority Numbers (RPN) calculated in the FMEAs (where RPN = Severity × Occurrence × Detection). It provides a guideline for prioritizing risk mitigation activities.")
+
+            rpn_data = {
+                'RPN Range': ['100 - 125', '60 - 99', '20 - 59', '1 - 19'],
+                'Risk Level': ['High', 'Medium', 'Low', 'Very Low'],
+                'Recommended Action': [
+                    'Unacceptable. Mitigation is required to reduce RPN. Design changes are mandatory.',
+                    'Undesirable. Mitigation should be implemented. Justification required if no action is taken.',
+                    'Acceptable with review. Risk is potentially acceptable, but should be reviewed for possible improvements.',
+                    'Acceptable. Risk is broadly acceptable. No mitigation required.'
+                ]
+            }
+            rpn_df = pd.DataFrame(rpn_data)
+            
+            def style_risk_level(val):
+                color_map = {
+                    'High': 'background-color: #ff9999',
+                    'Medium': 'background-color: #ffe8a1',
+                    'Low': 'background-color: #d4edda',
+                    'Very Low': 'background-color: #e2e3e5'
+                }
+                return color_map.get(val, '')
+
+            st.dataframe(rpn_df.style.applymap(style_risk_level, subset=['Risk Level']), hide_index=True, use_container_width=True)
+            st.divider()
+
             # --- RPN Summary Table ---
             st.markdown("#### RPN Summary Table")
             st.caption("This table aggregates all failure modes from the FMEAs and ranks them by their Risk Priority Number (RPN) to help prioritize mitigation efforts.")
@@ -222,12 +252,12 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                     else:
                         df['RPN'] = 0
 
-                rpn_df = pd.concat([assay_fmea_df, service_fmea_df], ignore_index=True)
-                rpn_df = rpn_df.sort_values(by="RPN", ascending=False)
+                rpn_df_concat = pd.concat([assay_fmea_df, service_fmea_df], ignore_index=True)
+                rpn_df_concat = rpn_df_concat.sort_values(by="RPN", ascending=False)
                 
                 # Apply color gradient to RPN column
                 st.dataframe(
-                    rpn_df[['id', 'Source', 'failure_mode', 'S', 'O', 'D', 'RPN']].style.background_gradient(cmap='YlOrRd', subset=['RPN']),
+                    rpn_df_concat[['id', 'Source', 'failure_mode', 'S', 'O', 'D', 'RPN']].style.background_gradient(cmap='YlOrRd', subset=['RPN']),
                     use_container_width=True, hide_index=True
                 )
             else:
