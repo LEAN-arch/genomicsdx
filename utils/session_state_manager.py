@@ -1,3 +1,4 @@
+#genomicsdx/utils/session_state_manager.py
 # --- SME OVERHAUL: Definitive, Fully Populated, and Corrected Version ---
 """
 Manages the application's session state, acting as an in-memory eQMS.
