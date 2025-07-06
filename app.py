@@ -811,59 +811,137 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.error(f"Could not generate time series forecast. Error: {e}")
 
 def render_compliance_guide_tab():
-    """Renders the educational guide to the regulatory landscape."""
-    st.header("🏛️ A Guide to the IVD & Genomics Regulatory Landscape")
-    st.markdown("This guide provides a high-level overview of the key regulations and standards governing the development of the GenomicsDx Sentry™ MCED Test. It is intended for educational purposes for the project team.")
+    """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
+    st.header("🏛️ The Regulatory & Methodological Compendium")
+    st.markdown("This guide serves as the definitive reference for the regulatory, scientific, and statistical frameworks governing the GenomicsDx Sentry™ program. It is designed for the scientific and engineering leads, principal investigators, and decision-makers responsible for program execution and technical integrity.")
 
-    with st.expander("⚖️ **FDA Regulations (Title 21, Code of Federal Regulations)**"):
-        st.subheader("21 CFR 820: Quality System Regulation (QSR)")
+    with st.expander("⭐ **The GxP Paradigm: Proactive Quality by Design & The Role of the DHF**", expanded=True):
+        st.info("The entire regulatory structure is predicated on the principle of **Quality by Design (QbD)**: quality, safety, and effectiveness must be designed and built into the product, not merely inspected or tested into it after the fact. This proactive paradigm is enforced through Design Controls.")
+        
+        st.subheader("The Design Controls Framework (21 CFR 820.30)")
         st.markdown("""
-        Also known as the Current Good Manufacturing Practice (cGMP), the QSR is the foundational regulation for medical device quality systems. It outlines the requirements for the procedures and facilities used in the design, manufacture, packaging, labeling, storage, installation, and servicing of all finished medical devices intended for human use.
-        - **Key Subpart C - Design Controls (§ 820.30):** This is the heart of the DHF and this dashboard. It mandates a formal process for:
-            - `(a)` General: Establish and maintain procedures to control the design of the device.
-            - `(b)` **Design and Development Planning:** What this project is based on.
-            - `(c)` **Design Input:** Defining all requirements.
-            - `(d)` **Design Output:** The specifications, drawings, and procedures that make up the device.
-            - `(e)` **Design Review:** Formal phase-gates to assess progress.
-            - `(f)` **Design Verification:** *Did we build the product right?* (Analytical Validation).
-            - `(g)` **Design Validation:** *Did we build the right product?* (Clinical & Usability Validation).
-            - `(h)` **Design Transfer:** Moving the design to manufacturing (the clinical lab).
-            - `(i)` **Design Changes:** Controlling changes after the design is locked.
-            - `(j)` **Design History File (DHF):** The compilation of all records demonstrating the design was developed in accordance with the plan. This dashboard *is* the living DHF.
+        Design Controls are a formal, risk-based framework for conducting product development. This is not arbitrary bureaucracy; it is a closed-loop system designed to ensure a robust and traceable development process. The core logic is as follows:
+        1.  **Define Needs:** We formally capture all **Design Inputs**, which are the physical and performance requirements derived from user needs and the intended use. These must be unambiguous, comprehensive, and testable.
+        2.  **Create the Design:** We develop **Design Outputs**—the full set of specifications, algorithms, procedures, and material definitions that constitute the device.
+        3.  **Establish Traceability:** Crucially, every Design Output must be traceable back to a Design Input. This ensures we have built what we intended to build. The **Traceability Matrix** is the key tool for managing this.
+        4.  **Confirm the 'What':** **Design Verification** answers the question: *'Did we build the device correctly?'* It provides objective evidence (e.g., from analytical validation studies) that the Design Outputs meet the Design Inputs.
+        5.  **Confirm the 'Why':** **Design Validation** answers the question: *'Did we build the correct device?'* It provides objective evidence (e.g., from clinical and usability studies) that the final, manufactured device meets the user's needs and its intended use in the target clinical environment.
         """)
-        st.subheader("21 CFR 809: In Vitro Diagnostic (IVD) Products")
-        st.markdown("This part contains specific labeling requirements for IVDs, including Instructions For Use (IFU) and reagent labeling. (Ref: § 809.10)")
 
-    with st.expander("🌐 **International Standards (ISO)**"):
-        st.subheader("ISO 13485:2016 - Medical Devices Quality Management Systems")
-        st.markdown("This is the international standard for medical device QMS. While the FDA QSR is law in the US, ISO 13485 is often required for market access in other countries (e.g., Europe, Canada). It is highly aligned with 21 CFR 820 but has a broader scope, emphasizing a risk-based approach throughout the entire QMS.")
-        
-        st.subheader("ISO 14971:2019 - Application of Risk Management to Medical Devices")
-        st.markdown("This standard specifies the process for identifying, analyzing, evaluating, controlling, and monitoring risks associated with a medical device. It is the global benchmark for risk management and is a required process for both FDA and international submissions. The **Risk Management File** is the output of this process.")
-
-        st.subheader("ISO 62304:2006 - Medical Device Software - Software Life Cycle Processes")
-        st.markdown("This standard defines the lifecycle requirements for medical device software. It provides a framework for designing, developing, testing, and maintaining software in a safe and controlled manner. The required level of rigor depends on the **Software Safety Classification** (Class A, B, or C), which is based on the potential of the software to cause harm. Our SaMD is **Class C (High Risk)**, requiring the most stringent level of documentation and control.")
-
-    with st.expander("🔬 **US Laboratory Regulations (CLIA)**"):
-        st.subheader("Clinical Laboratory Improvement Amendments (CLIA)")
-        st.markdown("CLIA regulations establish quality standards for all laboratory testing performed on humans in the U.S. (except for clinical trials and basic research). For our LDT (Laboratory Developed Test) service to be offered commercially, the performing laboratory must be CLIA-certified. This involves demonstrating analytical validity, having qualified personnel, and adhering to strict quality control and proficiency testing procedures.")
-
-    with st.expander("📄 **PMA Submission Structure**"):
+        st.subheader("The Design History File (DHF) vs. The Device Master Record (DMR)")
         st.markdown("""
-        A Premarket Approval (PMA) is the most stringent type of device marketing application required by the FDA. It is required for Class III devices, like our MCED test. The submission is a comprehensive document that must provide reasonable assurance of the device's safety and effectiveness.
+        It is critical to distinguish between these two records:
+        - **The Design History File (DHF)** is the story of **why** the design is what it is. It contains the complete history of the design process: all the requirements, experiments, risk analyses, reviews, and V&V data. It is the evidence of the development journey.
+        - **The Device Master Record (DMR)** is the recipe for **how** to build the device consistently. It is a compilation of the final, approved Design Outputs: specifications, SOPs, QC procedures, and labeling.
         
-        A typical PMA for an IVD includes, but is not limited to:
+        **This dashboard is architected as our program's living, interactive DHF.** The approved documents in the **Design Outputs** section form the basis of our DMR.
+        """)
+
+    with st.expander("⚖️ **I. The Regulatory Framework: Mandated Compliance**", expanded=False):
+        st.info("This section details the specific regulations and standards that form our compliance obligations. These are not guidelines; they are the legal and internationally recognized requirements for market access.")
+        
+        st.subheader("A. United States FDA Regulations")
+        st.markdown("""
+        - **21 CFR Part 820 (QSR/cGMP):** The Quality System Regulation. Its core is **§ 820.30 Design Controls**, the system detailed above.
+        - **21 CFR Part 11:** Governs electronic records and signatures, mandating system validation to ensure data integrity, security, non-repudiation, and traceability through time-stamped audit trails. This is critical for the validity of our electronic DHF.
+        - **21 CFR Part 812 (IDE):** The Investigational Device Exemption regulation. An approved IDE is required to conduct the pivotal clinical trial necessary for a Class III device, allowing the collection of safety and effectiveness data under IRB-approved protocols.
+        """)
+        
+        st.subheader("B. International Standards & Laboratory Regulations")
+        st.markdown("""
+        - **ISO 13485:2016:** The global QMS standard, essential for most ex-US markets and programs like MDSAP. Its emphasis on risk management is pervasive throughout all QMS processes.
+        - **ISO 14971:2019:** The standard for risk management. It mandates a closed-loop process to identify, analyze, evaluate, control, and monitor risks, ensuring that the overall residual risk is acceptable in relation to the medical benefit (the ALARP principle - As Low As Reasonably Practicable).
+        - **IEC 62304:2006:** The software lifecycle standard. Our classifier is **Software Safety Class C**, implying a potential for death or serious injury. This mandates maximum process rigor, including formal architectural design, detailed design specifications, and unit/integration/system level testing.
+        - **CLIA (Clinical Laboratory Improvement Amendments):** Federal regulations that govern US laboratory operations. FDA approval addresses the *test system design*, while CLIA certification addresses the *laboratory's validated ability* to perform that test accurately, precisely, and reliably in a production environment.
+        """)
+
+    with st.expander("🔬 **II. Methodologies & Statistical Foundations: The Evidentiary Toolkit**", expanded=False):
+        st.info("This section details the scientific and statistical methods used to generate the objective evidence required for our regulatory submissions. A deep understanding of their principles and limitations is essential for all technical leads.")
+
+        st.subheader("A. Risk Analysis: Failure Mode and Effects Analysis (FMEA)")
+        st.markdown("""**Purpose:** A semi-quantitative risk assessment tool used to systematically evaluate potential failure modes, their causes, and their effects on the system's output (e.g., a patient result).
+        **Methodology:** The Risk Priority Number (RPN) is a heuristic used for prioritization, calculated as:""")
+        st.latex(r'''RPN = S \times O \times D''')
+        st.markdown(r"""- **S (Severity):** Impact of the failure's effect.
+- **O (Occurrence):** Frequency/probability of the failure mode.
+- **D (Detection):** Probability of detecting the failure before it causes harm.
+**Interpretation & Strategic Implications:** The RPN is a valuable tool for focusing engineering and process improvement efforts. However, it can be misleading if used as the sole determinant of risk. A high-severity, low-RPN risk (e.g., S=5, O=1, D=1, RPN=5) is often of greater concern than a low-severity, high-RPN risk (e.g., S=2, O=3, D=3, RPN=18). Per ISO 14971, risk evaluation must prioritize Severity and Occurrence first, with RPN serving as a secondary prioritization tool.
+**Dashboard Link:** ***Program Health Dashboard*** & ***Risk Management*** sections.""")
+
+        st.subheader("B. Analytical Performance: Limit of Detection (LoD) via Probit Analysis")
+        st.markdown("""**Purpose:** To determine the lowest analyte concentration that can be detected with 95% probability, a critical performance metric for an early detection assay.
+        **Methodology:** Probit regression is the appropriate statistical model for quantal response (hit/no-hit) data. It linearizes the sigmoidal dose-response curve by transforming the hit rate `p` using the inverse of the standard normal CDF, $\Phi^{-1}$.
+        """)
+        st.latex(r'''\text{probit}(p) = \Phi^{-1}(p)''')
+        st.markdown(r"A linear regression is then fit to the transformed data: `probit(Hit Rate) = β₀ + β₁ log₁₀(Concentration)`. The model yields a point estimate and a confidence interval for the concentration corresponding to a 95% hit rate.
+**Interpretation & Strategic Implications:** The point estimate defines our claimed LoD. A tight confidence interval around this estimate indicates a well-behaved, robust assay with a sharp transition from non-detection to detection, which is a highly desirable characteristic. A wide confidence interval may suggest assay instability at low concentrations, requiring further process optimization.
+**Dashboard Link:** ***Statistical Workbench -> LoD/Probit*** (method), ***Design Verification*** (results).")
+        
+        st.subheader("C. Process & Measurement System Analysis: DOE, RSM, & Gauge R&R")
+        st.markdown(r'''
+        **Purpose:** A suite of statistical tools to move from a state of empirical observation to one of deep process understanding, characterization, and control—the essence of Quality by Design.
+        - **DOE (Screening):** Used to efficiently identify the factors with a statistically significant impact on the response from a large pool of potential variables. This prevents wasting resources optimizing insignificant parameters.
+        - **RSM (Optimization):** Used after screening to model curvature and interactions between significant factors, allowing for the identification of optimal process settings. Its output is a predictive model that defines a **design space** and a **Normal Operating Range (NOR)**, which are critical inputs for the DMR and regulatory filings. The fitted quadratic model is:''')
+        st.latex(r'''Y = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \beta_{12} X_1 X_2 + \beta_{11} X_1^2 + \beta_{22} X_2^2''')
+        st.markdown(r'''- **Gauge R&R (Control):** Used to quantify the variability of the measurement system itself. The ANOVA method partitions total process variation ($\sigma^2_{\text{Total}}$) into components from the parts ($\sigma^2_{\text{Part}}$) and the measurement system ($\sigma^2_{\text{Gauge R&R}}$).
+**Interpretation & Strategic Implications:** A low %GR&R (guideline: <10%) is critical, as it provides confidence that the observed process variation is real and not an artifact of measurement error. A high %GR&R (>30%) invalidates process data and indicates the measurement system itself must be improved before any process optimization can be trusted.
+**Dashboard Link:** ***Statistical Workbench*** for all three methods.''')
+        
+        st.subheader("D. Machine Learning Model Validation & Explainability")
+        st.markdown("""**Purpose:** To provide objective evidence of the classifier's performance and to address the "black box" problem, which is a primary concern for regulators reviewing AI/ML-based SaMD.
+        **Methodology:**
+        - **ROC/AUC:** Measures the model's intrinsic **discriminatory power** across all possible thresholds.
+        - **SHAP (SHapley Additive exPlanations):** A game theory-based method that computes the marginal contribution of each feature to the prediction for an individual sample. This provides **local model interpretability**.
+        **Interpretation & Strategic Implications:** These tools satisfy two distinct but equally important validation requirements. A high AUC demonstrates *what* the model can do (its clinical performance). SHAP values demonstrate *how* it does it (its scientific and biological plausibility). Providing strong evidence that the model's predictions are driven by mechanistically relevant biomarkers and not by confounding artifacts is essential for de-risking the AI/ML component of our submission.
+        **Dashboard Link:** ***ML & Bioinformatics Lab*** tab.""")
+
+    with st.expander("📄 **IV. The Regulatory Submission: Constructing the PMA**", expanded=False):
+        st.info("The PMA is not a data dump; it is a structured scientific and regulatory argument. The DHF provides the evidentiary basis for every assertion made in this argument, answering the fundamental questions of safety and effectiveness.")
+        
+        st.markdown("""
+        Our submission must construct a traceable narrative that answers the key questions posed by regulators:
+        
+        - **1. What is the device and how is it intended to be used?**
+          - *Evidence Source:* Design Plan, Labeling, Human Factors Reports.
+        
+        - **2. Does the device work reliably from a technical and engineering perspective?** (Analytical Validation)
+          - *Evidence Source:* Design Verification data, V&V reports, Software validation package (IEC 62304), and all analyses from the Statistical and ML workbenches.
+        
+        - **3. Is the device safe and effective when used in the intended patient population?** (Clinical Validation)
+          - *Evidence Source:* The complete Clinical Study Report from our IDE trial, including all statistical analyses, patient outcomes, and adverse event data.
+          
+        - **4. Can the device be manufactured consistently and reliably to its specifications?**
+          - *Evidence Source:* Design Transfer package, Process Validation data (e.g., PPQ runs), and the Device Master Record (DMR).
+          
+        - **5. Have all risks been identified and mitigated to an acceptable level?**
+          - *Evidence Source:* The complete Risk Management File (ISO 14971), including all FMEAs and the final benefit-risk determination.
+        """)
+
+        st.subheader("PMA Section-to-Dashboard Traceability")
+        st.markdown("""
+        The evidence generated and organized within this DHF Command Center directly populates the key sections of the PMA submission:
+        
         1.  **Device Description & Intended Use:** What it is and how it's used.
-        2.  **Non-Clinical (Analytical) Studies:** The complete **Analytical Validation** package (Precision, LoD, Specificity, Robustness, etc.).
-        3.  **Software/Bioinformatics Validation:** The complete software V&V package as per ISO 62304.
-        4.  **Clinical Studies:** The full results and analysis from the pivotal clinical trial, including all patient data, statistical analysis plans, and outcomes.
-        5.  **Labeling:** The proposed Instructions for Use, box labels, and Clinical Report format.
-        6.  **Manufacturing Information:** A complete description of the laboratory process (Design Transfer, SOPs, QC procedures). This is the **Device Master Record (DMR)**.
-        7.  **Quality System Information:** Evidence of compliance with 21 CFR 820.
-        8.  **Risk Management File:** The complete file as per ISO 14971.
-        
-        This dashboard is designed to be the central repository for generating and organizing the evidence required for nearly every section of the PMA.
+            *Source: Design Plan*
+        2.  **Non-clinical Laboratory Studies:** The complete **Analytical Validation** package.
+            *Source: Design Verification, Statistical Workbench*
+        3.  **Software & Bioinformatics:** The complete software V&V package, risk analysis, and AI/ML model validation/explainability.
+            *Source: Design Verification, Risk Management, ML Lab*
+        4.  **Clinical Investigations:** The full results from our pivotal IDE clinical trial.
+            *Source: Design Validation*
+        5.  **Labeling:** The proposed Instructions for Use (IFU), packaging, and Physician's Report.
+            *Source: Design Outputs, Human Factors*
+        6.  **Manufacturing Information:** The Device Master Record (DMR), detailing the full lab process.
+            *Source: Assay Transfer & Lab Operations*
+        7.  **Quality System Information & Risk Management File:** Evidence of our compliant QMS and the complete RMF.
+            *Source: All dashboard sections, especially Risk Management*
         """)
+        
+        # <<< CORRECTED BLOCK START
+        # The st.success call is now correctly placed outside the markdown string.
+        st.success("**Ultimately, the cohesive, traceable, and complete story told by our DHF is what will determine the success of our PMA submission.**")
+        # The other redundant/broken text has been removed.
+        # <<< CORRECTED BLOCK END
         
 # ==============================================================================
 # --- MAIN APPLICATION LOGIC ---
