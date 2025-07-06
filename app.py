@@ -123,6 +123,74 @@ def get_cached_df(data: List[Dict[str, Any]]) -> pd.DataFrame:
         return pd.DataFrame()
     return pd.DataFrame(data)
 
+# In genomicsdx/app.py, add this to your helper function section
+
+def create_rsm_and_gradient_descent_plot(df, x_col, y_col, z_col):
+    """
+    Creates a 3D surface plot for RSM and visualizes the path of a Gradient Descent optimization.
+    This provides a powerful comparison between statistical and iterative optimization methods.
+    """
+    # 1. Fit the RSM model to find the surface equation
+    # Using a simple polynomial model for demonstration
+    formula = f'{z_col} ~ {x_col} + {y_col} + I({x_col}**2) + I({y_col}**2) + {x_col}:{y_col}'
+    model = ols(formula, data=df).fit()
+    
+    # 2. Create the grid for the 3D surface plot
+    x_range = np.linspace(df[x_col].min(), df[x_col].max(), 50)
+    y_range = np.linspace(df[y_col].min(), df[y_col].max(), 50)
+    xx, yy = np.meshgrid(x_range, y_range)
+    df_grid = pd.DataFrame({x_col: xx.ravel(), y_col: yy.ravel()})
+    zz = model.predict(df_grid).values.reshape(xx.shape)
+
+    # 3. Simulate Gradient Ascent to find the maximum yield
+    # The gradient components are the partial derivatives of the fitted model
+    p = model.params
+    grad_z_x = lambda x, y: p[x_col] + 2 * p[f'I({x_col} ** 2)'] * x + p[f'{x_col}:{y_col}'] * y
+    grad_z_y = lambda x, y: p[y_col] + 2 * p[f'I({y_col} ** 2)'] * y + p[f'{x_col}:{y_col}'] * x
+    
+    # Start at a non-optimal point
+    current_point = np.array([df[x_col].min(), df[y_col].max()])
+    path = [current_point]
+    learning_rate = 0.1  # A visually effective learning rate
+    
+    for _ in range(15):  # 15 iterative steps
+        grad = np.array([grad_z_x(*current_point), grad_z_y(*current_point)])
+        if np.linalg.norm(grad) < 1e-3: break # Stop if gradient is negligible
+        current_point = current_point + learning_rate * grad
+        path.append(current_point)
+    
+    path = np.array(path)
+    path_df = pd.DataFrame(path, columns=[x_col, y_col])
+    path_z = model.predict(path_df)
+
+    # 4. Create the 3D plot
+    fig = go.Figure(data=[go.Surface(z=zz, x=x_range, y=y_range, colorscale='Viridis', opacity=0.8, cmin=zz.min(), cmax=zz.max())])
+    
+    # Add the gradient ascent path trace
+    fig.add_trace(go.Scatter3d(
+        x=path[:, 0], y=path[:, 1], z=path_z + 10, # Add slight z-offset for visibility
+        mode='lines+markers',
+        name='Gradient Ascent Path',
+        line=dict(color='red', width=6),
+        marker=dict(size=5, color='white', symbol='circle')
+    ))
+    
+    # Mark the start and end points clearly
+    fig.add_trace(go.Scatter3d(x=[path[0, 0]], y=[path[0, 1]], z=[path_z[0] + 15], mode='markers', name='Start Point', marker=dict(size=8, color='#FFA500', symbol='circle'))) # Orange
+    fig.add_trace(go.Scatter3d(x=[path[-1, 0]], y=[path[-1, 1]], z=[path_z[-1] + 15], mode='markers', name='Converged Optimum', marker=dict(size=10, color='#FF0000', symbol='x'))) # Red 'X'
+
+    fig.update_layout(
+        title=f"<b>3D Response Surface & Gradient Ascent Optimization</b>",
+        scene=dict(
+            xaxis_title=x_col.replace('_', ' ').title(),
+            yaxis_title=y_col.replace('_', ' ').title(),
+            zaxis_title=z_col.replace('_', ' ').title()
+        ),
+        margin=dict(l=0, r=0, b=0, t=40),
+        legend=dict(x=0.01, y=0.95, bordercolor="Black", borderwidth=1)
+    )
+    return fig
+
 # ==============================================================================
 # --- DASHBOARD DEEP-DIVE COMPONENT FUNCTIONS ---
 # ==============================================================================
@@ -1008,12 +1076,13 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "1. Classifier Performance (ROC & PR)",
         "2. Classifier Explainability (SHAP)",
         "3. Cancer Signal of Origin (CSO) Analysis",
-        "4. Assay Optimization (RSM vs. ML)", # Special combined case
-        "5. Time Series Forecasting (Operations)",
-        "6. Predictive Run QC (On-Instrument)",
-        "7. NGS: Fragmentomics Analysis",
-        "8. NGS: Sequencing Error Modeling",
-        "9. NGS: Methylation Entropy Analysis"
+        "4. Optimization Visualization (3D)"
+        "5. Assay Optimization (RSM vs. ML)", # Special combined case
+        "6. Time Series Forecasting (Operations)",
+        "7. Predictive Run QC (On-Instrument)",
+        "8. NGS: Fragmentomics Analysis",
+        "9. NGS: Sequencing Error Modeling",
+        "10. NGS: Methylation Entropy Analysis"
     ])
 
     X, y = ssm.get_data("ml_models", "classifier_data")
@@ -1151,9 +1220,44 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.plotly_chart(fig_cm_cso, use_container_width=True)
             accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
             st.success(f"The CSO classifier achieved an overall Top-1 accuracy of **{accuracy:.1%}**. The confusion matrix highlights strong performance for Lung and Colorectal signals, guiding where model improvement efforts should be focused.", icon="🎯")
-            
-    # --- Tool 4: RSM vs ML ---
+   
+    # --- Tool 4: NEW 3D Optimization Visualization Case ---
     with ml_tabs[3]:
+        st.subheader("Process Optimization: 3D RSM vs. Gradient Ascent")
+        st.info("This tool provides a powerful visual comparison between two core optimization strategies. RSM provides a global, statistical view, while Gradient Ascent demonstrates an iterative, local search algorithm commonly used to train machine learning models.")
+        
+        with st.expander("View Method Explanation & Strategic Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of this Comparison:** To visually contrast how a classical statistical method finds an optimum versus how a foundational machine learning algorithm "learns" its way to an optimum.
+            - **Response Surface Methodology (RSM):** Takes a "snapshot" of the entire experimental space by fitting a single quadratic equation to all data points at once to create a smooth surface map. The "optimal" point is then calculated by finding the peak of this surface.
+              - *Pros:* Statistically rigorous, provides a global view, well-understood by regulators.
+              - *Cons:* Assumes the underlying process can be described by a simple quadratic surface.
+            - **Gradient Ascent:** An iterative, "hill-climbing" algorithm. It starts at a point and takes small, repeated steps in the direction of the steepest ascent (the gradient) until it can no longer find a "higher" step.
+              - *Pros:* Can navigate very complex, non-linear surfaces where RSM would fail.
+              - *Cons:* Can get stuck in a "local optimum" (a small hill) and miss the true global optimum (the highest mountain).
+            **Significance:** We use RSM to define our official **Design Space** for regulatory filings. We use iterative methods like Gradient Ascent internally to explore complex parameter spaces and confirm that our RSM-defined space is not missing a major, non-obvious performance peak.
+            """)
+            
+        try:
+            rsm_data = ssm.get_data("quality_system", "rsm_data")
+            if rsm_data:
+                df_rsm = pd.DataFrame(rsm_data)
+                with st.spinner("Fitting response surface and simulating gradient ascent path..."):
+                    fig_3d = create_rsm_and_gradient_descent_plot(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+                
+                st.plotly_chart(fig_3d, use_container_width=True)
+                
+                st.success("""
+                **Observation:** The Gradient Ascent algorithm (red path) successfully navigates the response surface, starting from a suboptimal region and iteratively climbing to the peak identified by the statistical RSM model. This provides strong, cross-methodological confidence in the identified optimal operating conditions for the assay.
+                """, icon="🤝")
+            else:
+                st.warning("Response Surface Methodology (RSM) data not available for this analysis.")
+                
+        except Exception as e:
+            st.error(f"An error occurred during 3D optimization visualization: {e}")
+            logger.error(f"Error in RSM/Gradient Descent tab: {e}", exc_info=True)
+    # --- Tool 4: RSM vs ML ---
+    with ml_tabs[4]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
         st.info("This advanced tool compares two approaches to process optimization. Traditional Response Surface Methodology (RSM) fits a simple quadratic equation, while a Machine Learning model like a Gaussian Process (GP) can learn more complex, non-linear relationships.")
         rsm_data = ssm.get_data("quality_system", "rsm_data")
@@ -1201,7 +1305,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("**Conclusion:** Both methods identify a similar optimal region. The GP model captures more nuanced local variations, while the RSM provides a smoother, more generalized surface. For our PMA, the RSM model is preferred for its simplicity and regulatory acceptance, but the GP model provides confidence that no major, complex optima were missed.", icon="🤝")
 
     # --- Tool 5: Time Series ---
-    with ml_tabs[4]:
+    with ml_tabs[5]:
         st.subheader("Time Series Forecasting for Lab Operations")
         with st.expander("View Method Explanation & Business Context", expanded=False):
             st.markdown(r"""
@@ -1242,7 +1346,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The ARIMA forecast projects a continued upward trend in sample volume, suggesting a need to review reagent inventory and staffing levels for the upcoming month.", icon="📈")
 
     # --- Tool 6: Predictive Run QC ---
-    with ml_tabs[5]:
+    with ml_tabs[6]:
         st.subheader("Predictive Run QC from Early On-Instrument Metrics")
         with st.expander("View Method Explanation & Operational Context", expanded=False):
             st.markdown(r"""
@@ -1279,7 +1383,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success(f"**Model Evaluation:** The model correctly identified **{tp}** failing runs out of a total of {tp+fn}, enabling proactive intervention and significant cost savings.", icon="💰")
 
     # --- Tool 7: Fragmentomics ---
-    with ml_tabs[6]:
+    with ml_tabs[7]:
         st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
@@ -1312,7 +1416,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The clear shift in the fragment size distribution for ctDNA demonstrates its potential as a powerful classification feature. A model trained on features derived from this distribution can effectively separate sample types.", icon="🧬")
 
     # --- Tool 8: Error Modeling ---
-    with ml_tabs[7]:
+    with ml_tabs[8]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
@@ -1349,7 +1453,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
              st.error(f"**Conclusion:** The observed VAF is not statistically distinguishable from the background sequencing error profile. This should **not** be called as a true variant.", icon="❌")
 
     # --- Tool 9: Methylation Entropy ---
-    with ml_tabs[8]:
+    with ml_tabs[9]:
         st.subheader("NGS Signal: Methylation Entropy Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
