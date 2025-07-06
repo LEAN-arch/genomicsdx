@@ -1166,10 +1166,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
             """)
         
-    with ml_tabs[1]:
-        st.subheader("Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Explanation content
         try:
             with st.spinner("Calculating SHAP values..."):
                 n_samples = min(100, len(X))
@@ -1232,41 +1228,35 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.success(f"The CSO classifier achieved an overall Top-1 accuracy of **{accuracy:.1%}**. The confusion matrix highlights strong performance for Lung and Colorectal signals, guiding where model improvement efforts should be focused.", icon="🎯")
    
     # --- Tool 4: NEW 3D Optimization Visualization Case ---
-with ml_tabs[3]:
-    st.subheader("Process Optimization: 3D RSM vs. Gradient Ascent")
-    st.info("This tool provides a powerful visual comparison between two core optimization strategies. RSM provides a global, statistical view, while Gradient Ascent demonstrates an iterative, local search algorithm commonly used to train machine learning models.")
-    
-    with st.expander("View Method Explanation & Strategic Context", expanded=False):
-        st.markdown(r"""
-        **Purpose of this Comparison:** To visually contrast how a classical statistical method finds an optimum versus how a foundational machine learning algorithm "learns" its way to an optimum.
-        - **Response Surface Methodology (RSM):** Takes a "snapshot" of the entire experimental space by fitting a single quadratic equation to all data points at once to create a smooth surface map. The "optimal" point is then calculated by finding the peak of this surface.
-          - *Pros:* Statistically rigorous, provides a global view, well-understood by regulators.
-          - *Cons:* Assumes the underlying process can be described by a simple quadratic surface.
-        - **Gradient Ascent:** An iterative, "hill-climbing" algorithm. It starts at a point and takes small, repeated steps in the direction of the steepest ascent (the gradient) until it can no longer find a "higher" step.
-          - *Pros:* Can navigate very complex, non-linear surfaces where RSM would fail.
-          - *Cons:* Can get stuck in a "local optimum" (a small hill) and miss the true global optimum (the highest mountain).
-        **Significance:** We use RSM to define our official **Design Space** for regulatory filings. We use iterative methods like Gradient Ascent internally to explore complex parameter spaces and confirm that our RSM-defined space is not missing a major, non-obvious performance peak.
-        """)
+    with ml_tabs[3]:
+        st.subheader("Process Optimization: 3D RSM vs. Gradient Ascent")
+        st.info("This tool provides a powerful visual comparison between two core optimization strategies. RSM provides a global, statistical view, while Gradient Ascent demonstrates an iterative, local search algorithm commonly used to train machine learning models.")
         
-    try:
-        rsm_data = ssm.get_data("quality_system", "rsm_data")
-        if rsm_data:
-            df_rsm = pd.DataFrame(rsm_data)
-            with st.spinner("Fitting response surface and simulating gradient ascent path..."):
-                # This call now works because the helper function is self-contained or `ols` is imported globally.
-                fig_3d = create_rsm_and_gradient_descent_plot(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+        with st.expander("View Method Explanation & Strategic Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of this Comparison:** To visually contrast how a classical statistical method finds an optimum versus how a foundational machine learning algorithm "learns" its way to an optimum.
+            - **Response Surface Methodology (RSM):** Takes a "snapshot" of the entire experimental space by fitting a single quadratic equation to all data points at once to create a smooth surface map. The "optimal" point is then calculated by finding the peak of this surface.
+              - *Pros:* Statistically rigorous, provides a global view, well-understood by regulators.
+              - *Cons:* Assumes the underlying process can be described by a simple quadratic surface.
+            - **Gradient Ascent:** An iterative, "hill-climbing" algorithm. It starts at a point and takes small, repeated steps in the direction of the steepest ascent (the gradient) until it can no longer find a "higher" step.
+              - *Pros:* Can navigate very complex, non-linear surfaces where RSM would fail.
+              - *Cons:* Can get stuck in a "local optimum" (a small hill) and miss the true global optimum (the highest mountain).
+            **Significance:** We use RSM to define our official **Design Space** for regulatory filings. We use iterative methods like Gradient Ascent internally to explore complex parameter spaces and confirm that our RSM-defined space is not missing a major, non-obvious performance peak.
+            """)
             
-            st.plotly_chart(fig_3d, use_container_width=True)
-            
-            st.success("""
-            **Observation:** The Gradient Ascent algorithm (red path) successfully navigates the response surface, starting from a suboptimal region and iteratively climbing to the peak identified by the statistical RSM model. This provides strong, cross-methodological confidence in the identified optimal operating conditions for the assay.
-            """, icon="🤝")
-        else:
-            st.warning("Response Surface Methodology (RSM) data not available for this analysis.")
-            
-    except Exception as e:
-        st.error(f"An error occurred during 3D optimization visualization: {e}")
-        logger.error(f"Error in RSM/Gradient Descent tab: {e}", exc_info=True)
+            try:
+                rsm_data = ssm.get_data("quality_system", "rsm_data")
+                if rsm_data:
+                    df_rsm = pd.DataFrame(rsm_data)
+                    with st.spinner("Fitting response surface and simulating gradient ascent path..."):
+                        fig_3d = create_rsm_and_gradient_descent_plot(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+                    st.plotly_chart(fig_3d, use_container_width=True)
+                    st.success("The Gradient Ascent algorithm (red path) successfully navigates the response surface to the peak identified by the RSM model.", icon="🤝")
+                else:
+                    st.warning("Response Surface Methodology (RSM) data not available for this analysis.")
+            except Exception as e:
+                st.error(f"An error occurred during 3D optimization visualization: {e}")
+                logger.error(f"Error in RSM/Gradient Descent tab: {e}", exc_info=True)
     # --- Tool 4: RSM vs ML ---
     with ml_tabs[4]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
