@@ -1087,40 +1087,50 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
             """)
         
-        try:
-            with st.spinner("Calculating SHAP values for a data sample... This may take a moment."):
-                n_samples_for_shap = min(100, len(X))
-                st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
-                
-                X_sample = X.sample(n=n_samples_for_shap, random_state=42)
-                
-                explainer = shap.TreeExplainer(model)
-                shap_values_list = explainer.shap_values(X_sample)
-                shap_values_for_positive_class = shap_values_list[1]
-                
-                st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-
-                fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
-                shap.summary_plot(
-                    shap_values_for_positive_class, 
-                    X_sample, 
-                    show=False, 
-                    plot_type="dot"
-                )
-                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
-                plt.tight_layout()
-
-            st.pyplot(fig, clear_figure=True)
+    try:
+        with st.spinner("Calculating SHAP values for a data sample... This may take a moment."):
+            n_samples_for_shap = min(100, len(X))
+            st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
             
-            st.success(
-                "The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, "
-                "providing strong evidence of its scientific validity for the PMA submission.", 
-                icon="✅"
+            X_sample = X.sample(n=n_samples_for_shap, random_state=42)
+            
+            # 1. Create the explainer
+            explainer = shap.TreeExplainer(model)
+            
+            # 2. *** THE DEFINITIVE FIX ***
+            #    Use the explainer as a callable to get an Explanation object.
+            #    This is the modern and robust way to get SHAP values.
+            shap_values_obj = explainer(X_sample)
+            
+            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+    
+            # 3. Create the matplotlib figure to plot on
+            fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+            
+            # 4. Generate the plot. 
+            #    Pass the full Explanation object for the positive class ([:,:,1]).
+            #    The `summary_plot` function is designed to handle this object correctly.
+            shap.summary_plot(
+                shap_values_obj[:,:,1], # Select values for the positive class
+                X_sample,
+                show=False,
+                plot_type="dot"
             )
-        except Exception as e:
-            st.error(f"An error occurred during SHAP analysis: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
-            
+            fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
+            plt.tight_layout()
+    
+        # 5. Render the figure in Streamlit
+        st.pyplot(fig, clear_figure=True)
+        
+        st.success(
+            "The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, "
+            "providing strong evidence of its scientific validity for the PMA submission.", 
+            icon="✅"
+        )
+    
+    except Exception as e:
+        st.error(f"An error occurred during SHAP analysis: {e}")
+        logger.error(f"SHAP analysis failed: {e}", exc_info=True)
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
