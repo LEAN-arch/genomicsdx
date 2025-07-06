@@ -19,7 +19,6 @@ import pandas as pd
 import streamlit as st
 
 # --- Local Application Imports ---
-# <<< FIX: The missing import is added here >>>
 from ..utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
@@ -29,15 +28,6 @@ logger = logging.getLogger(__name__)
 def render_design_outputs(ssm: SessionStateManager) -> None:
     """
     Renders the UI for managing categorized Design Outputs.
-
-    This function displays outputs in separate tabs for clarity (Assay, Software,
-    Hardware, Labeling). It provides an editable table within each tab to manage
-    the outputs, including their version, status, and the critical traceability
-    link back to a specific design input requirement. It also features a
-    dashboard for analyzing the health and completeness of the DMR.
-
-    Args:
-        ssm (SessionStateManager): The session state manager to access DHF data.
     """
     st.header("5. Design Outputs (Device Master Record Basis)")
     st.markdown("""
@@ -92,7 +82,6 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
 
         st.divider()
         
-        # Create mapping for human-readable selectbox options
         req_options_map = {
             f"{req.get('id', '')}: {req.get('description', '')[:70]}...": req.get('id', '')
             for req in inputs_data if req.get('id')
@@ -112,26 +101,22 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
             st.subheader(f"{key_suffix.replace('_', ' ').title()} Specifications")
             st.caption(help_text)
             
-            # Isolate the data for the current tab
             tab_df = df[df['type'].isin(type_options)].copy()
-            if tab_df.empty:
-                # Provide a template row if the dataframe is empty to allow adding new rows
-                columns = ['id', 'type', 'title', 'version', 'status', 'approval_date', 'linked_input_id', 'link_to_artifact']
-                tab_df = pd.DataFrame([{}], columns=columns)
 
-            # --- RERUN LOOP FIX: Prepare data consistently BEFORE comparison ---
+            # <<< FIX FOR StreamlitAPIException >>>
+            if tab_df.empty:
+                # Create a truly empty DataFrame with the correct columns.
+                # Do NOT create a row of NaNs with [{}].
+                columns = ['id', 'type', 'title', 'version', 'status', 'approval_date', 'linked_input_id', 'link_to_artifact']
+                tab_df = pd.DataFrame(columns=columns)
             
-            # 1. Convert date column for editor display.
             if 'approval_date' in tab_df.columns:
                 tab_df['approval_date'] = pd.to_datetime(tab_df['approval_date'], errors='coerce')
             
-            # 2. Map the raw ID to the descriptive text for display in the editor.
             tab_df['linked_input_descriptive'] = tab_df['linked_input_id'].map(reverse_req_map)
 
-            # 3. Take a snapshot of the "before" state for a clean comparison.
             original_df = tab_df.copy()
 
-            # 4. Render the data editor
             edited_tab_df = st.data_editor(
                 tab_df, num_rows="dynamic", use_container_width=True, key=f"output_editor_{key_suffix}",
                 column_config={
@@ -142,27 +127,19 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
                     "status": st.column_config.SelectboxColumn("Status", options=["Draft", "In Review", "Approved", "Obsolete"], required=True),
                     "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
                     "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=list(req_options_map.keys()), required=True),
-                    "linked_input_id": None, # Hide the raw ID column
+                    "linked_input_id": None, 
                     "link_to_artifact": st.column_config.LinkColumn("Link to Artifact")
                 }, hide_index=True
             )
 
-            # 5. Compare the "before" and "after" DataFrames. DataFrame.equals() is robust to type differences.
             if not original_df.equals(edited_tab_df):
-                # If they are different, a change has occurred. Now, prepare the data for saving.
-                
-                # Map the descriptive text back to the raw ID for storage
                 edited_tab_df['linked_input_id'] = edited_tab_df['linked_input_descriptive'].map(req_options_map)
                 df_to_save = edited_tab_df.drop(columns=['linked_input_descriptive'])
                 
-                # Ensure date is a string for JSON serialization
                 if 'approval_date' in df_to_save.columns:
-                    # Use .dt.date to strip time before formatting, preventing NaT issues
-                    df_to_save['approval_date'] = pd.to_datetime(df_to_save['approval_date']).dt.date.astype(str).replace({'NaT': None, 'NaT': None})
+                    df_to_save['approval_date'] = pd.to_datetime(df_to_save['approval_date']).dt.date.astype(str).replace({'NaT': None, 'None': None})
 
-                # Merge back with other types and save to session state
                 other_outputs = df_outputs[~df_outputs['type'].isin(type_options)].to_dict('records')
-                # Filter out any empty rows from the editor before saving
                 cleaned_records_to_save = [rec for rec in df_to_save.to_dict('records') if rec.get('id')]
                 updated_all_outputs = other_outputs + cleaned_records_to_save
                 
