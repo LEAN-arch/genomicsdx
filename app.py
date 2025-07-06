@@ -873,9 +873,10 @@ def render_compliance_guide_tab():
         **Methodology:** Probit regression is the appropriate statistical model for quantal response (hit/no-hit) data. It linearizes the sigmoidal dose-response curve by transforming the hit rate `p` using the inverse of the standard normal CDF, $\Phi^{-1}$.
         """)
         st.latex(r'''\text{probit}(p) = \Phi^{-1}(p)''')
-        st.markdown(r"A linear regression is then fit to the transformed data: `probit(Hit Rate) = β₀ + β₁ log₁₀(Concentration)`. The model yields a point estimate and a confidence interval for the concentration corresponding to a 95% hit rate.
+        # <<< THIS IS THE CORRECTED BLOCK >>>
+        st.markdown(r"""A linear regression is then fit to the transformed data: `probit(Hit Rate) = β₀ + β₁ log₁₀(Concentration)`. The model yields a point estimate and a confidence interval for the concentration corresponding to a 95% hit rate.
 **Interpretation & Strategic Implications:** The point estimate defines our claimed LoD. A tight confidence interval around this estimate indicates a well-behaved, robust assay with a sharp transition from non-detection to detection, which is a highly desirable characteristic. A wide confidence interval may suggest assay instability at low concentrations, requiring further process optimization.
-**Dashboard Link:** ***Statistical Workbench -> LoD/Probit*** (method), ***Design Verification*** (results).")
+**Dashboard Link:** ***Statistical Workbench -> LoD/Probit*** (method), ***Design Verification*** (results).""")
         
         st.subheader("C. Process & Measurement System Analysis: DOE, RSM, & Gauge R&R")
         st.markdown(r'''
@@ -929,7 +930,7 @@ def render_compliance_guide_tab():
             *Source: Design Verification, Risk Management, ML Lab*
         4.  **Clinical Investigations:** The full results from our pivotal IDE clinical trial.
             *Source: Design Validation*
-        5.  **Labeling:** The proposed Instructions for Use (IFU), packaging, and Physician's Report.
+        .  **Labeling:** The proposed Instructions for Use (IFU), packaging, and Physician's Report.
             *Source: Design Outputs, Human Factors*
         6.  **Manufacturing Information:** The Device Master Record (DMR), detailing the full lab process.
             *Source: Assay Transfer & Lab Operations*
@@ -937,11 +938,7 @@ def render_compliance_guide_tab():
             *Source: All dashboard sections, especially Risk Management*
         """)
         
-        # <<< CORRECTED BLOCK START
-        # The st.success call is now correctly placed outside the markdown string.
         st.success("**Ultimately, the cohesive, traceable, and complete story told by our DHF is what will determine the success of our PMA submission.**")
-        # The other redundant/broken text has been removed.
-        # <<< CORRECTED BLOCK END
         
 # ==============================================================================
 # --- MAIN APPLICATION LOGIC ---
