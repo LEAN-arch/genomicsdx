@@ -199,12 +199,17 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     formula = f'{value_col} ~ C({part_col}) + C({operator_col}) + C({part_col}):C({operator_col})'
     model = ols(formula, data=df).fit()
     anova_table = anova_lm(model, typ=2)
-    ms_part = anova_table.loc[f'C({part_col})', 'mean_sq']
-    ms_operator = anova_table.loc[f'C({operator_col})', 'mean_sq']
-    ms_interact = anova_table.loc[f'C({part_col}):C({operator_col})', 'mean_sq']
+
+    # FIX: Access ANOVA table rows by integer position (iloc) to prevent KeyError.
+    # This is more robust than relying on exact string matching of index labels.
+    ms_part = anova_table.iloc[0]['mean_sq']
+    ms_operator = anova_table.iloc[1]['mean_sq']
+    ms_interact = anova_table.iloc[2]['mean_sq']
     ms_error = anova_table.loc['Residual', 'mean_sq']
+    
     n_parts, n_ops = df[part_col].nunique(), df[operator_col].nunique()
     n_replicates = df.groupby([part_col, operator_col])[value_col].count().mean()
+    
     var_repeat = ms_error
     var_operator = max(0, (ms_operator - ms_interact) / (n_parts * n_replicates))
     var_interact = max(0, (ms_interact - ms_error) / n_replicates)
@@ -212,9 +217,11 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     var_grr = var_repeat + var_reproduce
     var_part = max(0, (ms_part - ms_interact) / (n_ops * n_replicates))
     var_total = var_grr + var_part
+    
     results = pd.DataFrame({'Source': ['Total Gauge R&R', 'Repeatability', 'Reproducibility', 'Part-to-Part', 'Total Variation'], 'Variance': [var_grr, var_repeat, var_reproduce, var_part, var_total]})
     results['% Contribution'] = (results['Variance'] / var_total) * 100 if var_total > 0 else 0
     results.set_index('Source', inplace=True)
+    
     fig = px.bar(results.reset_index(), x='Source', y='% Contribution', title='<b>Gauge R&R Variance Contribution</b>', text_auto='.2f')
     return fig, results
 
@@ -468,7 +475,6 @@ def render_qbd_and_mfg_readiness(ssm: SessionStateManager) -> None:
             with col1: st.plotly_chart(surface_fig, use_container_width=True)
             with col2: st.plotly_chart(contour_fig, use_container_width=True)
             
-            # FIX: Removed the nested st.expander to prevent StreamlitAPIException
             st.subheader("RSM Model Summary")
             st.dataframe(model_summary.style.format("{:.4f}"))
         else: st.warning("Response Surface Methodology (RSM) data not available.")
@@ -626,7 +632,6 @@ def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
         edited_df = st.data_editor(df_to_edit, key="task_editor", num_rows="dynamic", use_container_width=True, column_config={"start_date": st.column_config.DateColumn("Start Date", format="YYYY-MM-DD"), "end_date": st.column_config.DateColumn("End Date", format="YYYY-MM-DD")})
         
         if st.button("Commit Task Changes & Rerun"):
-            # Convert back to string for storage if needed, or keep as datetime
             edited_df['start_date'] = edited_df['start_date'].dt.strftime('%Y-%m-%d')
             edited_df['end_date'] = edited_df['end_date'].dt.strftime('%Y-%m-%d')
             ssm.update_data(edited_df.to_dict('records'), "project_management", "tasks")
@@ -760,4 +765,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+        
         
