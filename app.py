@@ -420,6 +420,96 @@ def render_ftr_and_release_dashboard(ssm: SessionStateManager) -> None:
     except Exception as e:
         st.error("Could not render First Time Right & Release Readiness dashboard.")
         logger.error(f"Error in render_ftr_and_release_dashboard: {e}", exc_info=True)
+        
+###### QbD =++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+def render_qbd_and_mfg_readiness(ssm: SessionStateManager) -> None:
+    """Renders the Quality by Design (QbD) and Manufacturing Readiness dashboard."""
+    st.subheader("6. Quality by Design (QbD) & Manufacturing Readiness")
+    st.markdown("""
+    This section provides a deep dive into our process understanding and validation, which is foundational for a robust PMA submission and scalable manufacturing.
+    - **Quality by Design (QbD):** Demonstrates a scientific, risk-based approach to development, proving we understand how process parameters affect the final product quality.
+    - **Manufacturing Readiness:** Tracks the final validation activities (PPQ) and supply chain readiness required to transition the assay from R&D to a routine clinical laboratory.
+    """)
+
+    try:
+        # --- 1. Gather Data ---
+        rsm_data = ssm.get_data("quality_system", "rsm_data")
+        ppq_data = ssm.get_data("lab_operations", "ppq_runs")
+        assay_params = ssm.get_data("assay_performance", "parameters")
+        supplier_audits = ssm.get_data("quality_system", "supplier_audits")
+        infra_data = ssm.get_data("lab_operations", "infrastructure")
+
+        # --- 2. Create Tabs for Different Focus Areas ---
+        qbd_tabs = st.tabs(["Process Characterization (QbD)", "Process Qualification (PPQ)", "Materials & Infrastructure"])
+        
+        with qbd_tabs[0]:
+            st.markdown("#### Process Characterization & Design Space")
+            st.info("""
+            **Concept:** A core principle of QbD is linking **Critical Process Parameters (CPPs)**—the knobs we can turn in the lab (e.g., PCR cycles, DNA input)—to **Critical Quality Attributes (CQAs)**—the required properties of the final result (e.g., accuracy, precision). Our DOE and RSM studies are designed to mathematically define this relationship and establish a **Design Space**.
+            """)
+            
+            # --- Display Design Space from RSM ---
+            if rsm_data:
+                df_rsm = pd.DataFrame(rsm_data)
+                st.write("##### **Assay Design Space (from RSM Study)**")
+                st.caption("This contour plot visualizes the assay's design space for library yield. The 'Optimal Point' (⭐) represents the peak of the response surface, and the surrounding contours show how robust the process is to variations in PCR cycles and DNA input. Operating within the green/yellow regions ensures a high-yield, robust process.")
+                
+                _, contour_fig, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+                st.plotly_chart(contour_fig, use_container_width=True)
+            else:
+                st.warning("Response Surface Methodology (RSM) data not available to define the design space.")
+        
+        with qbd_tabs[1]:
+            st.markdown("#### Process Performance Qualification (PPQ)")
+            st.info("""
+            **Concept:** PPQ is the final step in process validation. It involves running the entire, locked-down manufacturing process (typically 3 consecutive, successful runs) at scale to prove it is robust, reproducible, and consistently yields a product that meets all specifications.
+            """)
+            
+            # --- PPQ Run Status ---
+            if ppq_data:
+                df_ppq = pd.DataFrame(ppq_data)
+                ppq_required = 3
+                ppq_passed = len(df_ppq[df_ppq['result'] == 'Pass'])
+                
+                st.metric(f"PPQ Status ({ppq_passed}/{ppq_required} Runs Passed)", f"{(ppq_passed / ppq_required) * 100:.0f}% Complete")
+                st.progress((ppq_passed / ppq_required))
+                
+                st.dataframe(df_ppq, use_container_width=True, hide_index=True)
+            else:
+                st.warning("No Process Performance Qualification (PPQ) data has been logged.")
+
+        with qbd_tabs[2]:
+            st.markdown("#### Critical Materials & Infrastructure Readiness")
+            st.info("""
+            **Concept:** A validated process requires validated inputs. This includes ensuring all critical laboratory equipment is qualified (IQ/OQ/PQ) and that suppliers for critical materials have been audited and approved.
+            """)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**Infrastructure Qualification**")
+                if infra_data:
+                    df_infra = pd.DataFrame(infra_data)
+                    qualified_count = len(df_infra[df_infra['status'] == 'PQ Complete'])
+                    total_count = len(df_infra)
+                    st.metric("Qualified Infrastructure", f"{qualified_count} / {total_count}", help="Number of critical assets (sequencers, LIMS) with completed Process Qualification (PQ).")
+                    st.dataframe(df_infra[['asset_id', 'equipment_type', 'status']], hide_index=True, use_container_width=True)
+                else:
+                    st.caption("No infrastructure data.")
+
+            with col2:
+                st.markdown("**Critical Supplier Status**")
+                if supplier_audits:
+                    df_suppliers = pd.DataFrame(supplier_audits)
+                    passed_count = len(df_suppliers[df_suppliers['status'] == 'Pass'])
+                    total_count = len(df_suppliers)
+                    st.metric("Approved Critical Suppliers", f"{passed_count} / {total_count}", help="Number of critical material suppliers who have passed a quality audit.")
+                    st.dataframe(df_suppliers[['supplier', 'status', 'date']], hide_index=True, use_container_width=True)
+                else:
+                    st.caption("No supplier audit data.")
+
+    except Exception as e:
+        st.error("Could not render QbD & Manufacturing Readiness dashboard.")
+        logger.error(f"Error in render_qbd_and_mfg_readiness: {e}", exc_info=True)
 # ==============================================================================
 # --- TAB RENDERING FUNCTIONS ---
 # ==============================================================================
@@ -590,7 +680,8 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
     with st.expander("Expand to see Risk & FMEA Details"): render_risk_and_fmea_dashboard(ssm)
     with st.expander("Expand to see Assay Performance and Lab Operations Readiness Details"): render_assay_and_ops_readiness_panel(ssm)
     with st.expander("Expand to see Audit & Continuous Improvement Details"): render_audit_and_improvement_dashboard(ssm)
-    with st.expander("Expand to see First Time Right (FTR) & Release Readiness Details"): render_ftr_and_release_dashboard(ssm)    
+    with st.expander("Expand to see First Time Right (FTR) & Release Readiness Details"): render_ftr_and_release_dashboard(ssm)
+    with st.expander("Expand to see QbD and Manufacturing Readiness Details"): render_qbd_and_mfg_readiness(ssm)
 
 def render_dhf_explorer_tab(ssm: SessionStateManager):
     """Renders the tab for exploring DHF sections."""
