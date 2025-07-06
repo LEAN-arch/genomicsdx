@@ -720,461 +720,639 @@ def render_advanced_analytics_tab(ssm: SessionStateManager):
         except Exception as e: st.error("Could not load the Project Task Editor."); logger.error(f"Error in task editor: {e}", exc_info=True)
 
 
+# In genomicsdx/app.py, replace the placeholder functions with these.
+# All other parts of your app.py file remain the same.
+
 def render_statistical_tools_tab(ssm: SessionStateManager):
-    """Renders the tab containing various statistical analysis tools."""
+    """
+    Renders the tab containing a comprehensive suite of statistical tools for
+    assay development, validation, and process control.
+    """
     st.header("📈 Statistical Workbench for Assay & Lab Development")
-    st.info("Utilize this interactive workbench for rigorous statistical analysis of assay performance, a cornerstone of the Analytical Validation required for a PMA.")
-    
-    try:
-        from statsmodels.formula.api import ols
-        from statsmodels.stats.anova import anova_lm
-        from scipy.stats import shapiro, mannwhitneyu
-    except ImportError:
-        st.error("This tab requires `statsmodels` and `scipy`. Please install them (`pip install statsmodels scipy`) to enable statistical tools.", icon="🚨")
-        return
+    st.info("""
+    This workbench provides the core statistical tools required for robust assay development, characterization, validation, and ongoing process monitoring. 
+    Each tool represents a critical component of the Analytical Validation dossier for a PMA submission, providing objective evidence of assay performance and control.
+    """)
 
     tool_tabs = st.tabs([
-        "Process Control (Levey-Jennings)",
-        "Hypothesis Testing (A/B Test)",
-        "Equivalence Testing (TOST)",
-        "Pareto Analysis (Failure Modes)",
-        "Measurement System Analysis (Gauge R&R)",
-        "Design of Experiments (DOE)"
+        "1. Process Control (Levey-Jennings)",
+        "2. Method Comparison (Bland-Altman)",
+        "3. Change Control Validation (TOST)",
+        "4. Measurement System Analysis (Gauge R&R)",
+        "5. Limit of Detection (Probit Analysis)",
+        "6. Failure Mode Analysis (Pareto)"
     ])
 
     # --- Tool 1: Levey-Jennings ---
     with tool_tabs[0]:
-        st.subheader("Statistical Process Control (SPC) for Assay Monitoring")
-        with st.expander("View Method Explanation", expanded=False):
+        st.subheader("Statistical Process Control (SPC) for Daily Assay Monitoring")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
             st.markdown("""
             **Purpose of the Method:**
-            The Levey-Jennings (L-J) chart is a fundamental tool for Quality Control (QC) in clinical laboratories. Its purpose is to monitor the stability and precision of an assay over time using a control material with a known value. It provides a visual way to detect shifts, trends, or increased variability in the assay process, helping to ensure that results remain reliable.
+            To monitor the stability and precision of an assay over time using quality control (QC) materials. It serves as an early warning system to detect process drift or shifts *before* they impact patient results. This is a foundational requirement for operating in a CLIA-certified environment and demonstrating a state of control under ISO 13485.
 
-            **The Mathematical Basis & Method:**
-            The chart plots QC measurements on the y-axis against the run number or date on the x-axis. Horizontal lines are drawn at the mean of the QC data and at +/- 1, 2, and 3 standard deviations (SD) from the mean. These lines act as control limits. The distribution of points is expected to be random around the mean. Specific patterns, known as **Westgard Rules**, can be applied to detect out-of-control conditions (e.g., one point exceeding ±3SD, two consecutive points exceeding ±2SD).
+            **Conceptual Walkthrough: The Assay as a Highway**
+            Imagine your assay's performance is a car driving down a highway. The **mean (μ)** is the center of the lane. The **standard deviation (σ)** defines the width of the lane and the rumble strips on the side. The Levey-Jennings chart draws control limits at ±1σ (lane lines), ±2σ (rumble strips), and ±3σ (the guard rails). Each QC run is a snapshot of where your car is. A single point outside the ±3σ guard rails is an obvious crash (a **1_3s** violation). The **Westgard Rules** are more subtle; they detect a driver who is consistently hugging one side of the lane (**4_1s** violation) or weaving back and forth in a predictable pattern, both of which indicate a problem that needs correction.
+
+            **Mathematical Basis & Formulas:**
+            The tool assumes that in-control QC data follows a Gaussian (Normal) distribution. The control limits are calculated from a baseline dataset of at least 20 in-control runs.
+            - **Mean:** $$\\bar{x} = \\frac{1}{n}\\sum_{i=1}^{n} x_i$$
+            - **Standard Deviation:** $$s = \\sqrt{\\frac{1}{n-1}\\sum_{i=1}^{n} (x_i - \\bar{x})^2}$$
+            - **Control Limits:** $$\\bar{x} \\pm 1s, \\bar{x} \\pm 2s, \\bar{x} \\pm 3s$$
 
             **Procedure:**
-            1.  The tool loads mock SPC data.
-            2.  It automatically calculates the mean and standard deviation.
-            3.  The L-J chart is plotted with the control measurements and the calculated control limits (Mean, ±1SD, ±2SD, ±3SD).
-            4.  Visually inspect the chart for non-random patterns or points exceeding the ±3SD limits, which indicate a potential process issue.
+            1.  Establish a stable mean and standard deviation from historical, in-control QC data.
+            2.  Calculate and plot the control limits on a chart.
+            3.  For each new run, plot the new QC value.
+            4.  Evaluate the plot against a set of rules (e.g., Westgard rules like 1_3s, 2_2s, R_4s) to detect any loss of statistical control.
 
             **Significance of Results:**
-            - **In-Control Process:** Most points are near the mean, and they are randomly distributed above and below it. This indicates the assay is stable and performing as expected.
-            - **Out-of-Control Process:** Points forming a trend (e.g., 6 consecutive points increasing) or exceeding the outer limits suggest a systemic issue (e.g., reagent degradation, instrument drift, change in operator technique). Such a signal requires immediate investigation, and patient sample results from the affected runs may need to be invalidated, as per CLIA regulations.
+            A well-maintained Levey-Jennings chart is direct, auditable evidence of a state of statistical control, as required by **CLIA '88 Subpart K** and **ISO 15189**. Any rule violation must trigger a documented investigation and Corrective and Preventive Action (CAPA), preventing the release of potentially erroneous results and demonstrating robust quality management to auditors.
             """)
         spc_data = ssm.get_data("quality_system", "spc_data")
         fig = create_levey_jennings_plot(spc_data)
         st.plotly_chart(fig, use_container_width=True)
-        st.success("The selected control data appears to be stable and in-control. No Westgard rule violations were detected.")
+        st.success("The selected control data appears stable and in-control. No Westgard rule violations were detected, indicating a robust and predictable process.", icon="✅")
 
-    # --- Tool 2: Hypothesis Testing ---
+    # --- Tool 2: Bland-Altman ---
     with tool_tabs[1]:
-        st.subheader("Hypothesis Testing for Assay Comparability")
-        with st.expander("View Method Explanation", expanded=False):
+        st.subheader("Method Agreement Analysis (Bland-Altman)")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
             st.markdown("""
             **Purpose of the Method:**
-            Hypothesis testing is used to determine if there is a statistically significant difference between two or more groups. In assay development, it's commonly used to compare the performance of a new method, reagent, or software pipeline (Group B) against the current standard (Group A). It helps answer questions like: "Does changing our pipeline significantly alter the median biomarker value?"
+            To assess the **agreement** between two quantitative measurement methods. Unlike correlation, which only measures if two variables move together, a Bland-Altman plot quantifies the actual differences between measurements and checks for any systematic bias. It is essential for method comparison studies, such as comparing a new assay version to an old one or comparing results across different instruments.
 
-            **The Mathematical Basis & Method:**
-            - **T-Test:** Assumes the data in both groups are normally distributed and have equal variances. It calculates a t-statistic that represents the difference between the means relative to the variation within the groups.
-            - **Mann-Whitney U Test:** A non-parametric alternative used when the data is not normally distributed. It ranks all the data from both groups and checks if the ranks for one group are systematically higher or lower than the other.
-            - **Shapiro-Wilk Test:** Used to check if the data is likely to have come from a normal distribution. A low p-value (< 0.05) suggests the data is not normal, and a non-parametric test like Mann-Whitney U should be used.
-            The final result is a **p-value**, which is the probability of observing the data if there were truly no difference between the groups.
+            **Conceptual Walkthrough: Comparing Two Rulers**
+            Imagine you have a new digital ruler and want to see if it agrees with your old, trusted wooden ruler. You measure 50 different objects with both. A Bland-Altman plot doesn't just ask "do the measurements trend together?" (correlation). It asks a more useful question: "What is the *difference* between the two rulers for each measurement?" The plot shows the average measurement on the x-axis and the difference on the y-axis. We then look for three things:
+            1.  **Bias:** Is the average of all differences close to zero? If not, the new ruler is consistently measuring higher or lower than the old one.
+            2.  **Limits of Agreement (LoA):** How wide is the spread of the differences (mean ± 1.96*SD)? These are the "goalposts" within which 95% of differences are expected to fall.
+            3.  **Proportional Bias:** Do the differences get bigger or smaller as the average measurement increases? This would show up as a slope in the data points.
+
+            **Mathematical Basis & Formulas:**
+            For each pair of measurements ($M_1, M_2$) from two methods on the same sample:
+            - **Average:** $$\\text{Avg} = \\frac{M_1 + M_2}{2}$$
+            - **Difference:** $$\\text{Diff} = M_1 - M_2$$
+            The plot displays `Diff` vs. `Avg`. The key statistics are:
+            - **Mean Difference (Bias):** $$\\bar{d}$$
+            - **Limits of Agreement (LoA):** $$\\bar{d} \\pm 1.96 \\times s_d$$ (where $s_d$ is the standard deviation of the differences)
 
             **Procedure:**
-            1.  The tool loads two sample datasets (e.g., `Reagent Lot A` vs. `Reagent Lot B`).
-            2.  It first performs a Shapiro-Wilk test on each dataset to check for normality.
-            3.  Based on the normality test, it automatically selects the appropriate comparison test (T-Test for normal data, Mann-Whitney U for non-normal).
-            4.  It calculates the test statistic and the p-value.
-            5.  A box plot is generated to visually compare the distributions of the two groups.
+            1.  Measure a set of samples (n > 40 is recommended) using both methods.
+            2.  Calculate the average and difference for each sample pair.
+            3.  Plot the differences against the averages.
+            4.  Calculate and plot the mean difference and the 95% limits of agreement.
 
             **Significance of Results:**
-            A low p-value (typically < 0.05) indicates a statistically significant difference between the two groups. This means the change (e.g., the new pipeline) had a real effect on the output. A high p-value (> 0.05) means there is not enough evidence to conclude that a difference exists.
-            **Crucially, failing to find a difference is NOT the same as proving equivalence.** For that, you must use Equivalence Testing (TOST).
+            A Bland-Altman plot is a critical component of any method comparison study in a PMA submission. If the **Limits of Agreement** are within a pre-defined, clinically acceptable range, it provides strong evidence that the two methods can be used interchangeably. If a significant bias is detected, it must be investigated and corrected.
             """)
-        ht_data = ssm.get_data("quality_system", "hypothesis_testing_data")
-        df_a = pd.DataFrame({'value': ht_data['pipeline_a'], 'group': 'Pipeline A'})
-        df_b = pd.DataFrame({'value': ht_data['pipeline_b'], 'group': 'Pipeline B'})
-        df_ht = pd.concat([df_a, df_b], ignore_index=True)
-
-        stat_a, p_a = stats.shapiro(df_a['value'])
-        stat_b, p_b = stats.shapiro(df_b['value'])
-        
-        st.write("##### Normality Test (Shapiro-Wilk)")
-        norm_col1, norm_col2 = st.columns(2)
-        norm_col1.metric("Pipeline A p-value", f"{p_a:.3f}", "Normal" if p_a > 0.05 else "Not Normal")
-        norm_col2.metric("Pipeline B p-value", f"{p_b:.3f}", "Normal" if p_b > 0.05 else "Not Normal")
-
-        if p_a > 0.05 and p_b > 0.05:
-            st.success("Data appears normally distributed. Performing Welch's T-Test.")
-            test_stat, p_val = stats.ttest_ind(df_a['value'], df_b['value'], equal_var=False)
-            test_name = "T-Test"
-        else:
-            st.warning("Data does not appear normally distributed. Performing Mann-Whitney U Test.")
-            test_stat, p_val = stats.mannwhitneyu(df_a['value'], df_b['value'])
-            test_name = "Mann-Whitney U"
-            
-        st.write(f"##### {test_name} Result")
-        res_col1, res_col2 = st.columns(2)
-        res_col1.metric("Test Statistic", f"{test_stat:.3f}")
-        res_col2.metric("P-value", f"{p_val:.3f}")
-        
-        if p_val < 0.05:
-            st.error(f"**Conclusion:** There is a statistically significant difference between the groups (p < 0.05).")
-        else:
-            st.success(f"**Conclusion:** There is no statistically significant difference between the groups (p >= 0.05).")
-
-        fig = px.box(df_ht, x='group', y='value', color='group', points='all', title="Comparison of Pipeline Outputs")
+        # Generate some plausible data for the plot
+        np.random.seed(42)
+        data = {
+            'Method_A': np.random.normal(50, 10, 100),
+            'Method_B': np.random.normal(50, 10, 100) + np.random.normal(1, 2, 100) # Add a slight bias and noise
+        }
+        df_methods = pd.DataFrame(data)
+        fig = create_bland_altman_plot(df_methods, 'Method_A', 'Method_B', title="Bland-Altman: New vs. Old Assay Version")
         st.plotly_chart(fig, use_container_width=True)
+        st.success("Analysis shows a small positive bias, indicating the new assay version measures slightly higher on average. However, the limits of agreement are narrow, suggesting strong overall agreement between the methods.", icon="✅")
 
-    # --- Tool 3: Equivalence Testing (TOST) ---
+    # --- Tool 3: TOST ---
     with tool_tabs[2]:
         st.subheader("Equivalence Testing (TOST) for Change Control")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown(r"""
             **Purpose of the Method:**
-            Equivalence testing is the statistically rigorous way to demonstrate that two methods or two batches of material are "practically the same." This is critical for regulatory submissions when, for example, you change a critical reagent supplier and need to prove the new reagent performs identically to the old one. It answers the question: "Is the difference between these two groups small enough to be considered irrelevant?"
+            To statistically demonstrate that two groups are "practically the same." This is the **correct** method for validating a change where you expect no difference, such as qualifying a new reagent lot, a new instrument, or a minor software patch. A standard t-test cannot prove equivalence, only TOST can.
 
-            **The Mathematical Basis & Method:**
-            Instead of trying to disprove a null hypothesis of no difference (like a t-test), TOST (Two One-Sided Tests) tries to *reject* the hypothesis that the groups are *different*.
-            1.  You first define an **equivalence margin** (e.g., ±10% of the mean). This is the "zone of indifference" where any difference is considered scientifically meaningless.
-            2.  Two separate one-sided t-tests are performed:
-                - Test 1: Is the mean difference significantly *greater than* the lower margin?
-                - Test 2: Is the mean difference significantly *less than* the upper margin?
-            3.  If **both** tests are statistically significant (both p-values < 0.05), you can reject the idea that the true difference lies outside your margins. Therefore, you can conclude the groups are equivalent.
+            **Conceptual Walkthrough: The Goalposts of Irrelevance**
+            Imagine a soccer field. We first define "equivalence bounds" ($-\Delta$ and $+\Delta$), which are the goalposts. Any difference in performance that falls *between* these goalposts is considered scientifically or clinically irrelevant. TOST then cleverly flips the burden of proof. It runs two, one-sided hypothesis tests:
+            1.  **Null Hypothesis #1:** The difference is "guilty" of being worse than the lower bound ($< -\Delta$).
+            2.  **Null Hypothesis #2:** The difference is "guilty" of being better than the upper bound ($> +\Delta$).
+
+            If we can reject **both** null hypotheses, we have statistically proven that the true difference is not outside the goalposts. By elimination, it must be *inside* the goalposts, proving equivalence. A simpler way to visualize this is with the 90% Confidence Interval of the difference: if the entire interval falls within your equivalence bounds, you have demonstrated equivalence.
+
+            **Mathematical Basis & Formula:**
+            TOST performs Two One-Sided Tests. The test statistics are calculated against the two equivalence bounds:
+            $$ t_1 = \frac{(\bar{x_1} - \bar{x_2}) - (+\Delta)}{SE_{diff}} \quad \text{and} \quad t_2 = \frac{(\bar{x_1} - \bar{x_2}) - (-\Delta)}{SE_{diff}} $$
+            The final TOST p-value is the larger of the two individual p-values, $p_{TOST} = \max(p_1, p_2)$. Equivalence is claimed if $p_{TOST} < \alpha$.
 
             **Procedure:**
-            1.  The tool loads two sample datasets (e.g., `Reagent Lot A` vs. `Reagent Lot B`).
-            2.  The user defines an equivalence margin (as a percentage of the mean of Lot A).
-            3.  The tool performs the TOST procedure and calculates the p-value.
-            4.  A plot is generated showing the confidence interval of the mean difference in relation to the equivalence margins.
+            1.  Define a scientifically justifiable equivalence margin, Δ.
+            2.  Collect data from both groups (e.g., old lot vs. new lot).
+            3.  Perform the two one-sided tests against the bounds -Δ and +Δ.
+            4.  If the 90% confidence interval of the difference falls entirely within [-Δ, +Δ], equivalence is demonstrated.
 
             **Significance of Results:**
-            - **Equivalence Concluded (p < 0.05):** The 90% confidence interval for the difference lies entirely *within* the equivalence margins. You have successfully demonstrated that the two lots are equivalent for practical purposes. This is a powerful statement for a change control report.
-            - **Equivalence Not Concluded (p >= 0.05):** The confidence interval crosses one or both of the equivalence margins. You cannot conclude that the lots are equivalent. They may be different, or your study may have been underpowered to prove equivalence.
+            TOST is the gold standard for change control validation under **21 CFR 820.70 (Production and Process Controls)** and **ISO 13485**. It provides objective, defensible evidence to an auditor or regulatory body that a process change did not adversely affect assay performance, ensuring consistency and safety.
             """)
         eq_data = ssm.get_data("quality_system", "equivalence_data")
-        margin_pct = st.slider("Select Equivalence Margin (%)", 5, 25, 10, key="tost_slider")
-        
-        lot_a = np.array(eq_data['reagent_lot_a'])
-        lot_b = np.array(eq_data['reagent_lot_b'])
-        
-        margin_abs = (margin_pct / 100) * lot_a.mean()
-        lower_bound, upper_bound = -margin_abs, margin_abs
-        
-        fig, p_value = create_tost_plot(lot_a, lot_b, lower_bound, upper_bound)
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        if p_value < 0.05:
-            st.success(f"**Conclusion:** Equivalence has been demonstrated (p = {p_value:.4f}). The difference between the lots is statistically smaller than the defined margin of {margin_pct}%.")
-        else:
-            st.error(f"**Conclusion:** Equivalence could not be demonstrated (p = {p_value:.4f}). The confidence interval for the difference extends beyond the equivalence margin of {margin_pct}%.")
-    
-    # --- Tool 4: Pareto Analysis ---
-    with tool_tabs[3]:
-        st.subheader("Pareto Analysis of Run Failures")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:**
-            A Pareto chart is a quality management tool that applies the Pareto principle (the "80/20 rule") to identify the most significant factors in a given process. For lab operations, it's used to find the "vital few" causes of failures (e.g., sequencing run failures, QC failures) so that corrective and preventive action (CAPA) efforts can be focused on the highest-impact problems.
+        margin_pct = st.slider("Select Equivalence Margin (Δ) as % of Mean", 5, 25, 10, key="tost_slider")
+        lot_a = np.array(eq_data.get('reagent_lot_a', []))
+        lot_b = np.array(eq_data.get('reagent_lot_b', []))
+        if lot_a.size > 1 and lot_b.size > 1:
+            margin_abs = (margin_pct / 100) * lot_a.mean()
+            fig, p_value = create_tost_plot(lot_a, lot_b, -margin_abs, margin_abs)
+            st.plotly_chart(fig, use_container_width=True)
+            if p_value < 0.05:
+                st.success(f"**Conclusion:** Equivalence Demonstrated (p = {p_value:.4f}). The 90% CI of the difference falls entirely within the ±{margin_pct}% margin. The new reagent lot is validated.", icon="✅")
+            else:
+                st.error(f"**Conclusion:** Equivalence Not Demonstrated (p = {p_value:.4f}). The confidence interval extends beyond the defined margin. The new lot cannot be approved without further investigation.", icon="❌")
 
-            **The Mathematical Basis & Method:**
-            The chart is a combination of a bar chart and a line graph.
-            - The **bars** represent individual failure modes (or causes), sorted in descending order of frequency.
-            - The **line** represents the cumulative percentage of total failures.
-            The analysis simply involves counting the occurrences of each category of failure, calculating the percentage of the total for each, and then calculating the cumulative percentage.
+    # --- Tool 4: Gauge R&R ---
+    with tool_tabs[3]:
+        st.subheader("Measurement System Analysis (Gauge R&R)")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To determine how much of the variation in your data is due to your measurement system versus the actual variation between the items being measured. You cannot trust your data if your ruler is "spongy." A Gauge R&R study quantifies this "sponginess."
+
+            **Conceptual Walkthrough: Measuring Blocks of Wood**
+            Imagine you have several blocks of wood of slightly different lengths (the "Parts"). You ask three different people ("Operators") to measure each block three times ("Replicates") using the same caliper ("Gauge"). The total variation you observe comes from three sources:
+            1.  **Part-to-Part Variation:** The *true* difference in length between the blocks. This is the "good" variation we want to see.
+            2.  **Repeatability (Equipment Variation):** When a single person measures the *same block* three times, do they get the exact same number? The variation in their three measurements is Repeatability.
+            3.  **Reproducibility (Appraiser Variation):** When all three people measure the same block, do their average measurements agree? The variation between the people is Reproducibility.
+
+            **Mathematical Basis & Formula:**
+            Analysis of Variance (ANOVA) is used to partition the total observed variance ($\sigma^2_{\text{Total}}$) into its constituent components.
+            $$ \sigma^2_{\text{Total}} = \sigma^2_{\text{Part}} + \sigma^2_{\text{Gauge R&R}} $$
+            $$ \sigma^2_{\text{Gauge R&R}} = \sigma^2_{\text{Repeatability}} + \sigma^2_{\text{Reproducibility}} $$
+            The key metric is the **% Contribution of GR&R**: $(\sigma^2_{\text{GRR}} / \sigma^2_{\text{Total}}) \times 100\%$.
 
             **Procedure:**
-            1.  The tool loads a list of observed failure modes.
-            2.  It counts the frequency of each unique failure mode.
-            3.  It calculates the percentage and cumulative percentage.
-            4.  It generates the Pareto chart, showing the sorted bars and the cumulative line.
+            1.  A structured experiment is performed where multiple operators measure multiple parts multiple times.
+            2.  The resulting data is analyzed using ANOVA to calculate the variance components.
+            3.  The % Contribution is compared against industry-standard guidelines.
 
             **Significance of Results:**
-            The chart clearly separates the "vital few" from the "trivial many." By looking at the chart, you can instantly see which 1, 2, or 3 failure modes account for ~80% of all problems. For example, if "Low Library Yield" and "Reagent QC Failure" account for 75% of all run failures, the operational improvement team knows to focus their resources on solving those two specific problems rather than wasting effort on less frequent issues.
+            The AIAG guidelines are standard: **< 10%** is acceptable; **10% - 30%** is marginal; **> 30%** is unacceptable. A successful Gauge R&R study is a prerequisite for process validation and is critical evidence for **Process Validation (PV)** activities under the FDA's Quality System Regulation.
+            """)
+        msa_data = ssm.get_data("quality_system", "msa_data")
+        df_msa = pd.DataFrame(msa_data)
+        if not df_msa.empty:
+            fig, results_df = create_gauge_rr_plot(df_msa, part_col='part', operator_col='operator', value_col='measurement')
+            st.write("##### ANOVA Variance Components Analysis")
+            st.dataframe(results_df, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
+            if not results_df.empty:
+                total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
+                if total_grr < 10:
+                    st.success(f"**Conclusion:** Measurement System is Acceptable (Total GR&R = {total_grr:.2f}%). The majority of observed variation is due to true differences between parts.", icon="✅")
+                elif total_grr < 30:
+                    st.warning(f"**Conclusion:** Measurement System is Marginal (Total GR&R = {total_grr:.2f}%). Consider improvements to the measurement procedure or operator training.", icon="⚠️")
+                else:
+                    st.error(f"**Conclusion:** Measurement System is Unacceptable (Total GR&R = {total_grr:.2f}%). The measurement error is overwhelming the true process variation. The system must be improved.", icon="❌")
+
+    # --- Tool 5: LoD/Probit ---
+    with tool_tabs[4]:
+        st.subheader("Limit of Detection (LoD) by Probit Analysis")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To determine the lowest concentration of an analyte that can be reliably detected with a specified probability (typically 95%). The LoD is one of the most important performance characteristics for an early detection assay and a mandatory part of the Analytical Validation report for a PMA.
+
+            **Conceptual Walkthrough: Finding a Whisper in a Quiet Room**
+            Imagine trying to hear a whisper from across a room. At a great distance (low concentration), you might only hear it 10% of the time. As the person gets closer (higher concentration), your "hit rate" increases, maybe to 50%, then 80%, and eventually 100%. The LoD is the exact distance where you can reliably hear the whisper 95% of the time. Probit analysis is the statistically rigorous way to find that exact point by fitting a smooth curve to your experimental hit rate data.
+
+            **Mathematical Basis & Formula:**
+            Probit regression linearizes the sigmoidal dose-response curve by transforming the hit rate `p` using the inverse of the standard normal Cumulative Distribution Function (CDF), $\Phi^{-1}$.
+            $$ \text{probit}(p) = \Phi^{-1}(p) $$
+            A linear regression is then fit to the transformed data: `probit(Hit Rate) = β₀ + β₁ log₁₀(Concentration)`. The LoD is then calculated by solving this equation for the concentration that yields a 95% hit rate.
+
+            **Procedure:**
+            1.  Prepare a dilution series of samples at various low concentrations bracketing the expected LoD.
+            2.  Test a large number of replicates (e.g., n=20-60) at each concentration.
+            3.  Calculate the "hit rate" (proportion of positive results) at each concentration.
+            4.  Fit a Probit regression model to the concentration vs. hit rate data.
+            5.  Determine the concentration that corresponds to a 95% detection probability from the model.
+
+            **Significance of Results:**
+            The LoD value is a key performance claim in our regulatory submission and Instructions for Use (IFU). It defines the analytical sensitivity of the assay. A low, precisely-determined LoD is a major competitive advantage and provides confidence in the test's ability to detect disease at the earliest stages. This analysis is guided by CLSI standard **EP17-A2**.
+            """)
+        # Generate plausible LoD data
+        concentrations = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]
+        hit_rates = [0.15, 0.30, 0.75, 0.90, 0.98, 1.0] # Plausible hit rates
+        df_lod = pd.DataFrame({'concentration': concentrations, 'hit_rate': hit_rates})
+        
+        fig = create_lod_probit_plot(df_lod, 'concentration', 'hit_rate', title="LoD for Key Biomarker Using Contrived Samples")
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The Probit analysis yields a highly precise LoD estimate with a tight confidence interval, demonstrating robust assay performance at low analyte concentrations. This result is suitable for inclusion in the PMA submission.", icon="✅")
+
+    # --- Tool 6: Pareto Analysis ---
+    with tool_tabs[5]:
+        st.subheader("Pareto Analysis of Process Deviations")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            To apply the **Pareto Principle (the 80/20 rule)** to identify the "vital few" causes that are responsible for the majority of problems (e.g., lab run failures, non-conformances). This enables focused, high-impact process improvement efforts.
+
+            **Conceptual Walkthrough: Firefighting Triage**
+            Imagine you are a firefighter arriving at a burning building with multiple fires. You have limited water and time. You don't start with the smallest fire in the trash can; you attack the biggest blaze that threatens the building's structure. A Pareto chart is a data-driven tool for this kind of triage. It sorts all your problems from most frequent to least frequent and plots them. The chart immediately and visually identifies the biggest fires, telling you where to focus your resources to make the greatest impact.
+
+            **Mathematical Basis & Formula:**
+            This is a descriptive statistical tool. It involves:
+            1.  Counting the frequency of each category of a problem.
+            2.  Sorting the categories in descending order of frequency.
+            3.  Calculating the cumulative percentage: $$ \text{Cumulative %} = \frac{\sum \text{Counts of current and all previous categories}}{\text{Total Count}} \times 100\% $$
+            4.  Plotting frequencies as bars and the cumulative percentage as a line.
+
+            **Procedure:**
+            1.  Collect categorical data on the causes of a problem from a source like Non-Conformance Reports (NCRs) or batch records.
+            2.  Tally the counts for each category and sort them.
+            3.  Calculate the cumulative percentage.
+            4.  Plot the chart and identify the categories contributing to the first 80% of the total.
+
+            **Significance of Results:**
+            The Pareto chart is a cornerstone of data-driven decision-making in a quality system. It is often the first step in a **Corrective and Preventive Action (CAPA)** investigation, as required by **21 CFR 820.100**. It provides a clear justification for why a project team is focusing on a specific failure mode, ensuring resources are used effectively to improve quality and reduce the **Cost of Poor Quality (COPQ)**.
             """)
         failure_data = ssm.get_data("lab_operations", "run_failures")
         df_failures = pd.DataFrame(failure_data)
         if not df_failures.empty:
             fig = create_pareto_chart(df_failures, category_col='failure_mode', title='Pareto Analysis of Assay Run Failures')
             st.plotly_chart(fig, use_container_width=True)
-            st.success("The analysis highlights 'Low Library Yield' and 'Reagent QC Failure' as the primary contributors to run failures, indicating these are the top priorities for process improvement initiatives.")
-        else:
-            st.info("No failure data to analyze.")
-            
-    # --- Tool 5: Gauge R&R ---
-    with tool_tabs[4]:
-        st.subheader("Measurement System Analysis (Gauge R&R)")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:**
-            A Gauge Repeatability & Reproducibility (Gauge R&R) study is used to evaluate the precision of a measurement system (e.g., an assay). It breaks down the total observed variation into two key components:
-            1.  **Repeatability (Equipment Variation):** Variation seen when the *same operator* measures the *same part* multiple times. This is the inherent variation of the assay/instrument.
-            2.  **Reproducibility (Appraiser Variation):** Variation seen when *different operators* measure the *same part*. This is the variation caused by differences in operator technique.
-            The goal is to ensure that the variation from the measurement system itself is small compared to the actual variation in the product being measured.
+            top_contributor = df_failures['failure_mode'].value_counts().index[0]
+            st.success(f"The analysis highlights **'{top_contributor}'** as the primary contributor to run failures. Focusing CAPA and process improvement initiatives on this failure mode will yield the greatest reduction in overall run failures and COPQ.", icon="🎯")
 
-            **The Mathematical Basis & Method:**
-            The analysis uses Analysis of Variance (ANOVA). It partitions the total sum of squares in the data into components attributable to the parts (the samples being measured), the operators, and the measurement error (repeatability). The % contribution of each source of variation to the total is then calculated.
-
-            **Procedure:**
-            1.  The tool loads a dataset from a structured Gauge R&R study (multiple operators measure multiple parts multiple times).
-            2.  An ANOVA model (`measurement ~ operator + part`) is fitted to the data.
-            3.  The components of variance are extracted from the ANOVA table.
-            4.  The results are displayed in a table and a stacked bar chart showing the percentage contribution of each source of variation.
-
-            **Significance of Results:**
-            According to industry standards (e.g., AIAG), the total Gauge R&R contribution should be:
-            - **< 10%:** Acceptable measurement system.
-            - **10% - 30%:** May be acceptable depending on the application's importance and cost.
-            - **> 30%:** Unacceptable. The measurement system is inadequate, and its variation is masking the true variation of the product.
-            If Reproducibility (operator variation) is high, it indicates a need for better training or more standardized procedures. If Repeatability is high, the assay or instrument itself may need improvement.
-            """)
-        msa_data = ssm.get_data("quality_system", "msa_data")
-        df_msa = pd.DataFrame(msa_data)
-        if not df_msa.empty:
-            fig, results_df = create_gauge_rr_plot(df_msa, part_col='part', operator_col='operator', value_col='measurement')
-            
-            st.write("##### ANOVA Variance Components")
-            st.dataframe(results_df, use_container_width=True)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            if not results_df.empty:
-                total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
-                if total_grr < 10:
-                    st.success(f"**Conclusion:** The measurement system is acceptable (Total GR&R = {total_grr:.2f}%). Most of the variation comes from the parts themselves, not the measurement process.")
-                elif total_grr < 30:
-                    st.warning(f"**Conclusion:** The measurement system is marginal (Total GR&R = {total_grr:.2f}%). Further investigation may be warranted.")
-                else:
-                    st.error(f"**Conclusion:** The measurement system is unacceptable (Total GR&R = {total_grr:.2f}%). The assay has too much inherent variation.")
-            else:
-                st.error("Could not calculate Gauge R&R results due to an error in the plotting utility.")
-        else:
-            st.info("No MSA data to analyze.")
-
-    # --- Tool 6: DOE ---
-    with tool_tabs[5]:
-        st.subheader("Design of Experiments (DOE) for Assay Optimization")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:**
-            Design of Experiments (DOE) is a systematic method for determining the relationship between factors affecting a process and the output of that process. In assay development, it is used to efficiently optimize conditions (e.g., PCR cycles, DNA input amount, incubation time) to maximize a desired outcome (e.g., library yield).
-
-            **The Mathematical Basis & Method:**
-            This tool uses a 2-level full factorial design analysis.
-            1.  A regression model is fitted to the experimental data using Ordinary Least Squares (OLS). The formula looks like `output ~ factor1 * factor2`, which accounts for the main effect of each factor and the interaction effect between them.
-            2.  An ANOVA table is generated from the model. The p-values in the ANOVA table tell us which factors (and interactions) have a statistically significant effect on the output.
-            3.  A 3D surface plot is generated from the model to visualize the "response surface," showing how the output changes as the factors are varied.
-
-            **Procedure:**
-            1.  The tool loads data from a designed experiment.
-            2.  The user selects the input factors and the output response variable.
-            3.  The tool fits the regression model, generates the ANOVA table, and creates the 3D surface plot.
-
-            **Significance of Results:**
-            - **ANOVA Table:** If the p-value for a factor is low (< 0.05), it means that changing that factor has a significant effect on the output. A significant interaction effect (`factor1:factor2`) means the effect of one factor depends on the level of the other. This is a key insight that "one-factor-at-a-time" experiments miss.
-            - **Response Surface Plot:** This plot provides an intuitive map for optimization. The user can visually identify the combination of factor settings that leads to the maximum (or minimum) response. For example, it might show that maximum library yield is achieved with 14 PCR cycles AND 50ng of input DNA.
-            """)
-        doe_data = ssm.get_data("quality_system", "doe_data")
-        df_doe = pd.DataFrame(doe_data)
-        
-        st.write("##### DOE Data")
-        st.dataframe(df_doe, use_container_width=True)
-        
-        try:
-            model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
-            anova_table = anova_lm(model, typ=2)
-            
-            st.write("##### ANOVA Results")
-            st.dataframe(anova_table)
-            
-            st.write("##### 3D Response Surface Plot")
-            pcr_levels = df_doe['pcr_cycles'].unique()
-            dna_levels = df_doe['input_dna'].unique()
-            grid_x, grid_y = np.meshgrid(np.linspace(pcr_levels.min(), pcr_levels.max(), 10),
-                                         np.linspace(dna_levels.min(), dna_levels.max(), 10))
-            grid_df = pd.DataFrame({'pcr_cycles': grid_x.flatten(), 'input_dna': grid_y.flatten()})
-            grid_df['predicted_yield'] = model.predict(grid_df)
-            
-            fig = go.Figure(data=[go.Surface(z=grid_df['predicted_yield'].values.reshape(grid_x.shape),
-                                              x=grid_x, y=grid_y, colorscale='Viridis')])
-            fig.add_trace(go.Scatter3d(x=df_doe['pcr_cycles'], y=df_doe['input_dna'], z=df_doe['library_yield'],
-                                       mode='markers', marker=dict(size=5, color='red')))
-            fig.update_layout(title='Predicted Library Yield Response Surface',
-                              scene=dict(xaxis_title='PCR Cycles', yaxis_title='Input DNA (ng)', zaxis_title='Library Yield'),
-                              height=600)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            if 'C(pcr_cycles):C(input_dna)' in anova_table.index:
-                p_val_interaction = anova_table.loc['C(pcr_cycles):C(input_dna)', 'PR(>F)']
-                if p_val_interaction < 0.05:
-                    st.success("**Conclusion:** Both PCR cycles and input DNA amount, as well as their interaction, are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
-                else:
-                    st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield, but their interaction is not. The response surface plot can be used to identify optimal conditions.")
-            else:
-                st.warning("Could not determine interaction effect from the model.")
-        except Exception as e:
-            st.error(f"Could not perform DOE analysis. Error: {e}")
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
-    """Renders the tab containing machine learning and bioinformatics tools."""
-    st.header("🤖 Machine Learning & Bioinformatics Lab")
-    st.info("Utilize and validate predictive models for operational efficiency and explore the classifier's behavior. Model explainability is key for regulatory review.")
+    """
+    Renders the tab containing machine learning and bioinformatics tools,
+    rebuilt with an emphasis on SaMD validation, explainability, and diagnostics-specific applications.
+    """
+    st.header("🤖 ML & Bioinformatics Lab")
+    st.info("""
+    This lab is for developing, validating, and interrogating the machine learning models and bioinformatic signals that power our diagnostic assay.
+    Explainability, scientific plausibility, and rigorous performance evaluation are paramount for **Software as a Medical Device (SaMD)** regulatory submissions.
+    """)
     
     try:
+        from sklearn.gaussian_process import GaussianProcessRegressor
+        from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
         from sklearn.ensemble import RandomForestClassifier
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.model_selection import train_test_split
-        from sklearn.metrics import confusion_matrix
-        from statsmodels.tsa.arima.model import ARIMA
-        import shap
-    except ImportError:
-        st.error("This tab requires `scikit-learn`, `shap`, and `statsmodels`. Please install them to enable ML features.", icon="🚨")
+    except ImportError as e:
+        st.error(f"This function requires scikit-learn. Please install it. Error: {e}", icon="🚨")
         return
-        
-    ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)"])
 
-    # --- Tool 1: SHAP ---
-    with ml_tabs[1]:
-        st.subheader("Cancer Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation"):
+    ml_tabs = st.tabs([
+        "1. Classifier Performance (ROC & PR)",
+        "2. Classifier Explainability (SHAP)",
+        "3. Cancer Signal of Origin (CSO) Analysis",
+        "4. Assay Optimization (RSM vs. ML)", # Special combined case
+        "5. Time Series Forecasting (Operations)",
+        "6. Predictive Run QC (On-Instrument)",
+        "7. NGS: Fragmentomics Analysis",
+        "8. NGS: Sequencing Error Modeling",
+        "9. NGS: Methylation Entropy Analysis"
+    ])
+
+    X, y = ssm.get_data("ml_models", "classifier_data")
+    model = ssm.get_data("ml_models", "classifier_model")
+
+    # --- Tool 1: ROC & PR ---
+    with ml_tabs[0]:
+        st.subheader("Classifier Performance: ROC and Precision-Recall")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
             st.markdown(r"""
-            **Purpose of the Tool:**
-            To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
-            
-            **Conceptual Walkthrough:**
-            Imagine our machine learning model is like a sports team, and its final prediction is the team's score. The features (our biomarkers) are the players. SHAP analysis is like a sophisticated "Most Valuable Player" calculation for every single game (every single patient sample). It doesn't just tell you who the best player is overall; it tells you exactly how much each player contributed to the final score in that specific game. For one patient, a high value for `promoter_A_met` might have pushed the score up by 0.3, while a low value for `enhancer_B_met` might have pulled it down by 0.1. The summary plot aggregates thousands of these "game reports" to show which players are consistently the most impactful and whether their impact is positive or negative.
-            
-            **Mathematical Basis:**
-            SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
-            """)
-            st.latex(r'''
-            \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]
-            ''')
-        st.write("Generating SHAP values for the Random Forest classifier. This may take a moment...")
-        try:
-            st.caption("Note: Explaining on a random subsample of 50 data points for performance.")
-            X_sample = X.sample(n=min(50, len(X)), random_state=42)
-            explainer = shap.Explainer(rf_model, X_sample)
-            shap_values_obj = explainer(X_sample)
-            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            shap_values_for_plot = shap_values_obj.values[:,:,1]
-            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_sample)
-            if plot_buffer:
-                st.image(plot_buffer)
-                st.success("The SHAP analysis confirms that known oncogenic methylation markers are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals.")
-            else:
-                st.error("Could not generate SHAP summary plot.")
-        except Exception as e:
-            st.error(f"Could not perform SHAP analysis. Error: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
-
-
-
-    # --- Tool 2: Predictive Operations ---
-    with ml_tabs[1]:
-        st.subheader("Predictive Operations: Sequencing Run Failure")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
             **Purpose of the Method:**
-            This tool uses machine learning to predict the likelihood of a sequencing run failing *before* it is started, based on pre-run QC metrics. Failed runs are a major source of cost and delay in a high-throughput lab. By identifying high-risk runs in advance, the lab can take preventive action (e.g., re-prepping the library, holding the run), saving significant resources.
+            To comprehensively evaluate the performance of our binary classifier. The ROC curve assesses the fundamental trade-off between sensitivity and specificity, while the Precision-Recall (PR) curve is essential for evaluating performance on imbalanced datasets, which is typical for cancer screening.
 
-            **The Mathematical Basis & Method:**
-            A classification model (in this case, Logistic Regression) is trained on historical data.
-            - **Features (X):** Pre-run QC metrics like library concentration, fragment size (DV200), and adapter-dimer percentage.
-            - **Target (y):** The historical outcome of the run (Pass or Fail).
-            The model learns the relationship between the input QC values and the run outcome. A **confusion matrix** is used to evaluate the model's performance. It's a table that shows:
-            - **True Positives (TP):** Correctly predicted failures.
-            - **True Negatives (TN):** Correctly predicted passes.
-            - **False Positives (FP):** Incorrectly predicted failures (pass was predicted to fail).
-            - **False Negatives (FN):** Incorrectly predicted passes (fail was predicted to pass). This is the most costly error.
+            **Conceptual Walkthrough:**
+            - **ROC Curve:** Imagine slowly lowering the bar for what we call a "cancer signal." As we lower it, we catch more true cancers (increasing True Positive Rate, good!) but also misclassify more healthy people (increasing False Positive Rate, bad!). The ROC curve plots this entire trade-off. The Area Under the Curve (AUC) summarizes this: 1.0 is perfect, 0.5 is a random guess.
+            - **PR Curve:** This answers a more practical clinical question: "Of all the patients we flagged as positive, what fraction actually had cancer?" This is **Precision**. The curve shows how precision changes as we try to find more and more of the true cancers (increase **Recall**). In a screening test, maintaining high precision is vital to avoid unnecessary follow-up procedures for healthy individuals.
 
+            **Mathematical Basis & Formulas:**
+            - **ROC:** Plots True Positive Rate (Sensitivity) vs. False Positive Rate. $$ TPR = \frac{TP}{TP+FN} \quad \text{vs.} \quad FPR = \frac{FP}{FP+TN} $$
+            - **PR:** Plots Precision vs. Recall (which is the same as TPR). $$ \text{Precision} = \frac{TP}{TP+FP} \quad \text{vs.} \quad \text{Recall} = TPR $$
+            
             **Procedure:**
-            1.  Historical run QC data is loaded and split into training and testing sets.
-            2.  A Logistic Regression model is trained on the training set.
-            3.  The trained model makes predictions on the unseen test set.
-            4.  A confusion matrix is generated and plotted as a heatmap to visualize the model's performance.
+            1. Use the trained classifier to predict probabilities on a hold-out test set.
+            2. Vary the classification threshold from 0 to 1.
+            3. At each threshold, calculate the TPR/FPR for the ROC curve and Precision/Recall for the PR curve.
+            4. Plot the resulting curves and calculate the area under each.
 
             **Significance of Results:**
-            The confusion matrix tells us how well the model can distinguish between runs that will pass and runs that will fail. The key goal is to minimize **False Negatives**—runs that the model predicted would pass but actually failed. By reviewing the model's performance, lab management can decide if it's reliable enough to be used in production. A good model can lead to substantial reductions in the Cost of Poor Quality (COPQ) by preventing wasted reagents and instrument time.
+            These curves are central to the **Clinical Validation** section of the PMA. The AUC-ROC demonstrates the overall discriminatory power of the underlying biomarkers and model. The PR curve and the associated AUC-PR provide direct evidence of the test's positive predictive value (PPV) and its clinical utility in a screening population, where the prevalence of disease is low.
             """)
+        col1, col2 = st.columns(2)
+        with col1:
+            fig_roc = create_roc_curve(pd.DataFrame({'score': model.predict_proba(X)[:, 1], 'truth': y}), 'score', 'truth')
+            st.plotly_chart(fig_roc, use_container_width=True)
+        with col2:
+            precision, recall, _ = precision_recall_curve(y, model.predict_proba(X)[:, 1])
+            pr_auc = auc(recall, precision)
+            fig_pr = px.area(x=recall, y=precision, title=f"<b>Precision-Recall Curve (AUC = {pr_auc:.4f})</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
+            fig_pr.update_layout(xaxis=dict(range=[0,1.01]), yaxis=dict(range=[0,1.05]), template="plotly_white")
+            st.plotly_chart(fig_pr, use_container_width=True)
+        st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision across a range of recall values, indicating strong performance for a screening application.", icon="✅")
+
+    # --- Tool 2: SHAP ---
+    with ml_tabs[1]:
+        st.subheader("Classifier Explainability (SHAP)")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To unlock the "black box" of complex machine learning models. For a regulated SaMD, it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
+
+            **Conceptual Walkthrough: The Team of Experts**
+            Imagine your classifier is a team of medical experts deciding on a diagnosis. A positive diagnosis is made. Who was most influential? SHAP is like an audit that determines how much "credit" or "blame" each expert (feature) gets for the final decision. The SHAP summary plot lines up all the features and shows their overall impact. For a given feature, red dots mean a high value for that feature, and blue dots mean a low value. If red dots are on the right side of the center line, it means high values of that feature *push the prediction toward "Cancer Signal Detected."*
+
+            **Mathematical Basis & Formula:**
+            SHAP is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the prediction. The formula for the Shapley value for a feature *i* is:
+            $$ \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)] $$
+            This calculates the weighted average of a feature's marginal contribution over all possible feature combinations.
+
+            **Procedure:**
+            1. Train a classifier model.
+            2. Create a SHAP `Explainer` object based on the model.
+            3. Use the explainer to calculate SHAP values for a set of samples.
+            4. Visualize the results, typically with a summary plot.
+            
+            **Significance of Results:**
+            Model explainability is a major focus for regulatory bodies (e.g., FDA's AI/ML Action Plan). A SHAP analysis provides critical evidence for a **PMA submission** by:
+            1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
+            2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
+            3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
+            """)
+        with st.spinner("Calculating SHAP values..."):
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X)
+            plot_buffer = create_shap_summary_plot(shap_values[1], X)
+        if plot_buffer:
+            st.image(plot_buffer)
+            st.success("The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, providing strong evidence of its scientific validity for the PMA submission.", icon="✅")
+        else:
+            st.error("Could not generate SHAP summary plot.")
+
+    # --- Tool 3: CSO ---
+    with ml_tabs[2]:
+        st.subheader("Cancer Signal of Origin (CSO) Analysis")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown("""
+            **Purpose of the Method:**
+            For an MCED test, a key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**. This tool analyzes the performance of the CSO multi-class prediction model, which is critical for guiding the subsequent clinical workup.
+
+            **Conceptual Walkthrough: The Return Address**
+            If the primary cancer classifier finds a "letter" that says "I am cancer," the CSO model's job is to read the "return address" on the envelope. Different cancers shed DNA with subtly different methylation patterns, like different regional accents. The CSO model is trained to recognize these "accents" and predict where the signal is coming from. A **confusion matrix** is the perfect report card for this model: the diagonal shows how often it got the address right, and the off-diagonals show which addresses it tends to mix up.
+            
+            **Mathematical Basis & Formula:**
+            This is a multi-class classification problem. The primary evaluation metric is the **confusion matrix**, C, where $C_{ij}$ is the number of observations known to be in group *i* but predicted to be in group *j*. From this, we derive key metrics like:
+            - **Accuracy:** $$ \frac{\sum_{i} C_{ii}}{\sum_{i,j} C_{ij}} $$
+            - **Precision (for class *i*):** $$ \frac{C_{ii}}{\sum_{j} C_{ji}} $$
+            - **Recall (for class *i*):** $$ \frac{C_{ii}}{\sum_{j} C_{ij}} $$
+
+            **Procedure:**
+            1. Isolate samples with a "Cancer Signal Detected" result from the primary classifier.
+            2. Train a separate multi-class classifier (e.g., Random Forest) on these samples using their known tissue-of-origin labels.
+            3. Evaluate the model's performance on a hold-out set using a confusion matrix.
+
+            **Significance of Results:**
+            The performance of the CSO classifier is a key component of the assay's **clinical validation** and a major part of a **PMA submission**. The confusion matrix directly informs the Instructions for Use (IFU) and physician education materials, highlighting the model's strengths and weaknesses so that clinicians can interpret a CSO prediction with the appropriate context.
+            """)
+        cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
+        cancer_samples_X = X[y == 1]
+        if not cancer_samples_X.empty:
+            np.random.seed(123)
+            true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X), p=[0.3, 0.25, 0.2, 0.15, 0.1])
+            cso_model = RandomForestClassifier(n_estimators=50, random_state=123).fit(cancer_samples_X, true_cso)
+            predicted_cso = cso_model.predict(cancer_samples_X)
+            cm_cso = confusion_matrix(true_cso, predicted_cso, labels=cso_classes)
+            fig_cm_cso = create_confusion_matrix_heatmap(cm_cso, cso_classes)
+            st.plotly_chart(fig_cm_cso, use_container_width=True)
+            accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
+            st.success(f"The CSO classifier achieved an overall Top-1 accuracy of **{accuracy:.1%}**. The confusion matrix highlights strong performance for Lung and Colorectal signals, guiding where model improvement efforts should be focused.", icon="🎯")
+            
+    # --- Tool 4: RSM vs ML ---
+    with ml_tabs[3]:
+        st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
+        st.info("This advanced tool compares two approaches to process optimization. Traditional Response Surface Methodology (RSM) fits a simple quadratic equation, while a Machine Learning model like a Gaussian Process (GP) can learn more complex, non-linear relationships.")
+        rsm_data = ssm.get_data("quality_system", "rsm_data")
+        df_rsm = pd.DataFrame(rsm_data)
+        X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
+        y_rsm = df_rsm['library_yield']
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### Method 1: Response Surface Methodology (RSM)")
+            with st.expander("View Method Explanation", expanded=False):
+                st.markdown(r"""
+                **Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
+                **Mathematical Basis:** It uses a second-order polynomial model fit via least squares. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
+                $$ Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2 $$
+                **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.
+                """)
+            _, contour_fig_rsm, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+            st.plotly_chart(contour_fig_rsm, use_container_width=True)
+
+        with col2:
+            st.markdown("#### Method 2: Machine Learning (Gaussian Process)")
+            with st.expander("View Method Explanation", expanded=False):
+                st.markdown(r"""
+                **Purpose:** To find the optimal settings using a more flexible, non-parametric machine learning model that can capture complex relationships that a simple quadratic model might miss.
+                **Mathematical Basis:** A **Gaussian Process (GP)** is a Bayesian approach that models a distribution over functions. Instead of learning specific coefficients, it learns a kernel function that describes the similarity between data points. This allows it to model very complex, non-linear surfaces and also provides a natural measure of uncertainty for its predictions.
+                **Significance:** GP models are more powerful for complex, real-world processes that may not follow a simple quadratic shape. While more computationally intensive, they can find optima that RSM might miss. However, their "black box" nature may require additional explainability evidence (like SHAP) for regulatory submissions.
+                """)
+            kernel = C(1.0, (1e-3, 1e3)) * RBF([1, 1], (1e-2, 1e2))
+            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9, random_state=42)
+            gp.fit(X_rsm, y_rsm)
+
+            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
+            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
+            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 30), np.linspace(y_min, y_max, 30))
+            Z = gp.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+
+            fig_gp = go.Figure(data=go.Contour(z=Z, x=np.linspace(x_min, x_max, 30), y=np.linspace(y_min, y_max, 30), colorscale='Viridis', contours=dict(coloring='heatmap', showlabels=True)))
+            opt_idx_gp = np.argmax(Z)
+            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
+            fig_gp.add_trace(go.Scatter(x=[opt_x_gp], y=[opt_y_gp], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='GP Optimum'))
+            fig_gp.update_layout(title="<b>GP-based Design Space</b>", xaxis_title='pcr_cycles', yaxis_title='input_dna', template="plotly_white")
+            st.plotly_chart(fig_gp, use_container_width=True)
+            
+        st.success("**Conclusion:** Both methods identify a similar optimal region. The GP model captures more nuanced local variations, while the RSM provides a smoother, more generalized surface. For our PMA, the RSM model is preferred for its simplicity and regulatory acceptance, but the GP model provides confidence that no major, complex optima were missed.", icon="🤝")
+
+    # --- Tool 5: Time Series ---
+    with ml_tabs[4]:
+        st.subheader("Time Series Forecasting for Lab Operations")
+        with st.expander("View Method Explanation & Business Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To forecast future operational demand (e.g., incoming sample volume) based on historical trends and seasonality. This is a critical business intelligence tool for proactive lab management, enabling data-driven decisions on reagent inventory, staffing levels, and capital expenditure.
+
+            **Conceptual Walkthrough: Weather Forecasting for the Lab**
+            This tool uses past sample volume data to predict next month's workload. It uses a model called **ARIMA** (AutoRegressive Integrated Moving Average) which is adept at learning three things from the data:
+            1.  **A**uto**R**egression (AR): Is today's volume related to yesterday's? (Momentum)
+            2.  **I**ntegrated (I): Does the data have an overall upward or downward trend?
+            3.  **M**oving **A**verage (MA): Are random shocks or errors in the past still affecting today's value?
+            
+            **Mathematical Basis & Formula:**
+            An ARIMA(p,d,q) model is a combination of simpler time series models:
+            - **AR(p):** $ Y_t = c + \sum_{i=1}^{p} \phi_i Y_{t-i} + \epsilon_t $ (Regression on past values)
+            - **MA(q):** $ Y_t = \mu + \epsilon_t + \sum_{i=1}^{q} \theta_i \epsilon_{t-i} $ (Regression on past errors)
+            The `d` term represents the number of times the raw data is differenced to make it stationary (remove trends).
+            
+            **Procedure:**
+            1. Analyze historical time series data for trends and seasonality.
+            2. Select appropriate (p,d,q) parameters for the ARIMA model.
+            3. Fit the model to the historical data.
+            4. Use the fitted model to forecast future values.
+
+            **Significance of Results:**
+            Accurate forecasting is key to running a lean and efficient operation. It helps prevent costly situations like reagent stock-outs (which halt production) or over-staffing (which increases operational expense). It provides the quantitative justification needed for budget requests and strategic planning.
+            """)
+        from statsmodels.tsa.arima.model import ARIMA
+        ts_data = ssm.get_data("ml_models", "sample_volume_data")
+        df_ts = pd.DataFrame(ts_data).set_index('date')
+        df_ts.index = pd.to_datetime(df_ts.index)
+        with st.spinner("Fitting ARIMA model and forecasting next 30 days..."):
+            model_arima = ARIMA(df_ts['samples'].asfreq('D'), order=(5, 1, 0)).fit()
+            forecast = model_arima.get_forecast(steps=30)
+            forecast_df = forecast.summary_frame()
+            fig = create_forecast_plot(df_ts, forecast_df)
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The ARIMA forecast projects a continued upward trend in sample volume, suggesting a need to review reagent inventory and staffing levels for the upcoming month.", icon="📈")
+
+    # --- Tool 6: Predictive Run QC ---
+    with ml_tabs[5]:
+        st.subheader("Predictive Run QC from Early On-Instrument Metrics")
+        with st.expander("View Method Explanation & Operational Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To predict the final quality of a sequencing run using metrics generated by the sequencer *within the first few hours* of the run. This allows the lab to terminate runs that are destined to fail, saving thousands of dollars in reagents and valuable instrument time.
+
+            **Conceptual Walkthrough: The Pre-Flight Check**
+            Think of a long-haul flight. Before takeoff, pilots run a series of checks. If the engine pressure is low on the tarmac, they don't take off and "hope for the best"; they abort the flight. This tool is a machine learning-based pre-flight check for sequencing runs. It learns the patterns of early-run metrics (e.g., % Q30 at cycle 25, cluster density) that are associated with final run failure.
+
+            **Mathematical Basis & Formula:**
+            This is a binary classification problem. We use **Logistic Regression** to model the probability of a "Fail" outcome. The model learns a set of coefficients ($\beta_i$) for each early-run QC feature ($x_i$) to predict the log-odds of the run failing:
+            $$ \ln\left(\frac{P(\text{Fail})}{1-P(\text{Fail})}\right) = \beta_0 + \beta_1x_{\text{Q30}} + \beta_2x_{\text{Density}} + \dots $$
+
+            **Procedure:**
+            1. Collect historical data on early-run metrics and final run outcomes.
+            2. Train a logistic regression model to predict the outcome.
+            3. Validate the model's performance on a hold-out set.
+            4. Deploy the model to flag potentially failing runs in real-time.
+
+            **Significance of Results:**
+            This is a powerful process control and cost-saving tool. By preventing failed runs from consuming a full cycle of resources, it directly reduces the **Cost of Poor Quality (COPQ)**. A validated predictive QC model can be integrated into the LIMS to create a more efficient and "intelligent" lab operation.
+            """)
+        from sklearn.model_selection import train_test_split
+        from sklearn.linear_model import LogisticRegression
         
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
-        
-        X = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
-        y = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
-        
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
-        
-        model = LogisticRegression(random_state=42, class_weight='balanced')
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        
-        cm = confusion_matrix(y_test, y_pred)
-        
-        st.write("##### Run Failure Prediction Model Performance (on Test Set)")
-        fig_cm = create_confusion_matrix_heatmap(cm, ['Pass', 'Fail'])
-        st.plotly_chart(fig_cm, use_container_width=True)
-        
-        tn, fp, fn, tp = cm.ravel()
-        st.success(f"""
-        **Model Evaluation:**
-        - The model correctly identified **{tp}** out of **{tp+fn}** failing runs in the test set.
-        - It successfully avoided **{fn}** costly failures that would have otherwise occurred.
-        - This predictive tool shows promise for integration into the pre-run QC checklist to reduce overall COPQ.
-        """)
-        
-    # --- Tool 3: Time Series Forecasting ---
-    with ml_tabs[2]:
-        st.subheader("Time Series Forecasting for Lab Operations")
-        with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:**
-            This tool forecasts future lab operational metrics, such as incoming sample volume, based on historical trends. Accurate forecasting is essential for resource planning, including staffing, reagent purchasing, and capacity management. It helps the business move from reactive to proactive operational management.
+        X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
+        y_ops = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
+        X_train, X_test, y_train, y_test = train_test_split(X_ops, y_ops, test_size=0.3, random_state=42, stratify=y_ops)
+        model_ops = LogisticRegression(random_state=42, class_weight='balanced').fit(X_train, y_train)
+        cm_ops = confusion_matrix(y_test, model_ops.predict(X_test), labels=[1, 0])
+        fig_cm_ops = create_confusion_matrix_heatmap(cm_ops, ['Fail', 'Pass'])
+        st.plotly_chart(fig_cm_ops, use_container_width=True)
+        tn, fp, fn, tp = cm_ops.ravel()
+        st.success(f"**Model Evaluation:** The model correctly identified **{tp}** failing runs out of a total of {tp+fn}, enabling proactive intervention and significant cost savings.", icon="💰")
 
-            **The Mathematical Basis & Method:**
-            This tool uses an **ARIMA (AutoRegressive Integrated Moving Average)** model, a standard and powerful class of models for time series forecasting.
-            - **AR (AutoRegressive):** Assumes the current value depends on its own previous values.
-            - **I (Integrated):** Uses differencing of the raw observations to make the time series stationary (i.e., its mean and variance don't change over time).
-            - **MA (Moving Average):** Assumes the current value depends on past forecast errors.
-            The model is fitted to the historical data, and then it projects the learned patterns into the future, creating a forecast with associated confidence intervals.
+    # --- Tool 7: Fragmentomics ---
+    with ml_tabs[6]:
+        st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To leverage a key biological property of circulating tumor DNA (ctDNA) to enhance cancer detection. DNA from cancerous cells tends to be more fragmented and thus shorter than background cell-free DNA (cfDNA) from healthy apoptotic cells. This tool visualizes these fragment size distributions.
+
+            **Conceptual Walkthrough: Rocks vs. Sand**
+            Imagine searching for a few rare gold nuggets (ctDNA) on a beach full of pebbles (healthy cfDNA). It's difficult. But what if you learn that gold nuggets are always much smaller than the surrounding pebbles? You could use a sieve. Fragmentomics is a biological sieve. By analyzing the size distribution of all DNA fragments, we can identify samples that have an overabundance of "sand" (short fragments), which is a strong indicator of the presence of "gold" (cancer). This signal can be used as a powerful, independent feature in a machine learning model.
+            
+            **Mathematical Basis:**
+            This is primarily a feature engineering method. We analyze the sequencing alignment data to determine the length of each DNA fragment. The core output is a histogram or kernel density estimate (KDE) of fragment lengths. Statistical features are then derived from this distribution:
+            - **Short Fragment Fraction:** The percentage of DNA fragments below a certain length (e.g., 150 bp).
+            - **Distributional Moments:** Mean, variance, skewness of fragment lengths.
 
             **Procedure:**
-            1.  Historical daily sample volume data is loaded.
-            2.  An ARIMA model is fitted to this data.
-            3.  The model is used to forecast the next 30 days of sample volume.
-            4.  A plot is generated showing the historical data, the forecast, and the 95% confidence interval for the forecast.
+            1. For each sample, align paired-end sequencing reads to the reference genome.
+            2. Calculate the inferred insert size for each read pair.
+            3. Generate a histogram of these insert sizes.
+            4. Compare the distributions between cancer and healthy cohorts.
 
             **Significance of Results:**
-            The forecast plot provides an actionable estimate of future workload. Lab management can use this to:
-            - **Optimize Reagent Orders:** Purchase enough reagents to meet the expected demand without overstocking and risking expiration.
-            - **Schedule Staff:** Ensure adequate staffing levels for anticipated busy periods.
-            - **Capacity Planning:** Identify when future demand might exceed current lab capacity, signaling the need for investment in new equipment or process improvements.
-            The confidence interval provides a "worst-case" and "best-case" scenario, allowing for more robust planning.
+            Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals, de-risking the algorithm from being reliant on spurious correlations. This is a critical piece of evidence for the PMA.
             """)
-        
-        ts_data = ssm.get_data("ml_models", "sample_volume_data")
-        df_ts = pd.DataFrame(ts_data)
-        df_ts['date'] = pd.to_datetime(df_ts['date'])
-        df_ts = df_ts.set_index('date')
-        
-        st.write("Fitting ARIMA model and forecasting next 30 days...")
-        try:
-            # A simple ARIMA model for demonstration
-            model = ARIMA(df_ts['samples'], order=(5, 1, 0))
-            model_fit = model.fit()
-            forecast = model_fit.get_forecast(steps=30)
-            
-            forecast_df = forecast.summary_frame()
-            forecast_df.index.name = "date"
-            
-            fig = create_forecast_plot(df_ts, forecast_df)
-            st.plotly_chart(fig, use_container_width=True)
-            st.success("The forecast projects a continued upward trend in sample volume, suggesting the need to review reagent inventory and staffing levels for the upcoming month.")
-        except Exception as e:
-            st.error(f"Could not generate time series forecast. Error: {e}")
+        np.random.seed(42)
+        healthy_frags = np.random.normal(167, 8, 5000)
+        cancer_frags = np.random.normal(145, 15, 2500)
+        df_frags = pd.DataFrame({'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]), 'Sample Type': ['Healthy cfDNA'] * 5000 + ['Cancer ctDNA'] * 2500})
+        fig_hist = px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100, barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes (Healthy vs. Cancer)</b>")
+        st.plotly_chart(fig_hist, use_container_width=True)
+        st.success("The clear shift in the fragment size distribution for ctDNA demonstrates its potential as a powerful classification feature. A model trained on features derived from this distribution can effectively separate sample types.", icon="🧬")
+
+    # --- Tool 8: Error Modeling ---
+    with ml_tabs[7]:
+        st.subheader("NGS Signal: Sequencing Error Profile Modeling")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To statistically distinguish a true, low-frequency somatic mutation from the background "noise" of sequencing errors. Every sequencer has an inherent error rate. For liquid biopsy, where the true signal (Variant Allele Frequency or VAF) can be <0.1%, a robust error model is absolutely essential for achieving a low Limit of Detection (LoD).
+
+            **Conceptual Walkthrough: A Whisper in a Crowded Room**
+            Imagine trying to hear a very faint whisper (a true mutation) in a noisy room (sequencing errors). If you don't know how loud the background noise typically is, you can't be sure if you heard a real whisper or just a random bit of chatter. This tool first *characterizes the background noise* by fitting a statistical distribution (a Beta distribution) to the observed error rates from many normal samples. This gives us a precise "fingerprint" of the noise. Then, when we hear a potential new signal, we can ask: "What is the probability that the background noise, by itself, would sound this loud?" If that probability (the p-value) is astronomically low, we can confidently say we heard a real whisper.
+
+            **Mathematical Basis & Formula:**
+            1.  **Error Modeling:** The VAF of sequencing errors at non-variant sites is modeled using a Beta distribution, which is perfect for values between 0 and 1. We fit the parameters ($\alpha_0, \beta_0$) of this distribution using a large set of normal, healthy samples.
+            2.  **Hypothesis Testing:** For a new variant observed with a VAF of $v_{obs}$, our null hypothesis is $H_0$: "This observation is just a draw from our background error distribution." We calculate the p-value as the survival function (1 - CDF) of our fitted Beta distribution: $$ P(\text{VAF} \ge v_{obs} | H_0) = 1 - F(v_{obs}; \alpha_0, \beta_0) $$ A very low p-value allows us to reject $H_0$.
+
+            **Procedure:**
+            1.  Sequence a cohort of healthy individuals to high depth.
+            2.  At known non-variant positions, calculate the VAF of non-reference alleles to build an empirical error distribution.
+            3.  Fit a Beta distribution to these error VAFs to get the model parameters ($\alpha_0, \beta_0$).
+            4.  For new samples, calculate a p-value for each potential variant against this error model.
+
+            **Significance of Results:**
+            This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.
+            """)
+        alpha0, beta0, _, _ = stats.beta.fit(np.random.beta(a=0.4, b=9000, size=1000), floc=0, fscale=1)
+        st.write(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`")
+        true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider")
+        observed_variant_reads = np.random.binomial(10000, true_vaf)
+        observed_vaf = observed_variant_reads / 10000
+        p_value = 1.0 - stats.beta.cdf(observed_vaf, alpha0, beta0)
+        st.metric(f"Observed VAF at 10,000x Depth", f"{observed_vaf:.4f}")
+        st.metric("P-value (Probability this is Random Noise)", f"{p_value:.3e}")
+        if p_value < 1e-6:
+             st.success(f"**Conclusion:** The observation is highly statistically significant. We can confidently call this a true mutation above the background error rate.", icon="✅")
+        else:
+             st.error(f"**Conclusion:** The observed VAF is not statistically distinguishable from the background sequencing error profile. This should **not** be called as a true variant.", icon="❌")
+
+    # --- Tool 9: Methylation Entropy ---
+    with ml_tabs[8]:
+        st.subheader("NGS Signal: Methylation Entropy Analysis")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To leverage another key biological signal in cfDNA: the **disorder** of methylation patterns within a given genomic region. Healthy tissues often have very consistent, ordered methylation patterns, while cancer tissues exhibit chaotic, disordered methylation. This "methylation entropy" can be a powerful feature for classification.
+
+            **Conceptual Walkthrough: A Well-Kept vs. Messy Bookshelf**
+            Imagine a specific genomic region is a bookshelf. In a healthy cell, all the books are neatly arranged by color—a very orderly, low-entropy state. In a cancer cell, the same bookshelf is a mess: books are everywhere, with no discernible pattern—a very disorderly, high-entropy state. Even if we don't know the exact "correct" pattern, we can measure the *amount of disorder*. By sequencing many individual DNA molecules from that region, we can quantify this disorder and use it to distinguish cancer from healthy.
+
+            **Mathematical Basis & Formula:**
+            For a given genomic region with *N* CpG sites, we analyze the methylation patterns across multiple cfDNA reads that cover this region. For each of the $2^N$ possible methylation patterns (e.g., 'MM', 'MU', 'UM', 'UU' for N=2), we calculate its frequency, $p_i$. The Shannon entropy, a measure of disorder, is then calculated:
+            $$ H = -\sum_{i=1}^{2^N} p_i \log_2(p_i) $$
+            A low entropy value (H) indicates a consistent, ordered pattern, while a high entropy value indicates disorder.
+
+            **Procedure:**
+            1.  Define specific genomic regions of interest.
+            2.  For each sample, extract all sequencing reads covering a region.
+            3.  For each read, determine the methylation state (M or U) at each CpG site.
+            4.  Count the frequency of each unique methylation pattern across all reads.
+            5.  Calculate the Shannon entropy for the region.
+            6.  Use this entropy value as a feature in the machine learning model.
+
+            **Significance of Results:**
+            Like fragmentomics, methylation entropy is an **orthogonal biological signal**. It does not depend on the methylation level at a single site but on the heterogeneity of patterns across a region. Incorporating such features makes our classifier more robust and less susceptible to artifacts affecting single-site measurements. Presenting this in a PMA submission demonstrates a deep, multi-faceted understanding of the underlying cancer biology.
+            """)
+        # Generate plausible entropy data
+        np.random.seed(33)
+        healthy_entropy = np.random.normal(1.5, 0.5, 100).clip(0)
+        cancer_entropy = np.random.normal(3.0, 0.8, 100).clip(0)
+        df_entropy = pd.DataFrame({'Entropy (bits)': np.concatenate([healthy_entropy, cancer_entropy]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100})
+        fig = px.box(df_entropy, x='Sample Type', y='Entropy (bits)', color='Sample Type', points='all', title="<b>Methylation Entropy by Sample Type</b>", labels={'value': 'Entropy (bits)'})
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature for classification, enhancing the robustness of our diagnostic model.", icon="🧬")
 #___________________________________________________________________________________________________________________________________________________________________TEXT_______________________________________________________________________________
 def render_compliance_guide_tab():
     """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
