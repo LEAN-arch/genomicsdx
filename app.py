@@ -200,12 +200,11 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     model = ols(formula, data=df).fit()
     anova_table = anova_lm(model, typ=2)
 
-    # FIX: Access ANOVA table rows by integer position (iloc) to prevent KeyError.
-    # This is more robust than relying on exact string matching of index labels.
-    ms_part = anova_table.iloc[0]['mean_sq']
-    ms_operator = anova_table.iloc[1]['mean_sq']
-    ms_interact = anova_table.iloc[2]['mean_sq']
-    ms_error = anova_table.loc['Residual', 'mean_sq']
+    # FIX: Calculate Mean Square (MS) from sum_sq and df, as 'mean_sq' column does not exist.
+    ms_part = anova_table.iloc[0]['sum_sq'] / anova_table.iloc[0]['df']
+    ms_operator = anova_table.iloc[1]['sum_sq'] / anova_table.iloc[1]['df']
+    ms_interact = anova_table.iloc[2]['sum_sq'] / anova_table.iloc[2]['df']
+    ms_error = anova_table.loc['Residual', 'sum_sq'] / anova_table.loc['Residual', 'df']
     
     n_parts, n_ops = df[part_col].nunique(), df[operator_col].nunique()
     n_replicates = df.groupby([part_col, operator_col])[value_col].count().mean()
@@ -624,8 +623,9 @@ def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
         st.subheader("Project Timeline and Task Editor")
         tasks_data = ssm.get_data("project_management", "tasks")
         
-        # FIX: Convert string dates to datetime objects BEFORE passing to data_editor
         df_to_edit = pd.DataFrame(tasks_data)
+        # FIX: Convert string dates to datetime objects BEFORE passing to data_editor
+        # to prevent the StreamlitAPIException for data type mismatch.
         df_to_edit['start_date'] = pd.to_datetime(df_to_edit['start_date'])
         df_to_edit['end_date'] = pd.to_datetime(df_to_edit['end_date'])
 
@@ -765,5 +765,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-        
+    
+
         
