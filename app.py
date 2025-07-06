@@ -872,12 +872,15 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         try:
             # --- SME Definitive Fix: Use the modern, robust `shap.Explainer` API ---
             explainer = shap.Explainer(model, X)
-            shap_values = explainer(X)
+            shap_values_obj = explainer(X)
             
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            # For a binary classifier, the shap_values object has a .values attribute.
-            # We select the values for the positive class (index 1).
-            plot_buffer = create_shap_summary_plot(shap_values, X)
+            
+            # Extract the correct 2D array for the positive class (class 1)
+            # from the shap.Explanation object before passing to the plotter.
+            shap_values_for_plot = shap_values_obj.values[:,:,1]
+
+            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X)
             if plot_buffer:
                 st.image(plot_buffer)
                 st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
