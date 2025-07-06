@@ -94,8 +94,9 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
 
         # --- 3. RMF Section Tabs ---
         st.info("Use the tabs to navigate the Risk Management File. Changes are saved automatically.", icon="🗂️")
-        tab_titles = ["1. Risk Plan & Acceptability", "2. Hazard Analysis", "3. Assay FMEA", "4. Software & Service FMEA", "5. Overall Residual Risk"]
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
+        # SME Enhancement: Add new tab for advanced risk analysis tools
+        tab_titles = ["1. Risk Plan & Acceptability", "2. Hazard Analysis", "3. Assay FMEA", "4. Software & Service FMEA", "5. Risk Analysis Tools", "6. Overall Residual Risk"]
+        tab1, tab2, tab3, tab4, tab_tools, tab6 = st.tabs(tab_titles)
 
         with tab1:
             st.subheader("Risk Management Plan Summary & Acceptability Criteria")
@@ -105,7 +106,6 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 st.markdown("**Risk Acceptability Matrix**")
                 st.caption("This matrix defines the policy for risk acceptability. It is the basis for evaluating all identified risks.")
                 
-                # *** BUG FIX: Generate matrix with Plotly instead of using image link ***
                 s_labels = ['1: Negligible', '2: Minor', '3: Serious', '4: Critical', '5: Catastrophic']
                 o_labels = ['1: Improbable', '2: Remote', '3: Occasional', '4: Probable', '5: Frequent']
                 matrix_text = [
@@ -115,7 +115,6 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                     ['Review', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable'],
                     ['Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable', 'Unacceptable']
                 ]
-                # Map text to a numeric value for color scale
                 color_map_numeric = {'Acceptable': 1, 'Review': 2, 'Unacceptable': 3}
                 z_numeric = [[color_map_numeric[cell] for cell in row] for row in matrix_text]
 
@@ -202,8 +201,64 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 "potential_effect": st.column_config.TextColumn("Effect", width="large"), "S": st.column_config.NumberColumn("S"), "O": st.column_config.NumberColumn("O"),
                 "D": st.column_config.NumberColumn("D"), "mitigation": st.column_config.TextColumn("Mitigation"), "verification_link": st.column_config.SelectboxColumn("V&V Link", options=vv_protocol_ids)
             })
+            
+        with tab_tools:
+            st.subheader("Risk Analysis Tools")
+            
+            # --- RPN Summary Table ---
+            st.markdown("#### RPN Summary Table")
+            st.caption("This table aggregates all failure modes from the FMEAs and ranks them by their Risk Priority Number (RPN) to help prioritize mitigation efforts.")
+            assay_fmea_df = pd.DataFrame(rmf_data.get("assay_fmea", []))
+            service_fmea_df = pd.DataFrame(rmf_data.get("service_fmea", []))
+            
+            if not assay_fmea_df.empty and not service_fmea_df.empty:
+                assay_fmea_df['Source'] = 'Assay FMEA'
+                service_fmea_df['Source'] = 'Software/Service FMEA'
+                
+                # Ensure RPN column exists and is numeric
+                for df in [assay_fmea_df, service_fmea_df]:
+                    if all(col in df.columns for col in ['S', 'O', 'D']):
+                        df['RPN'] = pd.to_numeric(df['S']) * pd.to_numeric(df['O']) * pd.to_numeric(df['D'])
+                    else:
+                        df['RPN'] = 0
 
-        with tab5:
+                rpn_df = pd.concat([assay_fmea_df, service_fmea_df], ignore_index=True)
+                rpn_df = rpn_df.sort_values(by="RPN", ascending=False)
+                
+                # Apply color gradient to RPN column
+                st.dataframe(
+                    rpn_df[['id', 'Source', 'failure_mode', 'S', 'O', 'D', 'RPN']].style.background_gradient(cmap='YlOrRd', subset=['RPN']),
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                st.info("No FMEA data available to generate an RPN summary.")
+
+            st.divider()
+            
+            # --- Fault Tree Analysis (FTA) Chart ---
+            st.markdown("#### Fault Tree Analysis (FTA) - Illustrative Example")
+            st.caption("This FTA provides a top-down analysis of how lower-level faults can combine to cause the critical hazard of a **False Negative Result**. The size of each box represents its contribution to the overall failure probability (illustrative).")
+
+            # Prepare data for the treemap
+            parents = ["", "False Negative", "False Negative", "False Negative", "Assay Failure", "Assay Failure", "Software Failure", "Software Failure"]
+            labels = ["False Negative", "Assay Failure", "Pre-analytical Error", "Software Failure", "Incomplete Conversion", "Contamination", "Model Overfitting", "Data Corruption"]
+            values = [100, 60, 15, 25, 30, 30, 15, 10] # Illustrative values
+            
+            fta_fig = go.Figure(go.Treemap(
+                labels = labels,
+                parents = parents,
+                values = values,
+                textinfo = "label+value",
+                marker_colorscalefast = True,
+                marker=dict(colorscale='Reds')
+            ))
+            fta_fig.update_layout(
+                title_text="<b>FTA for Top-Level Hazard: False Negative Result</b>",
+                height=500, margin = dict(t=50, l=25, r=25, b=25)
+            )
+            st.plotly_chart(fta_fig, use_container_width=True)
+
+        with tab6:
             st.subheader("Overall Residual Risk-Benefit Analysis & Conclusion")
             st.markdown("This is the final conclusion of the risk management process, required by ISO 14971. It should be a formal statement declaring whether the overall residual risk (the sum of all individual residual risks) is acceptable in relation to the documented clinical benefits of the device.")
             with st.form("risk_benefit_form"):
