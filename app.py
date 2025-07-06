@@ -1193,7 +1193,7 @@ class SessionStateManager:
 # --- MAIN APPLICATION & TAB RENDERING FUNCTIONS ---
 # ==============================================================================
 
-# Call set_page_config() at the top level of the script
+# FIX: Call set_page_config() once at the top level of the script. This prevents the StreamlitAPIException.
 st.set_page_config(layout="wide", page_title="GenomicsDx Command Center", page_icon="🧬")
 
 def render_health_dashboard_tab(ssm: SessionStateManager):
@@ -1231,6 +1231,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import train_test_split
         from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
+        # FIX: Added missing import for StandardScaler to fix the NameError.
         from sklearn.preprocessing import StandardScaler
         from scipy.stats import beta
         import shap
@@ -1282,16 +1283,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             - **ROC:** Plots True Positive Rate ($TPR = \frac{TP}{TP+FN}$) vs. False Positive Rate ($FPR = \frac{FP}{FP+TN}$).
             - **PR:** Plots Precision ($Precision = \frac{TP}{TP+FP}$) vs. Recall ($Recall = TPR$).
             The area under each curve (AUC-ROC and AUC-PR) provides a single metric to summarize performance.
-
-            **Procedure:**
-            1. A trained classifier is used to generate probability scores for the positive class on a dataset.
-            2. For each metric (ROC and PR), use the true labels and the probability scores to calculate the points on the curve across all possible thresholds.
-            3. The curves are plotted, and the area under each is calculated.
-            
-            **Significance of Results:**
-            A high AUC-ROC (e.g., >0.9) is a primary requirement for a high-performing diagnostic. A strong PR curve (staying high on the y-axis for as long as possible) demonstrates the test's clinical utility by showing it can detect cancer without an excessive number of false alarms, which is critical for regulatory approval and physician adoption.
             """)
-        # FIX: Evaluate both models and use the correct data (scaled vs. unscaled).
         st.write("#### Logistic Regression Performance (on Scaled Data)")
         y_scores_lr = lr_model.predict_proba(X_scaled)[:, 1]
 
@@ -1324,32 +1316,20 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Tool:**
             To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
-
+            
             **Conceptual Walkthrough:**
             Imagine our machine learning model is like a sports team, and its final prediction is the team's score. The features (our biomarkers) are the players. SHAP analysis is like a sophisticated "Most Valuable Player" calculation for every single game (every single patient sample). It doesn't just tell you who the best player is overall; it tells you exactly how much each player contributed to the final score in that specific game. For one patient, a high value for `promoter_A_met` might have pushed the score up by 0.3, while a low value for `enhancer_B_met` might have pulled it down by 0.1. The summary plot aggregates thousands of these "game reports" to show which players are consistently the most impactful and whether their impact is positive or negative.
-
+            
             **Mathematical Basis:**
             SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
             """)
             st.latex(r'''
             \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]
             ''')
-            st.markdown(r"""
-            where $F$ is the set of all features, $S$ is a subset of features not including $i$, and $v(S)$ is the model's output with only the features in coalition $S$. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
-
-            **Procedure:**
-            1. An explainer object is created from a trained model and a background dataset.
-            2. The explainer calculates the SHAP values for each feature for every sample in a test set.
-            3. A **summary plot** visualizes these values. Each point is a single feature for a single sample. The color indicates the feature's value (high/low), and its position on the x-axis indicates its impact on the model's output (pushing the prediction higher or lower).
-
-            **Significance of Results:**
-            The SHAP summary plot provides powerful evidence for scientific and clinical validation. It allows us to confirm that the model has learned biologically relevant signals (e.g., known oncogenic methylation markers are the top features) and is not relying on spurious correlations or batch effects. This is a critical piece of evidence for de-risking the algorithm portion of a PMA submission.
-            """)
         st.write("Generating SHAP values for the Random Forest classifier. This may take a moment...")
         try:
             st.caption("Note: Explaining on a random subsample of 50 data points for performance.")
             X_sample = X.sample(n=min(50, len(X)), random_state=42)
-            # FIX: Use the 'rf_model' for SHAP analysis
             explainer = shap.Explainer(rf_model, X_sample)
             shap_values_obj = explainer(X_sample)
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
@@ -1371,25 +1351,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown("""
             **Purpose of the Tool:**
             For an MCED test, detecting a cancer signal is only half the battle. A key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**, which guides the subsequent clinical workup. This tool analyzes the performance of the CSO prediction model.
-
+            
             **Conceptual Walkthrough:**
             After the first model says "Cancer Signal Detected," a second, multi-class classifier is used to predict the tissue of origin (e.g., Lung, Colon, Pancreatic). A **confusion matrix** is the perfect tool for visualizing its performance. It's a grid that shows us not just what we got right, but also where we went wrong. For example, it might reveal that the model frequently confuses Lung and Head & Neck cancers, which is biologically plausible and provides valuable insight for improving the model or refining the clinical report.
-
-            **Mathematical Basis:**
-            A confusion matrix is an N x N table where N is the number of classes. Rows represent the true class and columns represent the predicted class. Cell (i, j) contains the number of samples whose true class was $i$ but were predicted as class $j$. The diagonal elements (i=j) represent correct predictions. Overall accuracy is calculated as:
-            """)
-            st.latex(r'''
-            \text{Accuracy} = \frac{\text{Sum of Diagonal}}{\text{Total Samples}} = \frac{\sum_{i=1}^{N} C_{ii}}{\sum_{i=1}^{N}\sum_{j=1}^{N} C_{ij}}
-            ''')
-            st.markdown("""
-            **Procedure:**
-            1. A synthetic multi-class dataset is generated where each 'cancer' sample is assigned a true origin.
-            2. A multi-class model (e.g., `RandomForestClassifier`) is trained to predict the origin.
-            3. The model's predictions on a test set are compared to the true origins.
-            4. The results are displayed in a confusion matrix heatmap for easy interpretation.
-
-            **Significance of Results:**
-            High accuracy on the diagonal of the confusion matrix is required to support a CSO claim. The matrix also provides critical data for the risk assessment (see Hazard H-04) and helps to define the test's performance characteristics and limitations in the final product labeling, which is essential for the PMA submission.
             """)
         st.write("Generating synthetic CSO data and training a simple model...")
         np.random.seed(123)
@@ -1415,29 +1379,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown("""
             **Purpose of the Tool:**
             To build a predictive model that can identify sequencing runs likely to fail QC *before* committing expensive reagents and sequencer time. This is a proactive quality control tool aimed at improving operational efficiency and reducing the Cost of Poor Quality (COPQ).
-
-            **Conceptual Walkthrough:**
-            This tool acts like a simple gatekeeper. Before we start an expensive sequencing run, we have some early QC data (like library concentration). We feed this data to our trained logistic regression model. The model has learned from all past runs what combinations of early QC metrics are associated with success and failure. It then calculates the probability that the current run will fail. If the probability is high, we can stop the process, investigate the sample, and save significant time and money.
-
-            **Mathematical Basis:**
-            **Logistic Regression** is used as the classification algorithm. It models the probability of a binary outcome (Pass/Fail) by fitting data to a logistic (sigmoid) function. The model learns a set of coefficients ($\beta_i$) for each input feature ($x_i$) to predict the log-odds of failure:
-            """)
-            st.latex(r'''
-            \ln\left(\frac{P(\text{Fail})}{1-P(\text{Fail})}\right) = \beta_0 + \beta_1x_1 + \dots + \beta_nx_n
-            ''')
-            st.markdown("""
-            **Procedure:**
-            1. Historical run data with pre-sequencing QC metrics and the final outcome (Pass/Fail) is collected.
-            2. The data is split into training and testing sets.
-            3. A logistic regression model is trained on the training set.
-            4. The model's performance is evaluated on the unseen test set using a **confusion matrix**.
-            
-            **Significance of Results:**
-            The confusion matrix shows the model's real-world performance:
-            - **True Positives (TP):** Correctly predicted failures. These represent saved runs.
-            - **False Negatives (FN):** Failures the model missed. These represent the remaining risk.
-            - **False Positives (FP):** Passed runs that were incorrectly predicted to fail. These represent unnecessary investigations.
-            A model with a high True Positive Rate and a low False Positive Rate can be integrated into the lab's pre-run checklist to significantly improve efficiency.
             """)
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
@@ -1461,20 +1402,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Tool:**
             To forecast future demand (e.g., incoming sample volume) based on historical data. This is crucial for proactive lab management, including reagent inventory control, staffing, and capacity planning.
-
-            **Conceptual Walkthrough:**
-            We treat forecasting as a standard machine learning problem instead of using classical statistical models. We "reframe" the problem by creating features from the date (e.g., day of the week, month) and by using past values ("lags") as input features. For example, to predict today's sample volume, we might use the volume from yesterday, 7 days ago, and 14 days ago. A gradient boosting model can then learn the complex patterns between these features and the volume we're trying to predict.
-
-            **Mathematical Basis:**
-            We transform the time series problem into a supervised regression problem. Let $y_t$ be the value at time $t$. We want to predict $y_{t+1}$. We construct a feature vector $X_t$ containing engineered features like lag features ($y_{t-k}$) and calendar features. We then train a model $f$ such that $y_{t+1} \approx f(X_t)$. **LightGBM** is a highly efficient gradient boosting framework that builds an ensemble of decision trees to model this relationship.
-
-            **Procedure:**
-            1. Engineer features from the historical time series data (lags, calendar features, rolling averages, etc.).
-            2. Train a gradient boosting model on these features.
-            3. To forecast, create the corresponding features for future dates and use the model to predict.
-
-            **Significance of Results:**
-            This ML-based approach is often more flexible than classical methods and can easily incorporate external factors (e.g., marketing campaigns, holidays) as additional features. A reliable forecast allows lab managers to move from reactive to proactive resource planning, ensuring they have the reagents and staff on hand to meet projected demand.
             """)
         ts_data = ssm.get_data("ml_models", "sample_volume_data")
         df_ts = pd.DataFrame(ts_data).set_index('date')
@@ -1492,8 +1419,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         X_ts, y_ts = df_ts_feat.drop('samples', axis=1), df_ts_feat['samples']
         model_lgbm = lgb.LGBMRegressor(random_state=42, verbose=-1)
         model_lgbm.fit(X_ts, y_ts)
-
-        # FIX: Implement a proper recursive forecasting loop.
+        
         future_predictions, n_forecast, history = [], 30, df_ts.copy()
         for i in range(n_forecast):
             future_date = history.index[-1] + pd.Timedelta(days=1)
@@ -1518,26 +1444,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Tool:**
             To understand which biomarkers are the most important drivers of the classifier's prediction. For a linear model like Logistic Regression, this is achieved by directly inspecting the model's learned coefficients.
-
-            **Conceptual Walkthrough:**
-            After training, a logistic regression model assigns a "weight" or **coefficient** to each feature (biomarker). A large positive coefficient means that a high value for that biomarker strongly increases the probability of a "Cancer Signal Detected" result. A large negative coefficient means a high value decreases the probability. Coefficients near zero mean the feature has little to no impact. By plotting these coefficients, we can directly and transparently see the model's decision-making logic.
-
-            **Mathematical Basis:**
-            The logistic regression model predicts the log-odds of the positive class as a linear combination of the input features:
-            """)
-            st.latex(r'''
-            \text{log-odds} = \beta_0 + \beta_1x_1 + \beta_2x_2 + \dots + \beta_nx_n
-            ''')
-            st.markdown(r"""
-            The coefficients ($\beta_i$) are learned during model training. The L1 (Lasso) penalty forces the coefficients of less important features towards exactly zero, performing automatic feature selection and simplifying the model.
-
-            **Procedure:**
-            1. A Logistic Regression model with an L1 penalty is trained on scaled data.
-            2. The non-zero coefficients are extracted from the trained model.
-            3. These coefficients are plotted in a bar chart, sorted by their magnitude, to visualize feature importance.
-
-            **Significance of Results:**
-            This plot provides a completely transparent view of the model's logic, which is highly valuable for regulatory submissions. It allows us to confirm that the model's most important features are the biomarkers with known biological relevance to cancer, providing strong evidence for the model's validity.
             """)
         st.write("##### Feature Importance from Logistic Regression Coefficients")
         try:
@@ -1573,12 +1479,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             - **Mode(s):** The location of peaks in the distribution.
             A classifier, such as a **Gradient Boosting Machine**, is then trained on these engineered features to distinguish between "Cancer-like" and "Healthy-like" fragment profiles.
 
-            **Procedure:**
-            1. Generate synthetic fragment size data for "Cancer" and "Healthy" samples.
-            2. For each sample, engineer features that describe its fragment size distribution.
-            3. Train a classifier on these features to predict the sample's class.
-            4. Evaluate the classifier's ability to separate the two groups, demonstrating that fragmentomics provides real discriminatory power.
-
             **Significance of Results:**
             Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals. This is a critical piece of evidence for the PMA, showing the *mechanism* by which our test works and de-risking the algorithm from being reliant on spurious correlations.
             """)
@@ -1594,7 +1494,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
                                 title="<b>Distribution of DNA Fragment Sizes</b>")
         st.plotly_chart(fig_hist, use_container_width=True)
 
-        # Feature Engineering & Modeling
         n_samples = 100
         X_frag, y_frag = [], []
         for i in range(n_samples):
@@ -1631,14 +1530,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             ''')
             st.markdown(r"""
             This p-value represents the probability of observing at least $k$ variant reads *by chance alone*, according to our error model. A very low p-value gives us confidence that the variant is real.
-
-            **Procedure:**
-            1. Simulate allele count data from multiple "normal" samples to establish a background error rate.
-            2. Fit a Beta distribution to the observed Variant Allele Frequencies (VAFs) from these normal samples to derive the parameters ($\alpha_0, \beta_0$) of the error model.
-            3. For a new test sample, use the fitted model to calculate the p-value for its observed VAF.
-
-            **Significance of Results:**
-            A well-calibrated error model is a non-negotiable component of a high-sensitivity liquid biopsy assay. It forms the statistical foundation of our variant calling algorithm. In our PMA submission, this model is a key piece of evidence demonstrating that we have rigorously characterized and controlled for system noise, allowing us to support our LoD claims with statistical confidence.
             """)
         np.random.seed(123)
         error_rate_dist = np.random.beta(a=0.5, b=200, size=100)
@@ -1673,18 +1564,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.latex(r'''
             \ln\left(\frac{P(\text{Pass})}{1-P(\text{Pass})}\right) = \beta_0 + \beta_1x_{\text{Q30}} + \beta_2x_{\text{Density}} + \dots
             ''')
-            st.markdown(r"""
-            The output probability can be used to make a go/no-go decision at a very early checkpoint in the sequencing process.
-
-            **Procedure:**
-            1. Collect a dataset of historical runs, including early on-instrument QC metrics and the final Pass/Fail outcome.
-            2. Split the data into training and testing sets.
-            3. Train a logistic regression model to predict the outcome based on the early metrics.
-            4. Evaluate the model's performance on the test set using a confusion matrix to understand its predictive accuracy.
-
-            **Significance of Results:**
-            This tool is a powerful implementation of proactive **Quality Control** and **Process Control**. For regulatory purposes (ISO 15189, CLIA), it demonstrates a mature, data-driven approach to laboratory operations. From a business perspective, it directly reduces the **Cost of Poor Quality (COPQ)** and increases lab throughput and efficiency. A reliable early-warning system is a hallmark of a robust, scalable manufacturing process.
-            """)
         np.random.seed(42)
         n_runs, pass_rate = 200, 0.9
         n_pass, n_fail = int(n_runs * pass_rate), int(n_runs * (1-pass_rate))
@@ -1705,33 +1584,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.plotly_chart(fig_cm_oi, use_container_width=True)
         tn, fp, fn, tp = cm.ravel()
         st.success(f"**Model Evaluation:** The model correctly predicted **{tp}** successful runs and **{tn}** failing runs based on early metrics alone, enabling proactive intervention.")
-
-def render_compliance_guide_tab():
-    """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
-    st.header("🏛️ The Regulatory & Methodological Compendium")
-    st.info("This is a placeholder for the detailed regulatory guide.")
-
-
-def main() -> None:
-    """Main function to run the Streamlit application."""
-    ssm = SessionStateManager()
-    st.title("🧬 GenomicsDx DHF Command Center")
-    project_name = ssm.get_data("design_plan", "project_name")
-    st.caption(f"Live QMS Monitoring for the **{project_name or 'GenomicsDx MCED Test'}** Program")
-
-    tab_names = ["📊 **Program Health**", "🗂️ **DHF Explorer**", "🔬 **Analytics**", "📈 **Stats Workbench**", "🤖 **ML & Bio-Info Lab**", "🏛️ **Regulatory Guide**"]
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_names)
-
-    with tab1: render_health_dashboard_tab(ssm)
-    with tab2: render_dhf_explorer_tab(ssm)
-    with tab3: render_advanced_analytics_tab(ssm)
-    with tab4: render_statistical_tools_tab(ssm)
-    with tab5: render_machine_learning_lab_tab(ssm)
-    with tab6: render_compliance_guide_tab()
-
-
-if __name__ == "__main__":
-    main()
 
         
 def render_compliance_guide_tab():
