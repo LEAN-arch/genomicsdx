@@ -555,7 +555,23 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     # --- Tool 1: Levey-Jennings ---
     with tool_tabs[0]:
         st.subheader("Statistical Process Control (SPC) for Assay Monitoring")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown("""
+            **Purpose of the Tool:**
+            To monitor the stability and consistency of a process over time. For our assay, this is used to track the performance of quality control (QC) materials to ensure the assay is performing as expected on a day-to-day basis.
+
+            **Mathematical Basis:**
+            The chart is based on the principles of the Gaussian (Normal) distribution. The control limits are established based on the mean ($\mu$) and standard deviation ($\sigma$) of a set of historical, in-control data. The limits are typically set at $\mu \pm 1\sigma$, $\mu \pm 2\sigma$, and $\mu \pm 3\sigma$.
+
+            **Procedure:**
+            1. A stable mean and standard deviation are established for a QC material from at least 20 historical data points.
+            2. Control limits are calculated and drawn on the chart.
+            3. For each subsequent run, the new QC value is plotted on the chart.
+            4. The plot is evaluated against a set of rules (e.g., Westgard rules) to detect shifts or trends that may indicate a problem with the process.
+
+            **Significance of Results:**
+            A Levey-Jennings chart provides an early warning system for process drift or instability. A point outside the $\pm 3\sigma$ limits or patterns of points (e.g., 7 consecutive points on one side of the mean) indicates a loss of statistical control, triggering an investigation and preventing the release of potentially erroneous patient results.
+            """)
         spc_data = ssm.get_data("quality_system", "spc_data")
         fig = create_levey_jennings_plot(spc_data)
         st.plotly_chart(fig, use_container_width=True)
@@ -564,7 +580,27 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     # --- Tool 2: Hypothesis Testing ---
     with tool_tabs[1]:
         st.subheader("Hypothesis Testing for Assay Comparability")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To determine if there is a statistically significant difference between the means of two groups. This is used, for example, to compare the output of a new bioinformatics pipeline version against the old one.
+
+            **Mathematical Basis:**
+            The framework is Null Hypothesis Significance Testing (NHST). We start with a **Null Hypothesis ($H_0$)** that there is no difference between the groups ($\mu_1 = \mu_2$). We then calculate the probability (**p-value**) of observing our data (or more extreme data) if the null hypothesis were true.
+
+            - **Welch's t-test (for Normal Data):** Used when the data in both groups are normally distributed. It does not assume equal variances. The t-statistic is calculated as:
+              $t = \frac{\bar{x_1} - \bar{x_2}}{\sqrt{\frac{s_1^2}{n_1} + \frac{s_2^2}{n_2}}}$
+            - **Mann-Whitney U test (for Non-Normal Data):** A non-parametric test that works on ranked data, not the actual values. It tests if the two distributions are the same.
+
+            **Procedure:**
+            1. Check if the data in each group is normally distributed using a test like the **Shapiro-Wilk test**.
+            2. If both groups are normal, perform a t-test. Otherwise, perform a Mann-Whitney U test.
+            3. Compare the resulting p-value to a pre-defined significance level ($\alpha$, typically 0.05).
+
+            **Significance of Results:**
+            - If **p < 0.05**, we reject the null hypothesis and conclude there is a statistically significant difference between the groups.
+            - If **p ≥ 0.05**, we fail to reject the null hypothesis, meaning we do not have sufficient evidence to conclude that a difference exists.
+            """)
         ht_data = ssm.get_data("quality_system", "hypothesis_testing_data")
         df_a = pd.DataFrame({'value': ht_data['pipeline_a'], 'group': 'Pipeline A'})
         df_b = pd.DataFrame({'value': ht_data['pipeline_b'], 'group': 'Pipeline B'})
@@ -597,7 +633,26 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     # --- Tool 3: Equivalence Testing (TOST) ---
     with tool_tabs[2]:
         st.subheader("Equivalence Testing (TOST) for Change Control")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To demonstrate that two groups are "the same" within a pre-defined margin. This is the correct statistical approach for validating a change, such as qualifying a new reagent lot, where the goal is to prove it performs identically to the old lot. Standard hypothesis testing can only fail to find a difference; it cannot prove similarity.
+
+            **Mathematical Basis:**
+            TOST (Two One-Sided Tests) flips the null hypothesis. Instead of a null of "no difference," we have two null hypotheses of **non-equivalence**:
+            - $H_{01}: \mu_1 - \mu_2 \le -\Delta$ (The difference is less than the lower equivalence bound)
+            - $H_{02}: \mu_1 - \mu_2 \ge +\Delta$ (The difference is greater than the upper equivalence bound)
+            We perform two separate one-sided t-tests. If **both** tests are significant (p < 0.05), we can reject both nulls and conclude that the true difference lies within the equivalence bounds $[-\Delta, +\Delta]$. The final TOST p-value is the larger of the two individual p-values.
+
+            **Procedure:**
+            1. Define a scientifically justifiable equivalence margin, $\Delta$. This is the largest difference that is considered clinically or scientifically irrelevant.
+            2. Collect data from both groups (e.g., old lot vs. new lot).
+            3. Perform the two one-sided tests against the bounds $-\Delta$ and $+\Delta$.
+            4. If the 90% confidence interval of the difference falls entirely within $[-\Delta, +\Delta]$, equivalence is demonstrated.
+
+            **Significance of Results:**
+            A successful equivalence test (p < 0.05) provides strong statistical evidence that a process or material change has not negatively impacted the assay's performance. This is critical documentation for change control under 21 CFR 820 and ISO 13485.
+            """)
         eq_data = ssm.get_data("quality_system", "equivalence_data")
         margin_pct = st.slider("Select Equivalence Margin (%)", 5, 25, 10, key="tost_slider")
         lot_a = np.array(eq_data.get('reagent_lot_a', []))
@@ -617,7 +672,23 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     # --- Tool 4: Pareto Analysis ---
     with tool_tabs[3]:
         st.subheader("Pareto Analysis of Run Failures")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown("""
+            **Purpose of the Tool:**
+            To identify the most frequent causes of a problem, enabling focused process improvement efforts. It is based on the **Pareto Principle**, or the "80/20 rule," which posits that roughly 80% of effects come from 20% of the causes.
+
+            **Mathematical Basis:**
+            This is a descriptive statistical tool, not an inferential one. It involves calculating simple frequencies and cumulative frequencies.
+            
+            **Procedure:**
+            1. Collect categorical data on the causes of a problem (e.g., lab run failure modes).
+            2. Tally the counts for each category and sort them in descending order.
+            3. Calculate the cumulative percentage for each category.
+            4. Plot the counts as a bar chart and the cumulative percentage as a line chart on a secondary axis.
+            
+            **Significance of Results:**
+            The Pareto chart visually separates the "vital few" from the "trivial many." It immediately shows the project team where to focus their resources (e.g., for a CAPA or process improvement project) to achieve the greatest impact on reducing failures and Cost of Poor Quality (COPQ).
+            """)
         failure_data = ssm.get_data("lab_operations", "run_failures")
         df_failures = pd.DataFrame(failure_data)
         if not df_failures.empty:
@@ -630,7 +701,28 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     # --- Tool 5: Gauge R&R ---
     with tool_tabs[4]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To quantify the amount of variation in your data that comes from the measurement system itself, as opposed to the actual variation between the items being measured. A reliable measurement system is a prerequisite for any valid process control or improvement.
+
+            **Mathematical Basis:**
+            Analysis of Variance (ANOVA) is used to partition the total observed variance ($\sigma^2_{\text{Total}}$) into its constituent components:
+            - **Repeatability ($\sigma^2_{\text{Repeat}}$):** Variation when one operator measures the same part multiple times. This is inherent equipment variation (EV).
+            - **Reproducibility ($\sigma^2_{\text{Repro}}$):** Variation when different operators measure the same part. This is appraiser variation (AV).
+            - **Gauge R&R ($\sigma^2_{\text{GRR}}$):** The total measurement system variation, where $\sigma^2_{\text{GRR}} = \sigma^2_{\text{Repeat}} + \sigma^2_{\text{Repro}}$.
+            - **Part-to-Part ($\sigma^2_{\text{Part}}$):** The true variation between the different parts being measured.
+
+            **Procedure:**
+            A structured experiment is performed where multiple operators measure multiple parts multiple times. The resulting data is analyzed using ANOVA to calculate the variance components.
+            
+            **Significance of Results:**
+            The key metric is the **% Contribution of GR&R**, which is $(\sigma^2_{\text{GRR}} / \sigma^2_{\text{Total}}) \times 100\%$.
+            - **< 10%:** Generally considered an acceptable measurement system.
+            - **10% - 30%:** May be acceptable depending on the application and cost.
+            - **> 30%:** Unacceptable. The measurement system is contributing too much noise and must be improved.
+            This study is a cornerstone of qualifying an assay for use in a regulated production (CLIA) environment.
+            """)
         msa_data = ssm.get_data("quality_system", "msa_data")
         df_msa = pd.DataFrame(msa_data)
         if not df_msa.empty:
@@ -654,7 +746,22 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     # --- Tool 6: DOE (Screening) ---
     with tool_tabs[5]:
         st.subheader("DOE for Factor Screening")
-        # ... (content unchanged, using robust effects plotter)
+        with st.expander("View Method Explanation"):
+            st.markdown("""
+            **Purpose of the Tool:**
+            To efficiently identify which of many potential factors have a significant effect on a process output. It allows for the simultaneous study of many factors, unlike traditional one-factor-at-a-time (OFAT) experiments, which are inefficient and fail to detect interactions.
+
+            **Mathematical Basis:**
+            A factorial design (e.g., 2-level full factorial) is used to create an experimental plan. The results are analyzed using a linear model to estimate the **main effect** of each factor and the **interaction effects** between factors. The main effect is the average change in the response when a factor is moved from its low level to its high level. An interaction effect means the effect of one factor depends on the level of another.
+
+            **Procedure:**
+            1. Identify potential factors and their high/low levels.
+            2. Run the experiments according to the factorial design matrix.
+            3. Analyze the results to determine which effects are statistically significant.
+            
+            **Significance of Results:**
+            A screening DOE quickly narrows down a large problem space, allowing the team to focus subsequent, more intensive optimization experiments (like RSM) only on the "vital few" factors that actually matter. It is a foundational tool for efficient process development and characterization.
+            """)
         doe_data = ssm.get_data("quality_system", "doe_data")
         df_doe = pd.DataFrame(doe_data)
         st.write("##### DOE Data")
@@ -677,21 +784,22 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     with tool_tabs[6]:
         st.subheader("Response Surface Methodology (RSM) for Optimization")
         with st.expander("View Method Explanation", expanded=False):
-            st.markdown("""
+            st.markdown(r"""
             **Purpose of the Method:**
-            After a screening DOE identifies significant factors, Response Surface Methodology (RSM) is used to find the optimal settings for those factors. It uses a more detailed experimental design (like a Central Composite Design) to fit a quadratic model, allowing us to visualize and analyze curvature in the response. The ultimate goal is to find the "peak" of the response surface, which represents the process conditions that yield the best outcome (e.g., maximum library yield).
+            After a screening DOE identifies significant factors, RSM is used to find the optimal settings for those factors. It uses a more detailed experimental design (like a Central Composite Design) to fit a **quadratic model**, allowing us to visualize and analyze curvature in the response. The ultimate goal is to find the "peak" or "valley" of the response surface, defining a robust **Normal Operating Range (NOR)**.
 
             **The Mathematical Basis & Method:**
-            1.  **Experimental Design:** A Central Composite Design (CCD) is used, which includes factorial points, center points, and axial ("star") points. This design allows for the efficient estimation of a full quadratic model.
-            2.  **Quadratic Model:** A second-order polynomial model is fit to the data:  
-                `Y = β₀ + β₁X₁ + β₂X₂ + β₁₂X₁X₂ + β₁₁X₁² + β₂₂X₂²`  
-                The squared terms (β₁₁, β₂₂) are what allow the model to capture curvature.
-            3.  **Visualization:**
-                - A **3D Surface Plot** provides an intuitive visualization of the modeled response across the full range of factor settings.
-                - A **Contour Plot** shows a top-down view of the surface, with lines of constant response. It is excellent for identifying the optimal region and any potential ridges or valleys.
+            A second-order polynomial model is fit to the data:
+            $Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2$  
+            The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
+
+            **Procedure:**
+            1.  A Central Composite Design (CCD) or Box-Behnken Design is performed. These designs include factorial, center, and axial ("star") points to allow for efficient estimation of all quadratic terms.
+            2.  The second-order model is fit to the experimental data.
+            3.  The model is visualized as a 3D surface plot and a 2D contour plot.
 
             **Significance of Results:**
-            The RSM analysis provides a predictive model of the process. The contour and surface plots allow a scientist to visually determine the factor settings that will maximize (or minimize) the response, defining a robust Normal Operating Range (NOR) and Proven Acceptable Range (PAR) for regulatory submissions. The ANOVA table for the model confirms which terms (linear, interaction, or quadratic) are statistically significant.
+            The RSM analysis provides a predictive map of the process. The contour plot is especially powerful, as it allows scientists to identify an operating region (the Design Space) where the process is robust to small variations in the factors. This is a cornerstone of a Quality by Design (QbD) approach and provides powerful evidence for regulatory submissions that the process is well-understood and controlled.
             """)
         rsm_data = ssm.get_data("quality_system", "rsm_data")
         df_rsm = pd.DataFrame(rsm_data)
@@ -719,7 +827,6 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.error(f"Could not perform RSM analysis. Error: {e}")
             logger.error(f"RSM analysis failed: {e}", exc_info=True)
 
-
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
@@ -741,20 +848,32 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     # --- Tool 1: SHAP ---
     with ml_tabs[0]:
         st.subheader("Cancer Classifier Explainability (SHAP)")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
+
+            **Mathematical Basis:**
+            SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
+
+            **Procedure:**
+            1. An explainer object is created from a trained model and a background dataset.
+            2. The explainer calculates the SHAP values for each feature for every sample in a test set.
+            3. A **summary plot** visualizes these values. Each point is a single feature for a single sample. The color indicates the feature's value (high/low), and its position on the x-axis indicates its impact on the model's output (pushing the prediction higher or lower).
+
+            **Significance of Results:**
+            The SHAP summary plot provides powerful evidence for scientific and clinical validation. It allows us to confirm that the model has learned biologically relevant signals (e.g., known oncogenic methylation markers are the top features) and is not relying on spurious correlations or batch effects. This is a critical piece of evidence for de-risking the algorithm portion of a PMA submission.
+            """)
         st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
         X, y = ssm.get_data("ml_models", "classifier_data")
         model = ssm.get_data("ml_models", "classifier_model")
         
         try:
-            # SME Definitive Fix: Use the modern, robust `shap.Explainer` API
             explainer = shap.Explainer(model, X)
             shap_values_obj = explainer(X)
             
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
             
-            # Extract the correct 2D array for the positive class (class 1)
-            # from the shap.Explanation object before passing to the plotter.
             shap_values_for_plot = shap_values_obj.values[:,:,1]
 
             plot_buffer = create_shap_summary_plot(shap_values_for_plot, X)
@@ -770,7 +889,28 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     # --- Tool 2: Predictive Operations ---
     with ml_tabs[1]:
         st.subheader("Predictive Operations: Sequencing Run Failure")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown("""
+            **Purpose of the Tool:**
+            To build a predictive model that can identify sequencing runs likely to fail QC *before* committing expensive reagents and sequencer time. This is a proactive quality control tool aimed at improving operational efficiency and reducing the Cost of Poor Quality (COPQ).
+
+            **Mathematical Basis:**
+            **Logistic Regression** is used as the classification algorithm. It models the probability of a binary outcome (Pass/Fail) by fitting data to a logistic (sigmoid) function. The model learns a set of coefficients ($\beta_i$) for each input feature ($x_i$) to predict the log-odds of failure:
+            $log(\frac{P(Fail)}{1-P(Fail)}) = \beta_0 + \beta_1x_1 + ... + \beta_nx_n$
+            
+            **Procedure:**
+            1. Historical run data with pre-sequencing QC metrics (e.g., library concentration) and the final outcome (Pass/Fail) is collected.
+            2. The data is split into training and testing sets.
+            3. A logistic regression model is trained on the training set.
+            4. The model's performance is evaluated on the unseen test set using a **confusion matrix**.
+            
+            **Significance of Results:**
+            The confusion matrix shows the model's real-world performance:
+            - **True Positives (TP):** Correctly predicted failures. These represent saved runs.
+            - **False Negatives (FN):** Failures the model missed. These represent the remaining risk.
+            - **False Positives (FP):** Passed runs that were incorrectly predicted to fail. These represent unnecessary investigations.
+            A model with a high True Positive Rate and a low False Positive Rate can be integrated into the lab's pre-run checklist to significantly improve efficiency.
+            """)
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
@@ -794,7 +934,26 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     # --- Tool 3: Time Series Forecasting ---
     with ml_tabs[2]:
         st.subheader("Time Series Forecasting for Lab Operations")
-        # ... (content unchanged)
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To forecast future demand (e.g., incoming sample volume) based on historical data. This is crucial for proactive lab management, including reagent inventory control, staffing, and capacity planning.
+
+            **Mathematical Basis:**
+            An **ARIMA (Autoregressive Integrated Moving Average)** model is used. It is a powerful class of models for analyzing and forecasting time series data. It combines three components:
+            - **AR (Autoregressive, p):** A regression model that uses the dependent relationship between an observation and some number of lagged observations.
+            - **I (Integrated, d):** The use of differencing of raw observations (e.g., subtracting an observation from an observation at the previous time step) in order to make the time series stationary.
+            - **MA (Moving Average, q):** A model that uses the dependency between an observation and a residual error from a moving average model applied to lagged observations.
+            An ARIMA(p,d,q) model is a standard, statistically robust method for forecasting.
+
+            **Procedure:**
+            1. Historical time series data is collected (e.g., daily sample volume).
+            2. The model (in this case, a pre-selected ARIMA(5,1,0)) is fit to the historical data.
+            3. The fitted model is used to project future values, along with confidence intervals.
+
+            **Significance of Results:**
+            The forecast provides a data-driven estimate of future operational load. The confidence intervals give a sense of the uncertainty in the forecast. This information allows lab managers to move from reactive to proactive resource planning, ensuring they have the reagents and staff on hand to meet projected demand without being over-stocked.
+            """)
         ts_data = ssm.get_data("ml_models", "sample_volume_data")
         df_ts = pd.DataFrame(ts_data)
         df_ts['date'] = pd.to_datetime(df_ts['date'])
