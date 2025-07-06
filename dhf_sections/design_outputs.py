@@ -1,3 +1,31 @@
+# --- SME OVERHAUL: Definitive, Compliance-Focused Version ---
+"""
+Renders the Design Outputs section of the DHF dashboard.
+
+This module provides a structured, categorized UI for managing all tangible
+outputs of the design process, which collectively form the basis for the
+Device Master Record (DMR). It ensures each output (specifications, code,
+procedures, etc.) is version-controlled, its status is tracked, and it is
+traceably linked to a design input, as required by 21 CFR 820.30(d).
+This module includes analytics for monitoring DMR completeness.
+"""
+
+# --- Standard Library Imports ---
+import logging
+from typing import Any, Dict, List
+
+# --- Third-party Imports ---
+import pandas as pd
+import streamlit as st
+
+# --- Local Application Imports ---
+# <<< FIX: The missing import is added here >>>
+from ..utils.session_state_manager import SessionStateManager
+
+# --- Setup Logging ---
+logger = logging.getLogger(__name__)
+
+
 def render_design_outputs(ssm: SessionStateManager) -> None:
     """
     Renders the UI for managing categorized Design Outputs.
@@ -67,7 +95,7 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
         # Create mapping for human-readable selectbox options
         req_options_map = {
             f"{req.get('id', '')}: {req.get('description', '')[:70]}...": req.get('id', '')
-            for req in inputs_data
+            for req in inputs_data if req.get('id')
         }
         reverse_req_map = {v: k for k, v in req_options_map.items()}
 
@@ -87,7 +115,9 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
             # Isolate the data for the current tab
             tab_df = df[df['type'].isin(type_options)].copy()
             if tab_df.empty:
-                tab_df = pd.DataFrame(columns=['id', 'type', 'title', 'version', 'status', 'approval_date', 'linked_input_id', 'link_to_artifact'])
+                # Provide a template row if the dataframe is empty to allow adding new rows
+                columns = ['id', 'type', 'title', 'version', 'status', 'approval_date', 'linked_input_id', 'link_to_artifact']
+                tab_df = pd.DataFrame([{}], columns=columns)
 
             # --- RERUN LOOP FIX: Prepare data consistently BEFORE comparison ---
             
@@ -128,7 +158,7 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
                 # Ensure date is a string for JSON serialization
                 if 'approval_date' in df_to_save.columns:
                     # Use .dt.date to strip time before formatting, preventing NaT issues
-                    df_to_save['approval_date'] = pd.to_datetime(df_to_save['approval_date']).dt.date.astype(str).replace({'NaT': None})
+                    df_to_save['approval_date'] = pd.to_datetime(df_to_save['approval_date']).dt.date.astype(str).replace({'NaT': None, 'NaT': None})
 
                 # Merge back with other types and save to session state
                 other_outputs = df_outputs[~df_outputs['type'].isin(type_options)].to_dict('records')
