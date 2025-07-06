@@ -194,7 +194,91 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
             ]},
         "design_validation": {}, # Populated under clinical_study for this model
         "design_changes": {"changes": [
-            {"id": "DCR-001", "description": "Change polymerase enzyme to improve library yield", "reason": "Observed lower than expected yield in pilot lots, impacting assay sensitivity.", "initiator": "Sofia Chen, PhD", "request_date": str(base_date + timedelta(days=120)), "impact_analytical": True, "impact_risk": True, "vv_plan": "Execute bridging study comparing old vs. new enzyme (AV-BRIDGE-01). Re-execute LoD study (AV-LOD-02).", "approval_status": "Closed", "approval_date": str(base_date + timedelta(days=150)), "approvers": ["Elena Reyes, PhD", "Jose Bautista"], "action_items": []}
+            {
+                "id": "DCR-001",
+                "description": "Change polymerase enzyme from Supplier A's 'PolyMax' to Supplier B's 'QuantumTaq' to improve library yield and secure supply chain.",
+                "reason": "Observed lower than expected yield in pilot lots with PolyMax, impacting assay sensitivity. Additionally, Supplier A has indicated potential future supply constraints. QuantumTaq shows superior performance in feasibility studies.",
+                "initiator": "Sofia Chen, PhD",
+                "request_date": str(base_date + timedelta(days=120)),
+                "impact_analytical": True,
+                "impact_risk": True,
+                "impact_clinical": False,
+                "impact_software": False,
+                "impact_lab_ops": True,
+                "impact_analysis_details": "This change directly impacts the amplification step of the assay. The new enzyme may alter amplification efficiency, error rate, and GC bias. It will require re-validation of the amplification module. It also impacts lab operations by requiring a new SOP for reagent preparation and qualification of a new supplier.",
+                # <<< ENHANCED V&V PLAN TO POPULATE THE SECTION >>>
+                "vv_plan": """
+1. **Objective:** Verify that QuantumTaq does not adversely affect key assay performance characteristics and validate that performance is equivalent to or better than the PolyMax-based design.
+
+2. **Verification Activities:**
+   - **Protocol AV-BRIDGE-01 (Bridging Study):**
+     - Run head-to-head precision study (n=20 replicates) using both polymerases on a 0.5% Tumor Fraction control.
+     - *Acceptance Criteria:* Welch's t-test for mean yield must show non-inferiority (p < 0.05); CV% must remain <= 20%.
+   - **Protocol AV-LOD-02 (LoD Confirmation):**
+     - Perform a limited LoD confirmation study (n=3 concentrations, 20 replicates each) using QuantumTaq.
+     - *Acceptance Criteria:* LoD must remain <= 0.1% tumor fraction.
+
+3. **Validation Activities:**
+   - **Protocol LAB-VAL-05 (Reagent Incoming QC):**
+     - Validate the new SOP for qualifying incoming lots of QuantumTaq.
+     - *Acceptance Criteria:* Three consecutive lots must pass pre-defined QC metrics.
+   
+4. **Risk Management Re-assessment:**
+   - Review and update FMEA items **AFM-01** and **AFM-02**.
+   - *Rationale:* The new enzyme could potentially alter the probability (Occurrence) or detectability (Detection) of incomplete conversion or amplification failures.
+""",
+                "approval_status": "Closed",
+                "approval_date": str(base_date + timedelta(days=150)),
+                "approvers": ["Elena Reyes, PhD", "Jose Bautista", "Sofia Chen, PhD"],
+                "action_items": [
+                    {"id": "AI-DCR001-01", "description": "Execute protocol AV-BRIDGE-01", "owner": "Sofia Chen, PhD", "due_date": str(base_date + timedelta(days=135)), "status": "Completed"},
+                    {"id": "AI-DCR001-02", "description": "Draft new SOP for QuantumTaq reagent handling", "owner": "Maria Rodriguez", "due_date": str(base_date + timedelta(days=140)), "status": "Completed"},
+                    {"id": "AI-DCR001-03", "description": "Update Risk Management File based on V&V results", "owner": "Jose Bautista", "due_date": str(base_date + timedelta(days=145)), "status": "Completed"}
+                ]
+            }
+        ]},        "design_changes": {"changes": [
+            {
+                "id": "DCR-001",
+                "description": "Change polymerase enzyme from Supplier A's 'PolyMax' to Supplier B's 'QuantumTaq' to improve library yield and secure supply chain.",
+                "reason": "Observed lower than expected yield in pilot lots with PolyMax, impacting assay sensitivity. Additionally, Supplier A has indicated potential future supply constraints. QuantumTaq shows superior performance in feasibility studies.",
+                "initiator": "Sofia Chen, PhD",
+                "request_date": str(base_date + timedelta(days=120)),
+                "impact_analytical": True,
+                "impact_risk": True,
+                "impact_clinical": False,
+                "impact_software": False,
+                "impact_lab_ops": True,
+                "impact_analysis_details": "This change directly impacts the amplification step of the assay. The new enzyme may alter amplification efficiency, error rate, and GC bias. It will require re-validation of the amplification module. It also impacts lab operations by requiring a new SOP for reagent preparation and qualification of a new supplier.",
+                # <<< ENHANCED V&V PLAN TO POPULATE THE SECTION >>>
+                "vv_plan": """
+1. **Objective:** Verify that QuantumTaq does not adversely affect key assay performance characteristics and validate that performance is equivalent to or better than the PolyMax-based design.
+
+2. **Verification Activities:**
+   - **Protocol AV-BRIDGE-01 (Bridging Study):**
+     - Run head-to-head precision study (n=20 replicates) using both polymerases on a 0.5% Tumor Fraction control.
+     - *Acceptance Criteria:* Welch's t-test for mean yield must show non-inferiority (p < 0.05); CV% must remain <= 20%.
+   - **Protocol AV-LOD-02 (LoD Confirmation):**
+     - Perform a limited LoD confirmation study (n=3 concentrations, 20 replicates each) using QuantumTaq.
+     - *Acceptance Criteria:* LoD must remain <= 0.1% tumor fraction.
+
+3. **Validation Activities:**
+   - **Protocol LAB-VAL-05 (Reagent Incoming QC):**
+     - Validate the new SOP for qualifying incoming lots of QuantumTaq.
+     - *Acceptance Criteria:* Three consecutive lots must pass pre-defined QC metrics.
+   
+4. **Risk Management Re-assessment:**
+   - Review and update FMEA items **AFM-01** and **AFM-02**.
+   - *Rationale:* The new enzyme could potentially alter the probability (Occurrence) or detectability (Detection) of incomplete conversion or amplification failures.
+""",
+                "approval_status": "Closed",
+                "approval_date": str(base_date + timedelta(days=150)),
+                "approvers": ["Elena Reyes, PhD", "Jose Bautista", "Sofia Chen, PhD"],
+                "action_items": [
+                    {"id": "AI-DCR001-01", "description": "Execute protocol AV-BRIDGE-01", "owner": "Sofia Chen, PhD", "due_date": str(base_date + timedelta(days=135)), "status": "Completed"},
+                    {"id": "AI-DCR001-02", "description": "Draft new SOP for QuantumTaq reagent handling", "owner": "Maria Rodriguez", "due_date": str(base_date + timedelta(days=140)), "status": "Completed"},
+                    {"id": "AI-DCR001-03", "description": "Update Risk Management File based on V&V results", "owner": "Jose Bautista", "due_date": str(base_date + timedelta(days=145)), "status": "Completed"}
+                ]
+            }
         ]},
         "clinical_study": {
             "nct_id": "NCT08675309", "phase": "Pivotal", "planned_completion_date": str(base_date + timedelta(days=1095)),
