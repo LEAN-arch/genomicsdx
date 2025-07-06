@@ -41,7 +41,8 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         transfer_data: Dict[str, Any] = ssm.get_data("lab_operations") or {}
         personnel_data = ssm.get_data("design_plan", "team_members") or []
         sop_data = transfer_data.get("sops", [])
-        lab_techs = [p.get('name') for p in personnel_data if 'Tech' in p.get('role', '')]
+        # Correctly get Lab Technologist names from the 'team_members' list
+        lab_techs = [p.get('name') for p in personnel_data if 'Lab Technologist' in p.get('role', '')]
         logger.info("Loaded lab operations and design transfer data.")
 
         # --- 2. High-Level Readiness KPIs ---
@@ -85,31 +86,42 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         ]
         tabs = st.tabs(tab_titles)
 
+        # <<< FIX FOR INFINITE LOOP: Reworked this function with robust comparison >>>
         def render_editor_tab(df_key: str, column_config: Dict):
             data_list = transfer_data.get(df_key, [])
             df = pd.DataFrame(data_list)
             
-            # *** BUG FIX: Check column config to identify date columns robustly ***
+            # Identify date columns from the configuration
             date_columns = [
                 col for col, config in column_config.items() 
-                if isinstance(config, dict) and config.get("type") == "date"
+                if isinstance(config, st.column_config.DateColumn)
             ]
-            
+
+            # 1. Prepare DataFrame for the editor
             for col in date_columns:
                 if col in df.columns:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
             
+            # 2. Take a snapshot of the prepared "before" state
+            original_df = df.copy()
+
+            # 3. Render the data editor
             edited_df = st.data_editor(
                 df, num_rows="dynamic", use_container_width=True, 
                 key=f"transfer_editor_{df_key}", column_config=column_config, hide_index=True
             )
             
-            df_to_save = edited_df.copy()
-            for col in date_columns:
-                if col in df_to_save.columns:
-                     df_to_save[col] = df_to_save[col].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+            # 4. Compare the "before" and "after" DataFrames using the robust .equals() method
+            if not original_df.equals(edited_df):
+                # A real change was made, now prepare for saving
+                df_to_save = edited_df.copy()
+                for col in date_columns:
+                    if col in df_to_save.columns:
+                         df_to_save[col] = pd.to_datetime(df_to_save[col]).dt.date.astype(str).replace({'NaT': None, 'None': None})
 
-            if df_to_save.to_dict('records') != data_list:
+                # Filter out empty rows that might be added by the user accidentally
+                df_to_save.dropna(subset=[next(iter(column_config))], inplace=True)
+
                 ssm.update_data(df_to_save.to_dict('records'), "lab_operations", df_key)
                 st.toast(f"{df_key.replace('_', ' ').title()} updated!", icon="✅"); st.rerun()
 
@@ -126,8 +138,16 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
             st.caption("Track and document that all lab personnel are trained on all effective, approved SOPs before performing patient testing.")
             approved_sops = [s.get('doc_id') for s in sop_data if s.get('status') == 'Approved']
             if approved_sops and lab_techs:
+                # This is a display-only matrix, so no need to save it. We can build it on the fly.
                 training_matrix_df = pd.DataFrame(index=approved_sops, columns=lab_techs).fillna(False)
-                st.data_editor(training_matrix_df, use_container_width=True)
+                st.data_editor(
+                    training_matrix_df, 
+                    use_container_width=True, 
+                    key="training_matrix_editor",
+                    # Allow editing but note that it won't be saved in this simplified example
+                    disabled=False
+                )
+                st.caption("Note: Training matrix state is for display and planning; not persisted in this demo.")
             else:
                 st.info("Define approved SOPs and lab technologists to generate the training matrix.")
 
@@ -153,7 +173,7 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
             })
 
         with tabs[4]:
-            st.subheader("Bioinformatics Pipeline & Classifier Deployment (ISO 62304)")
+            st.subheader("Bioinformatics Pipeline & Classifier Deployment (IEC 62304)")
             st.caption("Track the formal, controlled deployment of the locked bioinformatics pipeline and classifier algorithm to the validated production infrastructure.")
             render_editor_tab("software_deployment", {
                 "component": "Software Component", "version": "Deployed Version/Hash", "deployment_date": st.column_config.DateColumn("Deployment Date", format="YYYY-MM-DD"),
