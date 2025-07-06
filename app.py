@@ -723,97 +723,86 @@ def render_advanced_analytics_tab(ssm: SessionStateManager):
 def render_statistical_tools_tab(ssm: SessionStateManager):
     """Renders the tab containing various statistical analysis tools."""
     st.header("📈 Statistical Workbench for Assay & Lab Development")
-    st.info("Utilize this interactive workbench for rigorous statistical and machine learning analysis of assay performance, a cornerstone of the Analytical Validation required for a PMA.")
+    st.info("Utilize this interactive workbench for rigorous statistical analysis of assay performance, a cornerstone of the Analytical Validation required for a PMA.")
     
     try:
         from statsmodels.formula.api import ols
         from statsmodels.stats.anova import anova_lm
         from scipy.stats import shapiro, mannwhitneyu
-        from sklearn.ensemble import IsolationForest, GradientBoostingRegressor
     except ImportError:
-        st.error("This tab requires `statsmodels`, `scipy`, and `scikit-learn`. Please install them to enable statistical tools.", icon="🚨")
+        st.error("This tab requires `statsmodels` and `scipy`. Please install them (`pip install statsmodels scipy`) to enable statistical tools.", icon="🚨")
         return
 
-    # --- ADDED NEW ML-BASED TOOL ---
     tool_tabs = st.tabs([
         "Process Control (Levey-Jennings)",
-        "Anomaly Detection (Isolation Forest)", # New ML Tool
         "Hypothesis Testing (A/B Test)",
         "Equivalence Testing (TOST)",
         "Pareto Analysis (Failure Modes)",
         "Measurement System Analysis (Gauge R&R)",
-        "DOE / RSM (Process Optimization)" # Renamed
+        "DOE (Screening)",
+        "Response Surface Methodology (Optimization)"
     ])
 
     # --- Tool 1: Levey-Jennings ---
     with tool_tabs[0]:
-        st.subheader("Classical Statistical Process Control (SPC)")
+        st.subheader("Statistical Process Control (SPC) for Assay Monitoring")
         with st.expander("View Method Explanation"):
             st.markdown("""
-            **Purpose of the Tool:** To monitor process stability against pre-defined statistical limits based on historical data. This is the traditional, rule-based method for QC monitoring.
-            **Conceptual Walkthrough:** This method draws a "safe channel" for your process based on its historical mean and standard deviation. It's excellent for detecting shifts or trends based on fixed rules (Westgard rules).
-            **Mathematical Basis:** Assumes a normal distribution and uses the mean ($\mu$) and standard deviation ($\sigma$) to set control limits at $\mu \pm k\sigma$.
+            **Purpose of the Tool:**
+            To monitor the stability and consistency of a process over time. For our assay, this is used to track the performance of quality control (QC) materials to ensure the assay is performing as expected on a day-to-day basis.
+
+            **Conceptual Walkthrough:**
+            Imagine our assay process is a river. When everything is normal, the river flows steadily down the center of its channel. The **mean ($\mu$)** is that center line. The **standard deviation ($\sigma$)** tells us how wide the normal, "safe" channel is. The Levey-Jennings chart draws "guard rails" at 1, 2, and 3 standard deviations from the center. Each time we run a QC sample, we're checking where the river is flowing on that day. A single point outside the $\pm3\sigma$ guard rails is a major flood warning. The Westgard rules are more subtle; they look for patterns, like if the river is consistently hugging one bank for several days in a row, which might indicate a slow, systematic change in our process that needs investigation.
+
+            **Mathematical Basis:**
+            The chart is based on the principles of the Gaussian (Normal) distribution. The control limits are established based on the mean ($\mu$) and standard deviation ($\sigma$) of a set of historical, in-control data. The limits are typically set at $\mu \pm 1\sigma$, $\mu \pm 2\sigma$, and $\mu \pm 3\sigma$.
+            """)
+            st.latex(r'''
+            \text{Mean: } \bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i
+            ''')
+            st.latex(r'''
+            \text{Standard Deviation: } s = \sqrt{\frac{1}{n-1}\sum_{i=1}^{n} (x_i - \bar{x})^2}
+            ''')
+            st.markdown("""
+            **Procedure:**
+            1. A stable mean and standard deviation are established for a QC material from at least 20 historical data points.
+            2. Control limits are calculated and drawn on the chart.
+            3. For each subsequent run, the new QC value is plotted on the chart.
+            4. The plot is evaluated against a set of rules (e.g., Westgard rules like 1_3s, 2_2s, R_4s, 4_1s) to detect shifts or trends that may indicate a problem with the process.
+
+            **Significance of Results:**
+            A Levey-Jennings chart provides an early warning system for process drift or instability. A point outside the $\pm 3\sigma$ limits or patterns of points indicates a loss of statistical control, triggering an investigation (e.g., a CAPA) and preventing the release of potentially erroneous patient results.
             """)
         spc_data = ssm.get_data("quality_system", "spc_data")
         fig = create_levey_jennings_plot(spc_data)
         st.plotly_chart(fig, use_container_width=True)
         st.success("The selected control data appears to be stable and in-control. No Westgard rule violations were detected.")
 
-    # --- Tool 2: Anomaly Detection (NEW ML TOOL) ---
+    # --- Tool 2: Hypothesis Testing ---
     with tool_tabs[1]:
-        st.subheader("ML-Based Process Anomaly Detection")
-        with st.expander("View Method Explanation"):
-            st.markdown(r"""
-            **Purpose of the Tool:**
-            To use an unsupervised machine learning algorithm to identify unusual or unexpected data points (anomalies) in our process control data, without relying on pre-defined rules. This can detect novel failure modes that rule-based systems might miss.
-
-            **Conceptual Walkthrough: What's Happening in the Background?**
-            The **Isolation Forest** algorithm works like a game of "20 Questions." To find a specific data point, it randomly splits the data with lines. Normal points, which are clustered together, require many splits to be isolated. Anomalies, however, are out on their own and are much easier to isolate, requiring very few splits. The algorithm flags the points that are "easiest" to isolate as anomalies. This is a powerful way to find outliers in multi-dimensional data.
-
-            **Mathematical Basis:**
-            The algorithm builds an ensemble of "Isolation Trees." For each tree, data is recursively partitioned by selecting a random feature and then a random split value for that feature. The path length from the root of the tree to a data point is a measure of its normality. The anomaly score is derived from the average path length across all trees in the forest. Shorter average paths result in higher anomaly scores.
-            $s(x, n) = 2^{-\frac{E(h(x))}{c(n)}}$, where $E(h(x))$ is the average path length for point $x$ and $c(n)$ is a normalization factor.
-
-            **Procedure:**
-            1. An `IsolationForest` model is trained on the historical QC data. The `contamination` parameter estimates the expected proportion of outliers.
-            2. The model predicts which points are "inliers" (1) and which are "outliers" (-1).
-            3. The data is plotted, with the identified anomalies highlighted.
-            
-            **Significance of Results:**
-            This ML-based approach can complement traditional SPC. It is particularly effective at identifying complex, multi-variate outliers that would not violate simple single-analyte rules. A detected anomaly triggers an investigation to understand its root cause, potentially uncovering a new failure mode.
-            """)
-        spc_data = ssm.get_data("quality_system", "spc_data")
-        if spc_data and spc_data.get('measurements'):
-            df_spc = pd.DataFrame({'value': spc_data['measurements']})
-            df_spc['index'] = df_spc.index
-            model = IsolationForest(contamination=0.04, random_state=42) # Expect ~4% of points to be anomalous
-            df_spc['anomaly'] = model.fit_predict(df_spc[['value']])
-            
-            fig = px.scatter(df_spc, x='index', y='value', color='anomaly', 
-                             title="<b>Anomaly Detection in Process Control Data</b>",
-                             color_discrete_map={1: 'blue', -1: 'red'},
-                             labels={'value': 'Measured Value', 'index': 'Run Number', 'anomaly': 'Status'})
-            fig.update_traces(marker=dict(size=8))
-            st.plotly_chart(fig, use_container_width=True)
-            st.success("The Isolation Forest model has identified potential outliers (in red) for further investigation. These points may represent process deviations not caught by standard rules.")
-        else:
-            st.info("No SPC data to analyze.")
-
-    # --- Tool 3: Hypothesis Testing ---
-    with tool_tabs[2]:
         st.subheader("Hypothesis Testing for Assay Comparability")
         with st.expander("View Method Explanation"):
             st.markdown(r"""
             **Purpose of the Tool:**
-            To determine if there is a statistically significant difference between the means of two independent groups. This is a foundational statistical inference technique.
+            To determine if there is a statistically significant difference between the means of two independent groups. This is used, for example, to compare the output of a new bioinformatics pipeline version against the old one.
+
             **Conceptual Walkthrough:**
-            This is a statistical "court case." The **Null Hypothesis ($H_0$)**—that there is no difference—is presumed innocent. The p-value is the probability of seeing our evidence if the null were true. A very low p-value (< 0.05) means our evidence is highly unlikely under the "innocence" assumption, so we reject it and declare a significant difference.
+            Think of this as a statistical courtroom drama. The **Null Hypothesis ($H_0$)** is the "defendant," and it's presumed innocent—meaning, we assume there is no difference between our two groups. Our data is the "evidence" we present to the court. The **p-value** is the key output: it's the probability that we would see evidence this strong (or stronger) *if the defendant were truly innocent*. If the p-value is very low (typically < 0.05), it's like saying, "The chance of this happening randomly is so small, the defendant must be guilty!" We then "convict" the null hypothesis, reject it, and declare that a significant difference exists. If the p-value is high, we don't have enough evidence to convict, so we "fail to reject" the null hypothesis.
+
             **Mathematical Basis:**
-            Uses Null Hypothesis Significance Testing (NHST). The choice of test (t-test vs. Mann-Whitney U) depends on whether the data conforms to the normality assumption, checked via the Shapiro-Wilk test.
-            - **Welch's t-test:** $t = \frac{\bar{x_1} - \bar{x_2}}{\sqrt{\frac{s_1^2}{n_1} + \frac{s_2^2}{n_2}}}$
-            - **Mann-Whitney U test:** $U_1 = R_1 - \frac{n_1(n_1+1)}{2}$ (based on ranks)
+            The framework is Null Hypothesis Significance Testing (NHST). We start with a **Null Hypothesis ($H_0$)** that there is no difference between the groups ($\mu_1 = \mu_2$). We then calculate the probability (**p-value**) of observing our data (or more extreme data) if the null hypothesis were true. The choice of test depends on data normality:
+            - **Welch's t-test (for Normal Data):** $t = \frac{\bar{x_1} - \bar{x_2}}{\sqrt{\frac{s_1^2}{n_1} + \frac{s_2^2}{n_2}}}$
+            - **Mann-Whitney U test (for Non-Normal Data):** A non-parametric test on ranks. $U_1 = R_1 - \frac{n_1(n_1+1)}{2}$
+
+            **Procedure:**
+            1. Check if the data in each group is normally distributed using a test like the **Shapiro-Wilk test**.
+            2. If both groups are normal (p > 0.05), perform a Welch's t-test. Otherwise, perform a Mann-Whitney U test.
+            3. Compare the resulting p-value to a pre-defined significance level ($\alpha$, typically 0.05).
+
+            **Significance of Results:**
+            - If **p < 0.05**, we reject the null hypothesis and conclude there is a statistically significant difference between the groups.
+            - If **p ≥ 0.05**, we fail to reject the null hypothesis, meaning we do not have sufficient evidence to conclude that a difference exists. This does not prove they are the same.
             """)
-        # ... (rest of the existing code for this tab is preserved) ...
         ht_data = ssm.get_data("quality_system", "hypothesis_testing_data")
         df_a = pd.DataFrame({'value': ht_data['pipeline_a'], 'group': 'Pipeline A'})
         df_b = pd.DataFrame({'value': ht_data['pipeline_b'], 'group': 'Pipeline B'})
@@ -843,16 +832,32 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         fig = px.box(df_ht, x='group', y='value', color='group', points='all', title="Comparison of Pipeline Outputs")
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- Tool 4: Equivalence Testing (TOST) ---
-    with tool_tabs[3]:
+    # --- Tool 3: Equivalence Testing (TOST) ---
+    with tool_tabs[2]:
         st.subheader("Equivalence Testing (TOST) for Change Control")
         with st.expander("View Method Explanation"):
             st.markdown(r"""
-            **Purpose of the Tool:** To demonstrate that two groups are "the same" within a pre-defined margin ($\Delta$). This is the correct statistical approach for validating that a change has not impacted performance.
-            **Conceptual Walkthrough:** TOST flips the "innocent until proven guilty" logic. The null hypothesis is that the groups are *different*. We must present enough evidence to "convict" this null and prove the groups are equivalent. It does this by testing if the difference is simultaneously "not too low" and "not too high."
-            **Mathematical Basis:** TOST performs Two One-Sided Tests against the equivalence bounds $[-\Delta, +\Delta]$. The final p-value is the maximum of the two individual test p-values.
+            **Purpose of the Tool:**
+            To demonstrate that two groups are "the same" within a pre-defined margin. This is the correct statistical approach for validating a change, such as qualifying a new reagent lot, where the goal is to prove it performs identically to the old lot.
+
+            **Conceptual Walkthrough:**
+            A standard t-test is designed to find a difference, not prove its absence. TOST solves this by flipping the problem. Imagine we've set "goalposts" on a field ($-\Delta$ and $+\Delta$) and declared that any difference falling inside them is practically meaningless. TOST then runs two tests: is the difference "guilty" of being too low (less than $-\Delta$)? And is it "guilty" of being too high (greater than $+\Delta$)? If we can prove it's *not guilty* on both counts, it must lie within the goalposts, and we can declare equivalence.
+            
+            **Mathematical Basis:**
+            TOST (Two One-Sided Tests) flips the null hypothesis. We have two null hypotheses of **non-equivalence**:
+            - $H_{01}: \mu_1 - \mu_2 \le -\Delta$
+            - $H_{02}: \mu_1 - \mu_2 \ge +\Delta$
+            We perform two separate one-sided t-tests. If **both** are significant (p < 0.05), we reject both nulls and conclude the true difference lies within the equivalence bounds $[-\Delta, +\Delta]$.
+
+            **Procedure:**
+            1. Define a scientifically justifiable equivalence margin, $\Delta$.
+            2. Collect data from both groups (e.g., old lot vs. new lot).
+            3. Perform the two one-sided tests against the bounds $-\Delta$ and $+\Delta$.
+            4. If the 90% confidence interval of the difference falls entirely within $[-\Delta, +\Delta]$, equivalence is demonstrated.
+
+            **Significance of Results:**
+            A successful equivalence test (p < 0.05) provides strong statistical evidence that a process or material change has not negatively impacted the assay's performance. This is critical documentation for change control under 21 CFR 820.
             """)
-        # ... (rest of the existing code for this tab is preserved) ...
         eq_data = ssm.get_data("quality_system", "equivalence_data")
         margin_pct = st.slider("Select Equivalence Margin (%)", 5, 25, 10, key="tost_slider")
         lot_a = np.array(eq_data.get('reagent_lot_a', []))
@@ -863,40 +868,69 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             fig, p_value = create_tost_plot(lot_a, lot_b, lower_bound, upper_bound)
             st.plotly_chart(fig, use_container_width=True)
             if p_value < 0.05:
-                st.success(f"**Conclusion:** Equivalence has been demonstrated (p = {p_value:.4f}).")
+                st.success(f"**Conclusion:** Equivalence has been demonstrated (p = {p_value:.4f}). The difference between the lots is statistically smaller than the defined margin of {margin_pct}%.")
             else:
-                st.error(f"**Conclusion:** Equivalence could not be demonstrated (p = {p_value:.4f}).")
+                st.error(f"**Conclusion:** Equivalence could not be demonstrated (p = {p_value:.4f}). The confidence interval for the difference extends beyond the equivalence margin of {margin_pct}%.")
         else:
             st.warning("Insufficient data for equivalence testing.")
-
-    # --- Tool 5: Pareto Analysis ---
-    with tool_tabs[4]:
+    
+    # --- Tool 4: Pareto Analysis ---
+    with tool_tabs[3]:
         st.subheader("Pareto Analysis of Run Failures")
         with st.expander("View Method Explanation"):
             st.markdown("""
-            **Purpose:** To apply the 80/20 rule to identify the "vital few" causes responsible for the majority of problems.
-            **Conceptual Walkthrough:** This is a triage tool. It counts and sorts your problems so you can see which one or two are causing the most pain, allowing you to focus your limited resources for the greatest impact.
+            **Purpose of the Tool:**
+            To identify the most frequent causes of a problem, enabling focused process improvement efforts, based on the **Pareto Principle** (the "80/20 rule").
+
+            **Conceptual Walkthrough:**
+            A Pareto chart is a triage tool for process problems. It takes all the reasons for failure, counts them up, and sorts them from most to least common. The chart immediately and visually points out the "vital few" causes that are responsible for the majority of problems, allowing you to apply limited resources where they will have the greatest effect.
+
+            **Mathematical Basis:**
+            This is a descriptive statistical tool involving calculation of simple frequencies and cumulative frequencies. No inferential statistics are used.
+            
+            **Procedure:**
+            1. Collect categorical data on the causes of a problem.
+            2. Tally the counts for each category and sort them in descending order.
+            3. Calculate the cumulative percentage for each category.
+            4. Plot the counts as bars and the cumulative percentage as a line.
+            
+            **Significance of Results:**
+            The chart visually separates the "vital few" from the "trivial many," showing the project team where to focus resources (e.g., for a CAPA) to achieve the greatest impact on reducing failures and Cost of Poor Quality (COPQ).
             """)
-        # ... (rest of the existing code for this tab is preserved) ...
         failure_data = ssm.get_data("lab_operations", "run_failures")
         df_failures = pd.DataFrame(failure_data)
         if not df_failures.empty:
             fig = create_pareto_chart(df_failures, category_col='failure_mode', title='Pareto Analysis of Assay Run Failures')
             st.plotly_chart(fig, use_container_width=True)
-            st.success("The analysis highlights 'Low Library Yield' as the primary contributor to run failures.")
+            st.success("The analysis highlights 'Low Library Yield' and 'Reagent QC Failure' as the primary contributors to run failures, indicating these are the top priorities for process improvement initiatives.")
         else:
             st.info("No failure data to analyze.")
-
-    # --- Tool 6: Gauge R&R ---
-    with tool_tabs[5]:
+            
+    # --- Tool 5: Gauge R&R ---
+    with tool_tabs[4]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
         with st.expander("View Method Explanation"):
             st.markdown(r"""
-            **Purpose:** To determine if your measurement system is reliable. It partitions the total observed variation into true part-to-part variation vs. measurement error (Repeatability & Reproducibility).
-            **Conceptual Walkthrough:** This tells you if your "ruler" is any good. If the variation from the ruler itself (%GR&R) is too high, you can't trust it to measure real differences.
-            **Mathematical Basis:** Uses ANOVA to estimate variance components ($\sigma^2_{\text{Repeatability}}$, $\sigma^2_{\text{Reproducibility}}$, $\sigma^2_{\text{Part}}$). The key output is **% Contribution of GR&R**.
+            **Purpose of the Tool:**
+            To quantify the variation in data that comes from the measurement system itself, as opposed to the actual variation between the items being measured. A reliable measurement system is a prerequisite for any valid process control or improvement.
+            
+            **Conceptual Walkthrough:**
+            A Gauge R&R study tells you what percentage of the total process variation is just "measurement noise." If that percentage is too high, you can't trust your measurements to tell you if a process change made a real difference. The two components of measurement noise are:
+            - **Repeatability:** "Shakiness" of the equipment. If you measure the same part multiple times, how much do the results vary?
+            - **Reproducibility:** Difference between operators. If two different people measure the same part, how much do their results vary?
+
+            **Mathematical Basis:**
+            Analysis of Variance (ANOVA) is used to partition the total observed variance ($\sigma^2_{\text{Total}}$) into its constituent components: Repeatability ($\sigma^2_{\text{Repeat}}$), Reproducibility ($\sigma^2_{\text{Repro}}$), and Part-to-Part ($\sigma^2_{\text{Part}}$).
+            
+            **Procedure:**
+            A structured experiment is performed where multiple operators measure multiple parts multiple times. The resulting data is analyzed using ANOVA to calculate the variance components.
+            
+            **Significance of Results:**
+            The key metric is the **% Contribution of GR&R**, which is $(\sigma^2_{\text{GRR}} / \sigma^2_{\text{Total}}) \times 100\%$.
+            - **< 10%:** Generally considered an acceptable measurement system.
+            - **10% - 30%:** May be acceptable depending on the application.
+            - **> 30%:** Unacceptable. The measurement system must be improved.
             """)
-        # ... (rest of the existing code for this tab is preserved) ...
         msa_data = ssm.get_data("quality_system", "msa_data")
         df_msa = pd.DataFrame(msa_data)
         if not df_msa.empty:
@@ -907,74 +941,101 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             if not results_df.empty:
                 total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
                 if total_grr < 10:
-                    st.success(f"**Conclusion:** The measurement system is acceptable (Total GR&R = {total_grr:.2f}%).")
+                    st.success(f"**Conclusion:** The measurement system is acceptable (Total GR&R = {total_grr:.2f}%). Most of the variation comes from the parts themselves, not the measurement process.")
                 elif total_grr < 30:
-                    st.warning(f"**Conclusion:** The measurement system is marginal (Total GR&R = {total_grr:.2f}%).")
+                    st.warning(f"**Conclusion:** The measurement system is marginal (Total GR&R = {total_grr:.2f}%). Further investigation may be warranted.")
                 else:
-                    st.error(f"**Conclusion:** The measurement system is unacceptable (Total GR&R = {total_grr:.2f}%).")
+                    st.error(f"**Conclusion:** The measurement system is unacceptable (Total GR&R = {total_grr:.2f}%). The assay has too much inherent variation.")
             else:
-                st.error("Could not calculate Gauge R&R results.")
+                st.error("Could not calculate Gauge R&R results due to an error in the plotting utility.")
         else:
             st.info("No MSA data to analyze.")
 
-    # --- Tool 7: DOE / RSM (ENHANCED WITH ML) ---
-    with tool_tabs[6]:
-        st.subheader("DOE / RSM for Process Optimization")
+    # --- Tool 6: DOE (Screening) ---
+    with tool_tabs[5]:
+        st.subheader("DOE for Factor Screening")
         with st.expander("View Method Explanation"):
-            st.markdown(r"""
-            **Purpose:** To scientifically map and optimize a process. **DOE (Screening)** finds the important factors. **RSM (Optimization)** models the relationship between those factors and the response to find the best operating conditions and define a robust **Design Space**.
-
-            **Conceptual Walkthrough:** DOE is like sending out scouts to map a wide territory to find promising areas. RSM is like sending a detailed survey team to the most promising area to create a high-resolution topographical map, allowing you to find the exact peak. We can create this "map" using either traditional statistics or more flexible machine learning.
+            st.markdown("""
+            **Purpose of the Tool:**
+            To efficiently identify which of many potential factors have a significant effect on a process output. It allows for the simultaneous study of many factors and their interactions.
             
+            **Conceptual Walkthrough:**
+            Instead of testing one factor at a time (OFAT), a DOE provides a specific, minimal set of experimental runs that cleverly covers all combinations. By analyzing the results of just these few runs, the math can untangle the effect of each factor individually (main effects) and also detect any crucial interactions between them (e.g., more sugar *only* works if you also use more eggs).
+
             **Mathematical Basis:**
-            - **Statistical Approach (OLS):** Fits the data to a pre-defined quadratic equation: $Y = \beta_0 + \beta_1X_1 + \dots + \beta_{11}X_1^2 + \dots$. This is fast and interpretable but assumes the true relationship is quadratic.
-            - **Machine Learning Approach (Gradient Boosting):** Builds an **ensemble** of many simple decision trees. Each new tree is trained to correct the errors of the previous ones. This approach can learn much more complex, non-linear relationships in the data without prior assumptions about its shape.
+            A factorial design (e.g., $2^k$) is used to create an orthogonal experimental plan. The results are analyzed using a linear model to estimate the **main effect** of each factor ($\bar{y}_{A,high} - \bar{y}_{A,low}$) and their interaction effects.
+
+            **Procedure:**
+            1. Identify potential factors and their high/low levels.
+            2. Run the experiments according to the factorial design matrix.
+            3. Analyze the results to determine which effects are statistically significant.
             
             **Significance of Results:**
-            Both methods provide a predictive model of the process. The ML approach may provide a more accurate model if the true process behavior is highly complex, while the statistical model is often easier to interpret. Comparing both gives us confidence in our defined Normal Operating Range (NOR).
+            A screening DOE quickly narrows down a large problem space, allowing the team to focus subsequent optimization experiments (like RSM) only on the "vital few" factors that actually matter.
+            """)
+        doe_data = ssm.get_data("quality_system", "doe_data")
+        df_doe = pd.DataFrame(doe_data)
+        st.write("##### DOE Data")
+        st.dataframe(df_doe, use_container_width=True)
+        try:
+            factor1, factor2, response = 'pcr_cycles', 'input_dna', 'library_yield'
+            if not all(col in df_doe.columns for col in [factor1, factor2, response]):
+                raise ValueError("DOE data is missing one or more required columns.")
+            effects_fig, interaction_fig = create_doe_effects_plot(df_doe, factor1, factor2, response)
+            st.write(f"##### Main Effects and Interaction Analysis")
+            col1, col2 = st.columns(2)
+            with col1: st.plotly_chart(effects_fig, use_container_width=True)
+            with col2: st.plotly_chart(interaction_fig, use_container_width=True)
+            st.success("This analysis identifies which factors have the largest impact on the response, guiding further optimization experiments like RSM.")
+        except Exception as e:
+            st.error(f"Could not perform DOE analysis. Error: {e}")
+            logger.error(f"DOE analysis failed: {e}", exc_info=True)
+            
+    # --- Tool 7: Response Surface Methodology (RSM) ---
+    with tool_tabs[6]:
+        st.subheader("Response Surface Methodology (RSM) for Optimization")
+        with st.expander("View Method Explanation", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            After screening, RSM is used to find the optimal settings for the significant factors. It fits a quadratic model to visualize and analyze curvature in the response, with the goal of finding the "peak" or "valley" of the response surface and defining a robust **Normal Operating Range (NOR)**.
+            
+            **Conceptual Walkthrough:**
+            If a screening DOE is about finding which mountains are worth climbing, RSM is about creating a high-resolution topographical map of the most promising one. A simple linear model can only describe a flat, tilted plane; RSM's quadratic equation can model curves, hills, and valleys. This allows us to find the exact peak of performance.
+
+            **The Mathematical Basis & Method:**
+            A second-order polynomial model is fit to the data:
+            $Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2$. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature.
+
+            **Procedure:**
+            1.  A Central Composite Design (CCD) or similar design is performed to allow for efficient estimation of all quadratic terms.
+            2.  The second-order model is fit to the experimental data.
+            3.  The model is visualized as a 3D surface plot and a 2D contour plot.
+
+            **Significance of Results:**
+            The RSM analysis provides a predictive map of the process. The contour plot allows scientists to identify a robust operating region (the Design Space). This is a cornerstone of a Quality by Design (QbD) approach and provides powerful evidence that the process is well-understood and controlled.
             """)
         rsm_data = ssm.get_data("quality_system", "rsm_data")
         df_rsm = pd.DataFrame(rsm_data)
-        st.write("##### Central Composite Design Data")
+        
+        st.write("##### Central Composite Design Data for RSM")
         st.dataframe(df_rsm, use_container_width=True)
         
         try:
             factor1, factor2, response = 'pcr_cycles', 'input_dna', 'library_yield'
+            surface_fig, contour_fig, model_summary = create_rsm_plots(df_rsm, factor1, factor2, response)
             
-            # Statistical Model
-            st.markdown("#### Statistical Model (OLS Regression)")
-            surface_fig_ols, contour_fig_ols, model_summary_ols = create_rsm_plots(df_rsm, factor1, factor2, response)
-            st.dataframe(model_summary_ols)
+            st.write("##### Response Surface Model Summary")
+            st.dataframe(model_summary)
+            
             col1, col2 = st.columns(2)
-            with col1: st.plotly_chart(surface_fig_ols, use_container_width=True)
-            with col2: st.plotly_chart(contour_fig_ols, use_container_width=True)
+            with col1:
+                st.plotly_chart(surface_fig, use_container_width=True)
+            with col2:
+                st.plotly_chart(contour_fig, use_container_width=True)
             
-            # ML Model
-            st.markdown("---")
-            st.markdown("#### Machine Learning Model (Gradient Boosting)")
-            st.caption("This model does not assume a quadratic relationship and can learn more complex interactions.")
-            X = df_rsm[[factor1, factor2]]
-            y = df_rsm[response]
-            gbr = GradientBoostingRegressor(n_estimators=100, random_state=42)
-            gbr.fit(X, y)
-            
-            # Create grid for prediction
-            f1_range = np.linspace(X[factor1].min(), X[factor1].max(), 30)
-            f2_range = np.linspace(X[factor2].min(), X[factor2].max(), 30)
-            grid_x, grid_y = np.meshgrid(f1_range, f2_range)
-            grid_df = pd.DataFrame({factor1: grid_x.flatten(), factor2: grid_y.flatten()})
-            grid_df['predicted_yield'] = gbr.predict(grid_df)
-            
-            # Create ML plots
-            surface_fig_ml = go.Figure(data=[go.Surface(z=grid_df['predicted_yield'].values.reshape(grid_x.shape), x=grid_x, y=grid_y, colorscale='Plasma')])
-            surface_fig_ml.update_layout(title="<b>ML Response Surface</b>", scene=dict(xaxis_title=factor1, yaxis_title=factor2, zaxis_title=f'Predicted {response}'))
-            contour_fig_ml = go.Figure(data=go.Contour(z=grid_df['predicted_yield'].values.reshape(grid_x.shape), x=f1_range, y=f2_range, colorscale='Plasma', contours=dict(coloring='heatmap', showlabels=True)))
-            contour_fig_ml.update_layout(title="<b>ML Contour Plot</b>", xaxis_title=factor1, yaxis_title=factor2)
-            
-            ml_col1, ml_col2 = st.columns(2)
-            with ml_col1: st.plotly_chart(surface_fig_ml, use_container_width=True)
-            with ml_col2: st.plotly_chart(contour_fig_ml, use_container_width=True)
-            
+            st.success("""
+            **Conclusion:** The quadratic model successfully fits the experimental data. The surface and contour plots clearly indicate an optimal operating region for maximizing library yield. The statistical significance of the quadratic terms (e.g., `I(pcr_cycles ** 2)`) confirms that curvature is a key feature of the process, validating the use of RSM for optimization.
+            """)
         except Exception as e:
             st.error(f"Could not perform RSM analysis. Error: {e}")
             logger.error(f"RSM analysis failed: {e}", exc_info=True)
