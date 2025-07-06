@@ -390,6 +390,8 @@ def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) ->
         import shap
         import matplotlib.pyplot as plt
 
+        # This function now expects a simple 2D numpy array.
+        # The caller is responsible for extracting the correct values.
         if len(shap_values.shape) != 2:
             logger.error(f"SHAP plot error: Expected a 2D numpy array, but got shape {shap_values.shape}.")
             return None
@@ -483,8 +485,8 @@ def create_rsm_plots(df: pd.DataFrame, f1: str, f2: str, response: str) -> Tuple
     title_contour = "<b>Contour Plot with Optimum</b>"
     
     try:
-        # Fit a full quadratic model
-        formula = f"`{response}` ~ `{f1}` + `{f2}` + I(`{f1}`*`{f2}`) + I(`{f1}`**2) + I(`{f2}`**2)"
+        # SME Definitive Fix: Use robust Q() quoting for all variables in the formula.
+        formula = f"Q('{response}') ~ Q('{f1}') + Q('{f2}') + I(Q('{f1}')*Q('{f2}')) + I(Q('{f1}')**2) + I(Q('{f2}')**2)"
         model = ols(formula, data=df).fit()
 
         # Generate a grid of points for prediction
@@ -515,9 +517,9 @@ def create_rsm_plots(df: pd.DataFrame, f1: str, f2: str, response: str) -> Tuple
             x=f1_range, y=f2_range, colorscale='Viridis',
             contours=dict(coloring='heatmap', showlabels=True)
         ))
-        # Find and plot the optimum point
-        opt_idx = model.predict(df).idxmax()
-        opt_f1, opt_f2 = df.loc[opt_idx, f1], df.loc[opt_idx, f2]
+        # Find and plot the optimum point from the model predictions on the grid
+        opt_idx_grid = grid_df['predicted_yield'].idxmax()
+        opt_f1, opt_f2 = grid_df.loc[opt_idx_grid, f1], grid_df.loc[opt_idx_grid, f2]
         contour_fig.add_trace(go.Scatter(
             x=[opt_f1], y=[opt_f2], mode='markers',
             marker=dict(color='red', size=15, symbol='star'),
