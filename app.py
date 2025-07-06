@@ -1088,26 +1088,35 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             """)
         
     try:
-        # --- Create a dedicated function for SHAP plot generation ---
+        # Define the cached function to generate the plot
         @st.cache_data
-        def generate_shap_image(_model, _X_sample):
+        def generate_shap_plot_image(_model, _X_sample):
             """
-            Generates and returns a SHAP summary plot as a static in-memory image.
-            This completely isolates the plotting and prevents state leakage between tabs.
+            Calculates SHAP values and returns a plot as an in-memory image buffer.
+            This isolates matplotlib and is cache-friendly.
             """
             import io
             import matplotlib.pyplot as plt
             import shap
-
-            # 1. Create a new figure object for this specific plot
-            fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             
-            # 2. Generate the plot onto the figure object
+            # 1. Create an explainer for the tree-based model
             explainer = shap.TreeExplainer(_model)
+            
+            # 2. Calculate SHAP values. This returns a list of arrays for binary classifiers.
             shap_values = explainer.shap_values(_X_sample)
             
+            # 3. *** THE DEFINITIVE FIX for the AssertionError ***
+            #    For a binary classifier, shap_values is a list [class_0_values, class_1_values].
+            #    We must pass the values for a single class to the summary plot.
+            #    We are interested in what drives the "positive" (cancer) prediction, so we use shap_values[1].
+            shap_values_for_positive_class = shap_values[1]
+            
+            # Create a new figure to ensure it's isolated
+            fig, ax = plt.subplots(dpi=150)
+            
+            # Generate the summary plot onto the created figure
             shap.summary_plot(
-                shap_values[1],  # Use values for the positive class
+                shap_values_for_positive_class,
                 _X_sample,
                 show=False,
                 plot_type="dot"
@@ -1115,33 +1124,26 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
             plt.tight_layout()
             
-            # 3. Save the plot to an in-memory buffer instead of showing it
+            # Save the figure to a buffer
             buf = io.BytesIO()
             fig.savefig(buf, format="png", bbox_inches="tight")
+            plt.close(fig) # Explicitly close the figure
             buf.seek(0)
-            
-            # 4. Explicitly close the figure to release memory
-            plt.close(fig)
-            
             return buf
 
-        # --- Main logic for the tab ---
-        with st.spinner("Calculating SHAP values for a data sample..."):
-            n_samples_for_shap = min(100, len(X))
-            st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
+        # --- UI Logic ---
+        with st.spinner("Calculating SHAP values..."):
+            n_samples = min(100, len(X))
+            X_sample = X.sample(n=n_samples, random_state=42)
             
-            X_sample = X.sample(n=n_samples_for_shap, random_state=42)
-            
-            # Call the cached function to get the image buffer
-            image_buffer = generate_shap_image(model, X_sample)
-            
-            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            
-            # Display the buffer using st.image()
-            st.image(image_buffer, use_column_width=True)
-
+            # Call the function to get the image buffer
+            plot_buffer = generate_shap_plot_image(model, X_sample)
+        
+        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+        st.image(plot_buffer, use_column_width=True)
+        
         st.success(
-            "The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, "
+            "The SHAP analysis confirms model predictions are driven by known methylation biomarkers, "
             "providing strong evidence of its scientific validity for the PMA submission.", 
             icon="✅"
         )
