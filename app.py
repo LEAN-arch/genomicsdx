@@ -978,7 +978,10 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"Could not perform RSM analysis. Error: {e}")
             logger.error(f"RSM analysis failed: {e}", exc_info=True)
+
+
 # MACHINE LEARNING SECTION MLMLLMLMLMLMLMLMLMMLMMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLM
+
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
@@ -1004,7 +1007,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "Time Series Forecasting (ML)"
     ])
 
-    # <<< ROBUST CACHING FIX: Pass numpy arrays to the cached function >>>
     @st.cache_data
     def get_or_generate_ml_artifacts(_X_numpy, _y_numpy, _feature_names):
         """
@@ -1012,7 +1014,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         It uses numpy arrays and simple types as inputs for robust hashing.
         """
         logger.info("CACHE MISS: Running expensive model training and SHAP calculation...")
-        # Recreate DataFrame inside the cached function
         _X_df = pd.DataFrame(_X_numpy, columns=_feature_names)
         
         # 1. Train the model
@@ -1029,7 +1030,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         
         logger.info("Model training and SHAP generation complete. Results are now cached.")
         
-        # 4. Return all artifacts
         return model, plot_buffer
 
     # --- Tool 1: ROC & PR Curves ---
@@ -1045,19 +1045,13 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         col1, col2 = st.columns(2)
         with col1:
             with st.expander("View ROC Method Explanation"):
-                st.markdown(r"""
-                **Purpose:** To visualize the trade-off between **True Positive Rate (Sensitivity)** and **False Positive Rate (1 - Specificity)**.
-                **Conceptual Walkthrough:** The ROC curve shows the performance of our classifier across all possible sensitivity/specificity thresholds. The Area Under the Curve (AUC) gives a single score for performance (1.0 is perfect, 0.5 is random).
-                """)
+                st.markdown(r"""**Purpose:** To visualize the trade-off between **Sensitivity** and **1 - Specificity**.""")
             roc_fig = create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y_true}), 'score', 'truth')
             st.plotly_chart(roc_fig, use_container_width=True)
 
         with col2:
             with st.expander("View Precision-Recall Method Explanation"):
-                st.markdown(r"""
-                **Purpose:** To visualize the trade-off between **Precision** and **Recall (Sensitivity)**, which is critical for imbalanced datasets like ours.
-                **Conceptual Walkthrough:** This answers the key clinical question: "Of the patients we flagged as positive, how many were actually sick?" This is **Precision**. The PR curve shows how this precision changes as we try to find more and more of the true positives (increase Recall).
-                """)
+                st.markdown(r"""**Purpose:** To visualize the trade-off between **Precision** and **Recall**, which is critical for imbalanced datasets.""")
             precision, recall, _ = precision_recall_curve(y_true, y_scores)
             pr_fig = px.area(x=recall, y=precision, title="<b>Precision-Recall Curve</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
             pr_fig.update_layout(xaxis=dict(range=[0,1]), yaxis=dict(range=[0,1.05]))
@@ -1067,10 +1061,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[1]:
         st.subheader("Cancer Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation"):
-            st.markdown(r"""
-            **Purpose:** To address the "black box" problem of complex ML models by explaining *how* our classifier makes its decisions.
-            **Conceptual Walkthrough:** SHAP is like a sophisticated "MVP" calculator for our biomarkers. For every single patient, it calculates exactly how much each biomarker contributed to the final "cancer" or "no cancer" score. The summary plot shows which biomarkers are consistently the most influential across all patients.
-            """)
+            st.markdown(r"""**Purpose:** To address the "black box" problem of complex ML models by explaining *how* our classifier makes its decisions.""")
         
         X, y = ssm.get_data("ml_models", "classifier_data")
         st.write("Generating SHAP values (will be cached after first run)...")
@@ -1080,10 +1071,11 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         
         if plot_buffer:
             st.image(plot_buffer)
-            st.success("SHAP analysis confirms that known oncogenic markers are the most significant drivers of a positive result, providing strong evidence of the model's biological relevance.")
+            st.success("SHAP analysis confirms that known oncogenic markers are the most significant drivers of a positive result.")
         else:
             st.error("Could not generate or retrieve SHAP summary plot.")
     
+    # ... (the rest of the function remains the same) ...
     # --- Tool 3: CSO Analysis ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
@@ -1142,7 +1134,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         df_ts = pd.DataFrame(ts_data).set_index('date')
         df_ts.index = pd.to_datetime(df_ts.index)
         
-        # Feature Engineering
         for lag in [1, 7, 14]:
             df_ts[f'lag_{lag}'] = df_ts['samples'].shift(lag)
         df_ts['dayofweek'] = df_ts.index.dayofweek
@@ -1152,15 +1143,12 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         X_ts = df_ts.drop('samples', axis=1)
         y_ts = df_ts['samples']
         
-        # <<< FIX: Added verbose=-1 to suppress LightGBM warnings >>>
         model_lgbm = lgb.LGBMRegressor(random_state=42, verbose=-1)
         model_lgbm.fit(X_ts, y_ts)
         
-        # Create future dataframe for forecasting
         future_dates = pd.date_range(start=df_ts.index.max() + pd.Timedelta(days=1), periods=30, freq='D')
         future_df = pd.DataFrame(index=future_dates)
         
-        # <<< FIX: Changed to .iloc for future-proof positional indexing >>>
         last_rows = df_ts['samples'].iloc[-14:]
         future_df['lag_1'] = last_rows.iloc[-1]
         future_df['lag_7'] = last_rows.iloc[-7]
