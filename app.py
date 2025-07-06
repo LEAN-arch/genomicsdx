@@ -987,7 +987,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import train_test_split
-        from sklearn.metrics import confusion_matrix
+        # <<< FIX: Added the missing 'precision_recall_curve' import here >>>
+        from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
+        from statsmodels.tsa.arima.model import ARIMA
         import shap
         import lightgbm as lgb
     except ImportError:
@@ -999,31 +1001,47 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "Classifier Explainability (SHAP)",
         "Cancer Signal of Origin (CSO) Analysis",
         "Predictive Ops (Run Failure)", 
-        "Time Series Forecasting (ML)" # Enhanced
+        "Time Series Forecasting (ML)"
     ])
 
-    # --- Tool 1: Classifier Performance ---
+    # --- Tool 1: ROC & PR Curves ---
     with ml_tabs[0]:
         st.subheader("Classifier Performance Analysis")
         X, y_true = ssm.get_data("ml_models", "classifier_data")
         model = ssm.get_data("ml_models", "classifier_model")
         y_scores = model.predict_proba(X)[:, 1]
+
         col1, col2 = st.columns(2)
         with col1:
             with st.expander("View ROC Method Explanation"):
                 st.markdown(r"""
-                **Purpose:** To visualize the trade-off between **True Positive Rate (Sensitivity)** and **False Positive Rate (1 - Specificity)**.
-                **Conceptual Walkthrough:** The ROC curve shows the performance of our classifier across all possible sensitivity/specificity thresholds. A perfect test "hugs" the top-left corner. The Area Under the Curve (AUC) gives a single score for performance (1.0 is perfect, 0.5 is random).
-                **Mathematical Basis:** Plots TPR ($TP/(TP+FN)$) vs. FPR ($FP/(FP+TN)$).
+                **Purpose of the Tool:**
+                The Receiver Operating Characteristic (ROC) curve is the standard method for visualizing the performance of a binary classifier. It shows the trade-off between the **True Positive Rate (Sensitivity)** and the **False Positive Rate (1 - Specificity)** at every possible decision threshold.
+                **Conceptual Walkthrough:**
+                The ROC curve shows the performance of our classifier across all possible sensitivity/specificity thresholds. A perfect test "hugs" the top-left corner. The Area Under the Curve (AUC) gives a single score for performance (1.0 is perfect, 0.5 is random).
+                **Mathematical Basis:**
+                - **True Positive Rate (TPR) / Sensitivity:** $TPR = \frac{TP}{TP + FN}$
+                - **False Positive Rate (FPR):** $FPR = \frac{FP}{FP + TN}$
+                The curve plots TPR (y-axis) vs. FPR (x-axis). The AUC is the integral of this curve.
+                **Significance of Results:**
+                A high AUC (typically >0.90 for a good diagnostic) is essential for a PMA submission. It provides objective evidence of the classifier's ability to discriminate between cases and controls.
                 """)
             roc_fig = create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y_true}), 'score', 'truth')
             st.plotly_chart(roc_fig, use_container_width=True)
+
         with col2:
             with st.expander("View Precision-Recall Method Explanation"):
                 st.markdown(r"""
-                **Purpose:** To visualize the trade-off between **Precision** and **Recall (Sensitivity)**, which is critical for imbalanced datasets like ours.
-                **Conceptual Walkthrough:** This answers the key clinical question: "Of the patients we flagged as positive, how many were actually sick?" This is **Precision**. The PR curve shows how this precision changes as we try to find more and more of the true positives (increase Recall).
-                **Mathematical Basis:** Plots Precision ($TP/(TP+FP)$) vs. Recall ($TP/(TP+FN)$).
+                **Purpose of the Tool:**
+                A Precision-Recall (PR) curve is a crucial complement to the ROC curve, especially for datasets with a large class imbalance (like cancer screening, where non-cancers vastly outnumber cancers). It visualizes the trade-off between **Precision** and **Recall (Sensitivity)**.
+                **Conceptual Walkthrough:**
+                This answers the key clinical question: "Of the patients we flagged as positive, how many were actually sick?" This is **Precision**. The PR curve shows how this precision changes as we try to find more and more of the true positives (increase Recall).
+                **Mathematical Basis:**
+                - **Precision (Positive Predictive Value):** $Precision = \frac{TP}{TP + FP}$
+                - **Recall (Sensitivity):** $Recall = \frac{TP}{TP + FN}$
+                The curve plots Precision (y-axis) vs. Recall (x-axis). A classifier that maintains high precision as recall increases is superior.
+                **Significance of Results:**
+                A strong PR curve demonstrates that the test is not just sensitive but also reliable, minimizing the burden of false positives on the healthcare system. This is a key point of evaluation for regulators and payers.
                 """)
             precision, recall, _ = precision_recall_curve(y_true, y_scores)
             pr_fig = px.area(x=recall, y=precision, title="<b>Precision-Recall Curve</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
@@ -1067,10 +1085,10 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Mathematical Basis:** An N x N matrix where N is the number of classes. Each cell $(i, j)$ contains the number of samples whose true class was $i$ but were predicted as class $j$.
             """)
         st.write("Generating synthetic CSO data and training a simple model...")
-        X, y_true = ssm.get_data("ml_models", "classifier_data")
+        X_cso, y_true_cso = ssm.get_data("ml_models", "classifier_data")
         np.random.seed(123)
         cso_classes = ['Lung', 'Colon', 'Pancreatic', 'Liver', 'Ovarian']
-        cancer_samples_X = X[y_true == 1]
+        cancer_samples_X = X_cso[y_true_cso == 1]
         true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X))
         cso_model = RandomForestClassifier(n_estimators=50, random_state=123)
         cso_model.fit(cancer_samples_X, true_cso)
@@ -1105,31 +1123,14 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         tn, fp, fn, tp = cm.ravel()
         st.success(f"**Model Evaluation:** The model correctly identified **{tp}** out of **{tp+fn}** failing runs, enabling proactive intervention.")
         
-    # --- Tool 5: Time Series Forecasting (ENHANCED WITH ML) ---
+    # --- Tool 5: Time Series Forecasting (ML) ---
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting with Machine Learning")
         with st.expander("View Method Explanation"):
             st.markdown(r"""
-            **Purpose of the Tool:**
-            To forecast future demand (e.g., incoming sample volume) based on historical data. This is crucial for proactive lab management, including reagent inventory control, staffing, and capacity planning.
-
-            **Conceptual Walkthrough: What's Happening in the Background?**
-            Instead of a classical statistical model like ARIMA, we can treat forecasting as a standard machine learning problem. We "reframe" the problem by creating features from the date (e.g., day of the week, month, week of the year) and by using past values ("lags") as input features. For example, to predict today's sample volume, we might use the volume from yesterday, 7 days ago, and 14 days ago, along with the fact that today is a Tuesday in July. A gradient boosting model (like LightGBM) can then learn the complex patterns between these features and the volume we're trying to predict.
-
-            **Mathematical Basis:**
-            We transform the time series problem into a supervised regression problem. Let $y_t$ be the value at time $t$. We want to predict $y_{t+1}$. We construct a feature vector $X_t$ containing engineered features like:
-            - **Lag features:** $y_{t-1}, y_{t-2}, \dots, y_{t-k}$
-            - **Rolling window features:** e.g., mean or std dev of the last 7 days.
-            - **Calendar features:** Day of week, month, quarter, year.
-            We then train a model $f$ such that $y_{t+1} \approx f(X_t)$. **LightGBM** is a highly efficient gradient boosting framework that builds an ensemble of decision trees to model this relationship.
-
-            **Procedure:**
-            1. Engineer features from the historical time series data.
-            2. Train a gradient boosting model on these features.
-            3. To forecast, create the corresponding features for future dates and use the model to predict.
-
-            **Significance of Results:**
-            This ML-based approach is often more flexible than classical methods and can easily incorporate external factors (e.g., marketing campaigns, holidays) as additional features. A reliable forecast allows the lab to optimize resource planning.
+            **Purpose:** To forecast future demand based on historical trends. This is crucial for proactive lab management, resource planning, and inventory control.
+            **Conceptual Walkthrough:** We treat forecasting as a machine learning problem. By creating features from the date (e.g., day of week, month) and using past values ("lags") as inputs, we can train a gradient boosting model to learn the complex patterns in our sample volume data.
+            **Mathematical Basis:** We transform the time series into a supervised regression problem where features $X_t$ (lags, calendar features) are used to predict the target $y_{t+1}$. A **LightGBM** model, an efficient gradient boosting framework, is trained to learn the mapping $f: X_t \rightarrow y_{t+1}$.
             """)
         ts_data = ssm.get_data("ml_models", "sample_volume_data")
         df_ts = pd.DataFrame(ts_data).set_index('date')
@@ -1142,16 +1143,15 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         df_ts['month'] = df_ts.index.month
         df_ts.dropna(inplace=True)
         
-        X = df_ts.drop('samples', axis=1)
-        y = df_ts['samples']
+        X_ts = df_ts.drop('samples', axis=1)
+        y_ts = df_ts['samples']
         
         model_lgbm = lgb.LGBMRegressor(random_state=42)
-        model_lgbm.fit(X, y)
+        model_lgbm.fit(X_ts, y_ts)
         
         # Create future dataframe for forecasting
         future_dates = pd.date_range(start=df_ts.index.max() + pd.Timedelta(days=1), periods=30, freq='D')
         future_df = pd.DataFrame(index=future_dates)
-        # This is a simplified forecast; a real one would handle lags iteratively.
         future_df['lag_1'] = df_ts['samples'][-1]
         future_df['lag_7'] = df_ts['samples'][-7]
         future_df['lag_14'] = df_ts['samples'][-14]
@@ -1159,7 +1159,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         future_df['month'] = future_df.index.month
         
         future_df['mean'] = model_lgbm.predict(future_df)
-        # Create dummy CI for plotting consistency
         future_df['mean_ci_upper'] = future_df['mean'] * 1.1
         future_df['mean_ci_lower'] = future_df['mean'] * 0.9
         
