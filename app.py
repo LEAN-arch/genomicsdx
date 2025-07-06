@@ -1056,7 +1056,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision across a range of recall values, indicating strong performance for a screening application.", icon="✅")
 
  # --- Tool 2: SHAP ---
-    # --- Tool 2: SHAP (CORRECTED & IMPROVED) ---
+# --- Tool 2: Classifier Explainability (SHAP) ---
     with ml_tabs[1]:
         st.subheader("Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -1086,29 +1086,37 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             """)
         
         try:
-            with st.spinner("Calculating SHAP values for a sample of the data..."):
-                # Use a smaller sample for dashboard performance
-                n_samples = min(100, len(X))
-                st.caption(f"Note: Explaining on a random subsample of {n_samples} data points for performance.")
-                X_sample = X.sample(n=n_samples, random_state=42)
-
-                # 1. Create the correct explainer for the model type
+            with st.spinner("Calculating SHAP values for a data sample..."):
+                # Define a sample size for dashboard performance
+                n_samples_for_shap = min(100, len(X))
+                st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
+                
+                # Create the data sample
+                X_sample = X.sample(n=n_samples_for_shap, random_state=42)
+                
+                # 1. Create the correct explainer for the model type (TreeExplainer for RandomForest)
                 explainer = shap.TreeExplainer(model)
                 
-                # 2. Get the SHAP values. For binary classification, this returns a list of 2 arrays.
-                shap_values = explainer.shap_values(X_sample)
+                # 2. Get the SHAP values. For binary classification, this returns a list of two arrays.
+                shap_values_list = explainer.shap_values(X_sample)
                 
-                # 3. CRITICAL FIX: Select the SHAP values for the positive class (class 1)
-                shap_values_for_plot = shap_values[1]
+                # 3. Select the SHAP values for the positive class (class 1)
+                shap_values_positive_class = shap_values_list[1]
                 
-                # 4. Create the plot using the utility function
-                plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_sample)
+                # 4. Create a matplotlib figure object to plot onto. This is the new, robust method.
+                fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+                
+                # 5. Generate the SHAP plot onto the created figure. `show=False` is crucial.
+                shap.summary_plot(shap_values_positive_class, X_sample, show=False, plot_type="dot")
+                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
+                plt.tight_layout()
 
-            if plot_buffer:
-                st.image(plot_buffer)
-                st.success("The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, providing strong evidence of its scientific validity for the PMA submission.", icon="✅")
-            else:
-                st.error("Could not generate SHAP summary plot. Please check the logs.")
+            # 6. Use st.pyplot() to render the figure object directly.
+            #    `clear_figure=True` is important to prevent the plot from bleeding into subsequent renders.
+            st.pyplot(fig, clear_figure=True)
+            
+            st.success("The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, providing strong evidence of its scientific validity for the PMA submission.", icon="✅")
+
         except Exception as e:
             st.error(f"An error occurred during SHAP analysis: {e}")
             logger.error(f"SHAP analysis failed: {e}", exc_info=True)
