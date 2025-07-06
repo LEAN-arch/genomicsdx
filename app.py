@@ -1087,70 +1087,38 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
             """)
         
-    try:
-        # Define the cached function to generate the plot
-        @st.cache_data
-        def generate_shap_plot_image(_model, _X_sample):
-            """
-            Calculates SHAP values and returns a plot as an in-memory image buffer.
-            This isolates matplotlib and is cache-friendly.
-            """
-            import io
-            import matplotlib.pyplot as plt
-            import shap
-            
-            # 1. Create an explainer for the tree-based model
-            explainer = shap.TreeExplainer(_model)
-            
-            # 2. Calculate SHAP values. This returns a list of arrays for binary classifiers.
-            shap_values = explainer.shap_values(_X_sample)
-            
-            # 3. *** THE DEFINITIVE FIX for the AssertionError ***
-            #    For a binary classifier, shap_values is a list [class_0_values, class_1_values].
-            #    We must pass the values for a single class to the summary plot.
-            #    We are interested in what drives the "positive" (cancer) prediction, so we use shap_values[1].
-            shap_values_for_positive_class = shap_values[1]
-            
-            # Create a new figure to ensure it's isolated
-            fig, ax = plt.subplots(dpi=150)
-            
-            # Generate the summary plot onto the created figure
-            shap.summary_plot(
-                shap_values_for_positive_class,
-                _X_sample,
-                show=False,
-                plot_type="dot"
-            )
-            fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
-            plt.tight_layout()
-            
-            # Save the figure to a buffer
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png", bbox_inches="tight")
-            plt.close(fig) # Explicitly close the figure
-            buf.seek(0)
-            return buf
+try:
+    st.subheader("SHAP Analysis Debugging")
+    n_samples = min(100, len(X))
+    X_sample = X.sample(n=n_samples, random_state=42)
+    
+    st.write(f"Shape of data matrix `X_sample`: `{X_sample.shape}`")
 
-        # --- UI Logic ---
-        with st.spinner("Calculating SHAP values..."):
-            n_samples = min(100, len(X))
-            X_sample = X.sample(n=n_samples, random_state=42)
-            
-            # Call the function to get the image buffer
-            plot_buffer = generate_shap_plot_image(model, X_sample)
-        
-        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-        st.image(plot_buffer, use_column_width=True)
-        
-        st.success(
-            "The SHAP analysis confirms model predictions are driven by known methylation biomarkers, "
-            "providing strong evidence of its scientific validity for the PMA submission.", 
-            icon="✅"
-        )
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_sample)
 
-    except Exception as e:
-        st.error(f"An error occurred during SHAP analysis: {e}")
-        logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+    st.write(f"Type of `shap_values` object: `{type(shap_values)}`")
+    st.write(f"Length of `shap_values` list: `{len(shap_values)}`")
+    
+    # Check shapes of the arrays inside the list
+    st.write(f"Shape of `shap_values[0]` (for class 0): `{shap_values[0].shape}`")
+    st.write(f"Shape of `shap_values[1]` (for class 1): `{shap_values[1].shape}`")
+
+    shap_values_for_positive_class = shap_values[1]
+    
+    # This is the assertion that is failing internally in SHAP
+    assert shap_values_for_positive_class.shape[1] == X_sample.shape[1], "MANUAL ASSERTION FAILED!"
+    
+    st.success("Manual shape assertion passed! The error lies elsewhere if this message appears.")
+
+    # ... (the rest of the plotting code) ...
+
+except AssertionError as e:
+    st.error(f"MANUAL ASSERTION FAILED: {e}")
+    st.error("This confirms the number of features in the SHAP values does not match the number of features in the data sample. This is likely a library version mismatch.")
+except Exception as e:
+    st.error(f"An error occurred during SHAP analysis: {e}")
+    logger.error(f"SHAP analysis failed: {e}", exc_info=True)
         
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
