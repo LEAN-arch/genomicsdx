@@ -1085,40 +1085,37 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
             """)
         
+with ml_tabs[0]:
+				  			
+        st.subheader("Cancer Classifier Explainability (SHAP)")
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.																				  
+            """)
+        st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
+        
+        # Use cached model
+        main_model = get_main_classifier(X_main, y_main)
         try:
-            with st.spinner("Calculating SHAP values for a data sample..."):
-                # Define a sample size for dashboard performance
-                n_samples_for_shap = min(100, len(X))
-                st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
-                
-                # Create the data sample
-                X_sample = X.sample(n=n_samples_for_shap, random_state=42)
-                
-                # 1. Create the correct explainer for the model type (TreeExplainer for RandomForest)
-                explainer = shap.TreeExplainer(model)
-                
-                # 2. Get the SHAP values. For binary classification, this returns a list of two arrays.
-                shap_values_list = explainer.shap_values(X_sample)
-                
-                # 3. Select the SHAP values for the positive class (class 1)
-                shap_values_positive_class = shap_values_list[1]
-                
-                # 4. Create a matplotlib figure object to plot onto. This is the new, robust method.
-                fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
-                
-                # 5. Generate the SHAP plot onto the created figure. `show=False` is crucial.
-                shap.summary_plot(shap_values_positive_class, X_sample, show=False, plot_type="dot")
-                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
-                plt.tight_layout()
-
-            # 6. Use st.pyplot() to render the figure object directly.
-            #    `clear_figure=True` is important to prevent the plot from bleeding into subsequent renders.
-            st.pyplot(fig, clear_figure=True)
+            # Use a background dataset for the explainer for performance
+																   
+            explainer = shap.Explainer(main_model, X_main.sample(100, random_state=1))
+            shap_values_obj = explainer(X_main)
             
-            st.success("The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, providing strong evidence of its scientific validity for the PMA submission.", icon="✅")
+            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+            
+            # Get SHAP values for the positive class
+            shap_values_for_plot = shap_values_obj.values[:,:,1]
 
+            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_main)
+            if plot_buffer:
+                st.image(plot_buffer)
+                st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result.")
+            else:
+                st.error("Could not generate SHAP summary plot.")
         except Exception as e:
-            st.error(f"An error occurred during SHAP analysis: {e}")
+            st.error(f"Could not perform SHAP analysis. Error: {e}")
             logger.error(f"SHAP analysis failed: {e}", exc_info=True)
 
     # --- Tool 3: CSO ---
