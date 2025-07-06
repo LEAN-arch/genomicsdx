@@ -1088,49 +1088,60 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             """)
         
     try:
-        with st.spinner("Calculating SHAP values for a data sample... This may take a moment."):
-            n_samples_for_shap = min(100, len(X))
-            st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
+        # --- Create a dedicated function for SHAP plot generation ---
+        # This helps isolate the matplotlib logic and makes the main flow cleaner.
+        @st.cache_data
+        def generate_shap_plot(_model, _X_sample):
+            """
+
+            Generates and returns a matplotlib figure object for the SHAP summary plot.
+            This function is cached to avoid re-calculating SHAP values on every interaction.
+            """
+            explainer = shap.TreeExplainer(_model)
+            shap_values = explainer(_X_sample)
             
-            X_sample = X.sample(n=n_samples_for_shap, random_state=42)
-            
-            # 1. Create the explainer
-            explainer = shap.TreeExplainer(model)
-            
-            # 2. *** THE DEFINITIVE FIX ***
-            #    Use the explainer as a callable to get an Explanation object.
-            #    This is the modern and robust way to get SHAP values.
-            shap_values_obj = explainer(X_sample)
-            
-            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-    
-            # 3. Create the matplotlib figure to plot on
+            # Create a new figure object for this specific plot
             fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             
-            # 4. Generate the plot. 
-            #    Pass the full Explanation object for the positive class ([:,:,1]).
-            #    The `summary_plot` function is designed to handle this object correctly.
+            # Generate the plot onto the figure object
             shap.summary_plot(
-                shap_values_obj[:,:,1], # Select values for the positive class
-                X_sample,
+                shap_values[:,:,1],  # Use the Explanation object for the positive class
+                _X_sample,
                 show=False,
                 plot_type="dot"
             )
             fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
             plt.tight_layout()
-    
-        # 5. Render the figure in Streamlit
-        st.pyplot(fig, clear_figure=True)
-        
+            return fig
+
+        # --- Main logic for the tab ---
+        with st.spinner("Calculating SHAP values for a data sample..."):
+            n_samples_for_shap = min(100, len(X))
+            st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
+            
+            X_sample = X.sample(n=n_samples_for_shap, random_state=42)
+            
+            # Call the cached function to get the figure
+            shap_fig = generate_shap_plot(model, X_sample)
+            
+            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+            
+            # Display the figure and ensure it's cleared from memory afterward
+            st.pyplot(shap_fig, clear_figure=True)
+            
+            # Explicitly close the figure just in case clear_figure isn't sufficient
+            plt.close(shap_fig)
+
         st.success(
             "The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, "
             "providing strong evidence of its scientific validity for the PMA submission.", 
             icon="✅"
         )
-    
+
     except Exception as e:
         st.error(f"An error occurred during SHAP analysis: {e}")
         logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+        
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
