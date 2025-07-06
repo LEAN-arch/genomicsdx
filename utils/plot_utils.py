@@ -390,8 +390,6 @@ def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) ->
         import shap
         import matplotlib.pyplot as plt
 
-        # This function now expects a simple 2D numpy array.
-        # The caller is responsible for extracting the correct values.
         if len(shap_values.shape) != 2:
             logger.error(f"SHAP plot error: Expected a 2D numpy array, but got shape {shap_values.shape}.")
             return None
@@ -438,33 +436,21 @@ def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, respon
     title_effects = "<b>Calculated Factor Effects</b>"
     title_interaction = "<b>Interaction Plot</b>"
     try:
-        # Aggressively sanitize data within the function to guarantee stability
         clean_df = df[[factor1, factor2, response]].copy()
         clean_df[response] = pd.to_numeric(clean_df[response], errors='coerce')
         clean_df.dropna(inplace=True)
 
-        if len(clean_df) < 4:
-            raise ValueError("Insufficient data for DOE analysis after cleaning.")
+        if len(clean_df) < 4: raise ValueError("Insufficient data for DOE analysis after cleaning.")
 
-        # Calculate mean response for each of the 4 combinations
         means = clean_df.groupby([factor1, factor2])[response].mean()
+        f1_levels, f2_levels = sorted(clean_df[factor1].unique()), sorted(clean_df[factor2].unique())
+
+        if len(f1_levels) != 2 or len(f2_levels) != 2: raise ValueError("This analysis requires exactly 2 levels for each factor.")
+
+        y1, y2, y3, y4 = means.loc[f1_levels[0], f2_levels[0]], means.loc[f1_levels[1], f2_levels[0]], means.loc[f1_levels[0], f2_levels[1]], means.loc[f1_levels[1], f2_levels[1]]
         
-        f1_levels = sorted(clean_df[factor1].unique())
-        f2_levels = sorted(clean_df[factor2].unique())
-
-        if len(f1_levels) != 2 or len(f2_levels) != 2:
-            raise ValueError("This analysis requires exactly 2 levels for each factor.")
-
-        y1 = means.loc[f1_levels[0], f2_levels[0]]  # F1 Low, F2 Low
-        y2 = means.loc[f1_levels[1], f2_levels[0]]  # F1 High, F2 Low
-        y3 = means.loc[f1_levels[0], f2_levels[1]]  # F1 Low, F2 High
-        y4 = means.loc[f1_levels[1], f2_levels[1]]  # F1 High, F2 High
-
-        # Main Effects Calculation
         main_effect_f1 = ((y2 - y1) + (y4 - y3)) / 2
         main_effect_f2 = ((y3 - y1) + (y4 - y2)) / 2
-        
-        # Interaction Effect Calculation
         interaction_effect = ((y4 - y3) - (y2 - y1)) / 2
 
         effects_data = pd.DataFrame([
@@ -473,26 +459,79 @@ def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, respon
             {'Effect': f'Interaction: {factor1}:{factor2}', 'Value': interaction_effect}
         ])
 
-        # Create Main Effects Plot
         effects_fig = px.bar(effects_data, x='Effect', y='Value', title=title_effects, color='Effect', text_auto='.3f')
         effects_fig.update_layout(showlegend=False, yaxis_title="Effect on Response", **_PLOT_LAYOUT_CONFIG)
 
-        # Create Interaction Plot
         interaction_df = means.reset_index()
         interaction_fig = px.line(interaction_df, x=factor1, y=response, color=factor2, markers=True,
                                   title=title_interaction, category_orders={factor1: f1_levels, factor2: f2_levels})
         interaction_fig.update_traces(marker=dict(size=12), line=dict(width=3))
-        interaction_fig.update_layout(
-            xaxis=dict(type='category'),
-            xaxis_title=f"Factor: {factor1}",
-            yaxis_title=f"Mean {response}",
-            legend_title=f"Factor: {factor2}",
-            **_PLOT_LAYOUT_CONFIG
-        )
+        interaction_fig.update_layout(xaxis=dict(type='category'), xaxis_title=f"Factor: {factor1}",
+                                      yaxis_title=f"Mean {response}", legend_title=f"Factor: {factor2}", **_PLOT_LAYOUT_CONFIG)
         
         return effects_fig, interaction_fig
 
     except Exception as e:
         logger.error(f"Error creating DOE effects plot: {e}", exc_info=True)
-        return _create_placeholder_figure("Could not calculate effects.", title_effects, "⚠️"), \
-               _create_placeholder_figure("Could not create interaction plot.", title_interaction, "⚠️")
+        return _create_placeholder_figure("Could not calculate effects.", title_effects, "⚠️"), _create_placeholder_figure("Could not create interaction plot.", title_interaction, "⚠️")
+
+def create_rsm_plots(df: pd.DataFrame, f1: str, f2: str, response: str) -> Tuple[go.Figure, go.Figure, pd.DataFrame]:
+    """
+    Performs Response Surface Methodology analysis and generates plots.
+    """
+    title_surface = "<b>Response Surface Plot</b>"
+    title_contour = "<b>Contour Plot with Optimum</b>"
+    
+    try:
+        # Fit a full quadratic model
+        formula = f"`{response}` ~ `{f1}` + `{f2}` + I(`{f1}`*`{f2}`) + I(`{f1}`**2) + I(`{f2}`**2)"
+        model = ols(formula, data=df).fit()
+
+        # Generate a grid of points for prediction
+        f1_range = np.linspace(df[f1].min(), df[f1].max(), 30)
+        f2_range = np.linspace(df[f2].min(), df[f2].max(), 30)
+        grid_x, grid_y = np.meshgrid(f1_range, f2_range)
+        grid_df = pd.DataFrame({f1: grid_x.flatten(), f2: grid_y.flatten()})
+        grid_df['predicted_yield'] = model.predict(grid_df)
+
+        # 3D Surface Plot
+        surface_fig = go.Figure(data=[go.Surface(
+            z=grid_df['predicted_yield'].values.reshape(grid_x.shape),
+            x=grid_x, y=grid_y, colorscale='Viridis'
+        )])
+        surface_fig.add_trace(go.Scatter3d(
+            x=df[f1], y=df[f2], z=df[response],
+            mode='markers', marker=dict(size=5, color='red', symbol='circle')
+        ))
+        surface_fig.update_layout(
+            title=title_surface, height=600,
+            scene=dict(xaxis_title=f1, yaxis_title=f2, zaxis_title=f'Predicted {response}'),
+            **_PLOT_LAYOUT_CONFIG
+        )
+
+        # Contour Plot
+        contour_fig = go.Figure(data=go.Contour(
+            z=grid_df['predicted_yield'].values.reshape(grid_x.shape),
+            x=f1_range, y=f2_range, colorscale='Viridis',
+            contours=dict(coloring='heatmap', showlabels=True)
+        ))
+        # Find and plot the optimum point
+        opt_idx = model.predict(df).idxmax()
+        opt_f1, opt_f2 = df.loc[opt_idx, f1], df.loc[opt_idx, f2]
+        contour_fig.add_trace(go.Scatter(
+            x=[opt_f1], y=[opt_f2], mode='markers',
+            marker=dict(color='red', size=15, symbol='star'),
+            name='Optimal Point'
+        ))
+        contour_fig.update_layout(
+            title=title_contour, xaxis_title=f1, yaxis_title=f2,
+            height=600, **_PLOT_LAYOUT_CONFIG
+        )
+        
+        return surface_fig, contour_fig, model.summary2().tables[1]
+
+    except Exception as e:
+        logger.error(f"Error creating RSM plots: {e}", exc_info=True)
+        return _create_placeholder_figure("Could not render surface.", title_surface, "⚠️"), \
+               _create_placeholder_figure("Could not render contour.", title_contour, "⚠️"), \
+               pd.DataFrame()
