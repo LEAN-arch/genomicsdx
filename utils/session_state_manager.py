@@ -51,6 +51,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     })
 
     # --- BUILT-IN DATA VALIDATION GATE ---
+    # This block acts as a unit test to ensure data integrity at the source.
     assert X_df.shape == (100, 10), f"FATAL: ML feature matrix has incorrect shape: {X_df.shape}"
     assert not X_df.isnull().values.any(), "FATAL: ML feature matrix contains NaN values."
     assert doe_df.notna().all().all(), "FATAL: DOE data frame contains NaN values."
@@ -235,7 +236,7 @@ class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
     # Incremented to force a reload with the new robust, validated data generation logic
-    _CURRENT_DATA_VERSION = 51
+    _CURRENT_DATA_VERSION = 52
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
