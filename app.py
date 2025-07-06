@@ -29,13 +29,22 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
+import statsmodels.formula.api import ols
+try:
 import shap
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.metrics import precision_recall_curve, auc, confusion_matrix
+
+except ImportError as e:
+    st.error(f"A critical machine learning or statistical library is missing: {e}. "
+             "Please install all required packages using `pip install -r requirements.txt`.")
+    st.stop()
 
 # --- Robust Path Correction Block ---
 try:
