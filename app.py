@@ -1172,15 +1172,21 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             """)
         st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
         try:
-            # OPTIMIZATION: Explain on the full dataset 'X' but with the simpler 'model' to prevent crash
-            explainer = shap.Explainer(model, X)
-            shap_values_obj = explainer(X)
+            # OPTIMIZATION: Explain on a smaller, representative sample to prevent memory crash
+            st.caption("Note: Explaining on a random subsample of 50 data points for performance.")
+            X_sample = X.sample(n=min(50, len(X)), random_state=42)
+
+            # The explainer uses the globally trained (but lighter) model on the subsample
+            explainer = shap.Explainer(model, X_sample)
+            shap_values_obj = explainer(X_sample)
             
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
             
+            # The structure of shap_values_obj for RandomForest is a list of two arrays (one for each class)
+            # We want the values for the positive class (class 1)
             shap_values_for_plot = shap_values_obj.values[:,:,1]
 
-            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X)
+            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_sample)
             if plot_buffer:
                 st.image(plot_buffer)
                 st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
@@ -1189,6 +1195,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"Could not perform SHAP analysis. Error: {e}")
             logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+    
     
     # --- Tool 3: CSO Analysis ---
     with ml_tabs[2]:
