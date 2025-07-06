@@ -978,6 +978,8 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"Could not perform RSM analysis. Error: {e}")
             logger.error(f"RSM analysis failed: {e}", exc_info=True)
+# MACHINE LEARNING SECTION MLMLLMLMLMLMLMLMLMMLMMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLM
+
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
@@ -987,7 +989,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import train_test_split
-        # <<< FIX: Added the missing 'precision_recall_curve' import here >>>
         from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
         from statsmodels.tsa.arima.model import ARIMA
         import shap
@@ -1015,16 +1016,10 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         with col1:
             with st.expander("View ROC Method Explanation"):
                 st.markdown(r"""
-                **Purpose of the Tool:**
-                The Receiver Operating Characteristic (ROC) curve is the standard method for visualizing the performance of a binary classifier. It shows the trade-off between the **True Positive Rate (Sensitivity)** and the **False Positive Rate (1 - Specificity)** at every possible decision threshold.
-                **Conceptual Walkthrough:**
-                The ROC curve shows the performance of our classifier across all possible sensitivity/specificity thresholds. A perfect test "hugs" the top-left corner. The Area Under the Curve (AUC) gives a single score for performance (1.0 is perfect, 0.5 is random).
-                **Mathematical Basis:**
-                - **True Positive Rate (TPR) / Sensitivity:** $TPR = \frac{TP}{TP + FN}$
-                - **False Positive Rate (FPR):** $FPR = \frac{FP}{FP + TN}$
-                The curve plots TPR (y-axis) vs. FPR (x-axis). The AUC is the integral of this curve.
-                **Significance of Results:**
-                A high AUC (typically >0.90 for a good diagnostic) is essential for a PMA submission. It provides objective evidence of the classifier's ability to discriminate between cases and controls.
+                **Purpose:** To visualize the trade-off between **True Positive Rate (Sensitivity)** and **False Positive Rate (1 - Specificity)**.
+                **Conceptual Walkthrough:** The ROC curve shows the performance of our classifier across all possible sensitivity/specificity thresholds. A perfect test "hugs" the top-left corner. The Area Under the Curve (AUC) gives a single score for performance (1.0 is perfect, 0.5 is random).
+                **Mathematical Basis:** Plots TPR ($TP/(TP+FN)$) vs. FPR ($FP/(FP+TN)$).
+                **Significance of Results:** A high AUC (typically >0.90 for a good diagnostic) is essential for a PMA submission. It provides objective evidence of the classifier's ability to discriminate between cases and controls.
                 """)
             roc_fig = create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y_true}), 'score', 'truth')
             st.plotly_chart(roc_fig, use_container_width=True)
@@ -1032,16 +1027,10 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         with col2:
             with st.expander("View Precision-Recall Method Explanation"):
                 st.markdown(r"""
-                **Purpose of the Tool:**
-                A Precision-Recall (PR) curve is a crucial complement to the ROC curve, especially for datasets with a large class imbalance (like cancer screening, where non-cancers vastly outnumber cancers). It visualizes the trade-off between **Precision** and **Recall (Sensitivity)**.
-                **Conceptual Walkthrough:**
-                This answers the key clinical question: "Of the patients we flagged as positive, how many were actually sick?" This is **Precision**. The PR curve shows how this precision changes as we try to find more and more of the true positives (increase Recall).
-                **Mathematical Basis:**
-                - **Precision (Positive Predictive Value):** $Precision = \frac{TP}{TP + FP}$
-                - **Recall (Sensitivity):** $Recall = \frac{TP}{TP + FN}$
-                The curve plots Precision (y-axis) vs. Recall (x-axis). A classifier that maintains high precision as recall increases is superior.
-                **Significance of Results:**
-                A strong PR curve demonstrates that the test is not just sensitive but also reliable, minimizing the burden of false positives on the healthcare system. This is a key point of evaluation for regulators and payers.
+                **Purpose:** To visualize the trade-off between **Precision** and **Recall (Sensitivity)**, which is critical for imbalanced datasets like ours.
+                **Conceptual Walkthrough:** This answers the key clinical question: "Of the patients we flagged as positive, how many were actually sick?" This is **Precision**. The PR curve shows how this precision changes as we try to find more and more of the true positives (increase Recall).
+                **Mathematical Basis:** Plots Precision ($TP/(TP+FP)$) vs. Recall ($TP/(TP+FN)$).
+                **Significance of Results:** A strong PR curve demonstrates that the test is not just sensitive but also reliable, minimizing the burden of false positives on the healthcare system. This is a key point of evaluation for regulators and payers.
                 """)
             precision, recall, _ = precision_recall_curve(y_true, y_scores)
             pr_fig = px.area(x=recall, y=precision, title="<b>Precision-Recall Curve</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
@@ -1057,23 +1046,35 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Conceptual Walkthrough:** SHAP is like a sophisticated "MVP" calculator for our biomarkers. For every single patient, it calculates exactly how much each biomarker contributed to the final "cancer" or "no cancer" score. The summary plot shows which biomarkers are consistently the most influential across all patients.
             **Mathematical Basis:** Based on Shapley values from cooperative game theory, it fairly distributes the "payout" (the prediction) among the features. The formula calculates the average marginal contribution of a feature across all possible feature combinations: $\phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]$.
             """)
-        st.write("Generating SHAP values...")
+        
+        # <<< FIX: Wrapped the expensive SHAP calculation in a cached function >>>
+        @st.cache_data
+        def generate_cached_shap_plot(_model, _X_df):
+            """This function will run only once and its result will be stored."""
+            logger.info("Running expensive SHAP calculation...")
+            try:
+                explainer = shap.Explainer(_model, _X_df)
+                shap_values_obj = explainer(_X_df)
+                shap_values_for_plot = shap_values_obj.values[:,:,1]
+                plot_buffer = create_shap_summary_plot(shap_values_for_plot, _X_df)
+                logger.info("SHAP calculation and plot generation complete.")
+                return plot_buffer
+            except Exception as e:
+                logger.error(f"Failed to generate cached SHAP plot: {e}", exc_info=True)
+                return None
+
         X, y = ssm.get_data("ml_models", "classifier_data")
         model = ssm.get_data("ml_models", "classifier_model")
-        try:
-            explainer = shap.Explainer(model, X)
-            shap_values_obj = explainer(X)
-            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            shap_values_for_plot = shap_values_obj.values[:,:,1]
-            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X)
-            if plot_buffer:
-                st.image(plot_buffer)
-                st.success("SHAP analysis confirms that known oncogenic markers are the most significant drivers of a positive result, providing strong evidence of the model's biological relevance.")
-            else:
-                st.error("Could not generate SHAP summary plot.")
-        except Exception as e:
-            st.error(f"Could not perform SHAP analysis. Error: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+        
+        st.write("Generating SHAP values (will be cached after first run)...")
+        # Call the new cached function
+        plot_buffer = generate_cached_shap_plot(model, X)
+        
+        if plot_buffer:
+            st.image(plot_buffer)
+            st.success("SHAP analysis confirms that known oncogenic markers are the most significant drivers of a positive result, providing strong evidence of the model's biological relevance.")
+        else:
+            st.error("Could not generate or retrieve SHAP summary plot.")
     
     # --- Tool 3: CSO Analysis ---
     with ml_tabs[2]:
