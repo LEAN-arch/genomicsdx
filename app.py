@@ -1007,11 +1007,11 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "Time Series Forecasting (ML)"
     ])
 
-    # --- Prepare Data and Model Once for All Tabs ---
-    # This ensures the model is trained only when this tab is rendered,
-    # and the variables are available to all sub-tabs below.
+    # --- Prepare Data and a *lighter* Model Once for All Tabs ---
     X, y = ssm.get_data("ml_models", "classifier_data")
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    
+    # <<< FIX 1: Reduced model complexity to lower memory usage >>>
+    model = RandomForestClassifier(n_estimators=25, max_depth=10, random_state=42)
     model.fit(X, y)
 
     # --- Tool 1: ROC & PR Curves ---
@@ -1022,65 +1022,45 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         col1, col2 = st.columns(2)
         with col1:
             with st.expander("View ROC Method Explanation"):
-                st.markdown(r"""
-                **Purpose:** To visualize the trade-off between **True Positive Rate (Sensitivity)** and **False Positive Rate (1 - Specificity)**.
-                **Conceptual Walkthrough:** The ROC curve shows the performance of our classifier across all possible sensitivity/specificity thresholds. The Area Under the Curve (AUC) gives a single score for performance (1.0 is perfect, 0.5 is random).
-                """)
+                st.markdown(r"""**Purpose:** To visualize the trade-off between **Sensitivity** and **1 - Specificity**.""")
             roc_fig = create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y}), 'score', 'truth')
             st.plotly_chart(roc_fig, use_container_width=True)
 
         with col2:
             with st.expander("View Precision-Recall Method Explanation"):
-                st.markdown(r"""
-                **Purpose:** To visualize the trade-off between **Precision** and **Recall (Sensitivity)**, which is critical for imbalanced datasets like ours.
-                **Conceptual Walkthrough:** This answers the key clinical question: "Of the patients we flagged as positive, how many were actually sick?" This is **Precision**. The PR curve shows how this precision changes as we try to find more and more of the true positives (increase Recall).
-                """)
+                st.markdown(r"""**Purpose:** To visualize the trade-off between **Precision** and **Recall**, critical for imbalanced datasets.""")
             precision, recall, _ = precision_recall_curve(y, y_scores)
             pr_fig = px.area(x=recall, y=precision, title="<b>Precision-Recall Curve</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
             pr_fig.update_layout(xaxis=dict(range=[0,1]), yaxis=dict(range=[0,1.05]))
             st.plotly_chart(pr_fig, use_container_width=True)
 
-    # --- Tool 2: SHAP (User-preferred version) ---
+    # --- Tool 2: SHAP (User-preferred version, but optimized) ---
     with ml_tabs[1]:
         st.subheader("Cancer Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation"):
             st.markdown(r"""
-            **Purpose of the Tool:**
-            To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
-
-            **Conceptual Walkthrough:**
-            Imagine our machine learning model is like a sports team, and its final prediction is the team's score. The features (our biomarkers) are the players. SHAP analysis is like a sophisticated "Most Valuable Player" calculation for every single game (every single patient sample). It doesn't just tell you who the best player is overall; it tells you exactly how much each player contributed to the final score in that specific game. For one patient, a high value for `promoter_A_met` might have pushed the score up by 0.3, while a low value for `enhancer_B_met` might have pulled it down by 0.1. The summary plot aggregates thousands of these "game reports" to show which players are consistently the most impactful and whether their impact is positive or negative.
-
-            **Mathematical Basis:**
-            SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
+            **Purpose:** To address the "black box" problem of complex ML models by explaining *how* our classifier makes its decisions.
+            **Conceptual Walkthrough:** SHAP calculates how much each biomarker contributed to the final "cancer" or "no cancer" score for every single patient.
+            **Mathematical Basis:** Based on Shapley values from cooperative game theory, it fairly distributes the "payout" (the prediction) among the features.
             """)
-            st.latex(r'''
-            \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]
-            ''')
-            st.markdown(r"""
-            where $F$ is the set of all features, $S$ is a subset of features not including $i$, and $v(S)$ is the model's output with only the features in coalition $S$. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
-
-            **Procedure:**
-            1. An explainer object is created from a trained model and a background dataset.
-            2. The explainer calculates the SHAP values for each feature for every sample in a test set.
-            3. A **summary plot** visualizes these values. Each point is a single feature for a single sample. The color indicates the feature's value (high/low), and its position on the x-axis indicates its impact on the model's output (pushing the prediction higher or lower).
-
-            **Significance of Results:**
-            The SHAP summary plot provides powerful evidence for scientific and clinical validation. It allows us to confirm that the model has learned biologically relevant signals (e.g., known oncogenic methylation markers are the top features) and is not relying on spurious correlations or batch effects. This is a critical piece of evidence for de-risking the algorithm portion of a PMA submission.
-            """)
-        st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
+        st.write("Generating SHAP values for the classifier model...")
+        
         try:
-            explainer = shap.Explainer(model, X)
-            shap_values_obj = explainer(X)
+            # <<< FIX 2: Explain on a smaller, representative sample to prevent memory crash >>>
+            st.caption("Note: Explaining on a random subsample of 50 data points for performance.")
+            X_sample = X.sample(n=50, random_state=42)
+            
+            explainer = shap.Explainer(model, X_sample)
+            shap_values_obj = explainer(X_sample)
             
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
             
             shap_values_for_plot = shap_values_obj.values[:,:,1]
 
-            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X)
+            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_sample)
             if plot_buffer:
                 st.image(plot_buffer)
-                st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
+                st.success("The SHAP analysis confirms that known oncogenic methylation markers are the most significant drivers of a 'Cancer Signal Detected' result, providing strong evidence of the model's biological relevance.")
             else:
                 st.error("Could not generate SHAP summary plot.")
         except Exception as e:
@@ -1092,8 +1072,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation"):
             st.markdown("""
-            **Purpose:** To analyze the performance of the secondary classifier that predicts the tissue of origin for a detected cancer signal.
-            **Conceptual Walkthrough:** A **confusion matrix** is a scorecard that shows where our CSO model gets confused. The diagonal shows correct predictions. The off-diagonals show the mistakes.
+            **Purpose:** To analyze the performance of the secondary classifier that predicts the tissue of origin.
+            **Conceptual Walkthrough:** A **confusion matrix** is a scorecard showing where the CSO model gets confused. The diagonal shows correct predictions.
             """)
         st.write("Generating synthetic CSO data and training a simple model...")
         np.random.seed(123)
@@ -1115,7 +1095,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         with st.expander("View Method Explanation"):
             st.markdown("""
             **Purpose:** To build a model that predicts run failure *before* committing expensive resources.
-            **Conceptual Walkthrough:** This model acts as a gatekeeper. It learns from past runs what combinations of early QC metrics predict failure and calculates a failure probability for new runs.
+            **Conceptual Walkthrough:** This model acts as a gatekeeper, learning from past runs what combinations of early QC metrics predict failure.
             """)
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
@@ -1138,13 +1118,12 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         with st.expander("View Method Explanation"):
             st.markdown(r"""
             **Purpose:** To forecast future demand based on historical trends for proactive lab management.
-            **Conceptual Walkthrough:** We treat forecasting as an ML problem. By creating features from the date (e.g., day of week) and using past values ("lags") as inputs, a gradient boosting model can learn complex patterns to predict future sample volume.
+            **Conceptual Walkthrough:** We treat forecasting as an ML problem. By creating features from the date and using past values ("lags") as inputs, a model can learn complex patterns.
             """)
         ts_data = ssm.get_data("ml_models", "sample_volume_data")
         df_ts = pd.DataFrame(ts_data).set_index('date')
         df_ts.index = pd.to_datetime(df_ts.index)
         
-        # Feature Engineering
         for lag in [1, 7, 14]:
             df_ts[f'lag_{lag}'] = df_ts['samples'].shift(lag)
         df_ts['dayofweek'] = df_ts.index.dayofweek
@@ -1157,7 +1136,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         model_lgbm = lgb.LGBMRegressor(random_state=42, verbose=-1)
         model_lgbm.fit(X_ts, y_ts)
         
-        # Create future dataframe for forecasting
         future_dates = pd.date_range(start=df_ts.index.max() + pd.Timedelta(days=1), periods=30, freq='D')
         future_df = pd.DataFrame(index=future_dates)
         
