@@ -84,7 +84,6 @@ class SessionStateManager:
             {'id': 'T8', 'name': 'Final PMA Submission', 'start_date': '2025-09-01', 'end_date': '2025-09-15', 'completion_pct': 0, 'status': 'Not Started', 'dependencies': 'T6,T7'},
         ]
         
-        # FIX: Expanded RSM data to be > 20 samples to avoid scipy kurtosistest warning
         rsm_size = 25
         rsm_data = pd.DataFrame({
             'pcr_cycles': np.random.uniform(8, 16, rsm_size).round(0),
@@ -114,7 +113,6 @@ class SessionStateManager:
                 "capa_records": [{'id': f'CAPA-{i}', 'status': np.random.choice(['Open', 'Closed'], p=[0.2, 0.8]), 'due_date': (today + timedelta(days=np.random.randint(-10, 10))).strftime('%Y-%m-%d')} for i in range(1, 6)],
                 "ncr_records": [{'id': f'NCR-{i}', 'status': np.random.choice(['Open', 'Closed'], p=[0.4, 0.6])} for i in range(1, 8)],
                 "supplier_audits": [{'supplier': f'Supplier {chr(65+i)}', 'status': np.random.choice(['Pass', 'Fail'], p=[0.9, 0.1]), 'date': '2024-05-1' + str(i)} for i in range(5)],
-                # FIX: Changed freq 'M' to 'ME' to resolve FutureWarning
                 "continuous_improvement": pd.DataFrame({'date': pd.to_datetime(pd.date_range(start='2024-01-01', periods=12, freq='ME')), 'ftr_rate': np.linspace(75, 92, 12) + np.random.normal(0, 1, 12), 'copq_cost': np.linspace(50000, 15000, 12) + np.random.normal(0, 1000, 12)}).to_dict('records'),
                 "spc_data": {'measurements': np.random.normal(100, 5, 50).tolist(), 'mean': 100, 'sd': 5, 'usl': 115, 'lsl': 85},
                 "hypothesis_testing_data": {'pipeline_a': np.random.normal(25, 3, 30).tolist(), 'pipeline_b': np.random.normal(26.5, 3.5, 30).tolist()},
@@ -141,14 +139,12 @@ class SessionStateManager:
 @st.cache_data
 def preprocess_task_data(tasks_data: List[Dict[str, Any]]) -> pd.DataFrame:
     """Processes raw project task data into a DataFrame for Gantt chart plotting."""
-    if not tasks_data:
-        return pd.DataFrame()
+    if not tasks_data: return pd.DataFrame()
     tasks_df = pd.DataFrame(tasks_data)
     tasks_df['start_date'] = pd.to_datetime(tasks_df['start_date'], errors='coerce')
     tasks_df['end_date'] = pd.to_datetime(tasks_df['end_date'], errors='coerce')
     tasks_df.dropna(subset=['start_date', 'end_date'], inplace=True)
-    if tasks_df.empty:
-        return pd.DataFrame()
+    if tasks_df.empty: return pd.DataFrame()
     
     sorted_tasks = tasks_df.sort_values(by='end_date', ascending=False)
     critical_path_ids = sorted_tasks['id'].head(5).tolist()
@@ -203,7 +199,6 @@ def create_pareto_chart(df, category_col, title):
 def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     from statsmodels.formula.api import ols
     from statsmodels.stats.anova import anova_lm
-    # Corrected formula without backticks
     formula = f'{value_col} ~ C({part_col}) + C({operator_col}) + C({part_col}):C({operator_col})'
     model = ols(formula, data=df).fit()
     anova_table = anova_lm(model, typ=2)
@@ -211,8 +206,7 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     ms_operator = anova_table.loc[f'C({operator_col})', 'mean_sq']
     ms_interact = anova_table.loc[f'C({part_col}):C({operator_col})', 'mean_sq']
     ms_error = anova_table.loc['Residual', 'mean_sq']
-    n_parts = df[part_col].nunique()
-    n_ops = df[operator_col].nunique()
+    n_parts, n_ops = df[part_col].nunique(), df[operator_col].nunique()
     n_replicates = df.groupby([part_col, operator_col])[value_col].count().mean()
     var_repeat = ms_error
     var_operator = max(0, (ms_operator - ms_interact) / (n_parts * n_replicates))
@@ -229,21 +223,11 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
 
 def create_rsm_plots(df, factor1, factor2, response):
     from statsmodels.formula.api import ols
-    # Corrected formula without backticks
     formula = f'{response} ~ {factor1} + {factor2} + I({factor1}**2) + I({factor2}**2) + {factor1}:{factor2}'
     model = ols(formula, data=df).fit()
     
-    # FIX: Replaced pd.read_html with direct programmatic access to model results.
-    # This removes the 'lxml' dependency and is more robust.
     conf_int = model.conf_int()
-    model_summary = pd.DataFrame({
-        "coef": model.params,
-        "std err": model.bse,
-        "t": model.tvalues,
-        "P>|t|": model.pvalues,
-        "[0.025": conf_int[0],
-        "0.975]": conf_int[1],
-    })
+    model_summary = pd.DataFrame({"coef": model.params, "std err": model.bse, "t": model.tvalues, "P>|t|": model.pvalues, "[0.025": conf_int[0], "0.975]": conf_int[1]})
 
     f1_range = np.linspace(df[factor1].min(), df[factor1].max(), 30)
     f2_range = np.linspace(df[factor2].min(), df[factor2].max(), 30)
@@ -316,8 +300,7 @@ def render_dhf_completeness_panel(ssm: SessionStateManager, tasks_df: pd.DataFra
         st.plotly_chart(gantt_fig, use_container_width=True)
         legend_html = """<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-top: 15px; font-size: 0.9em;"><span><span style="display:inline-block; width:15px; height:15px; background-color:#2ca02c; margin-right: 5px; vertical-align: middle;"></span>Completed</span><span><span style="display:inline-block; width:15px; height:15px; background-color:#1f77b4; margin-right: 5px; vertical-align: middle;"></span>In Progress</span><span><span style="display:inline-block; width:15px; height:15px; background-color:#d62728; margin-right: 5px; vertical-align: middle;"></span>At Risk</span><span><span style="display:inline-block; width:15px; height:15px; background-color:#7f7f7f; margin-right: 5px; vertical-align: middle;"></span>Not Started</span><span><span style="display:inline-block; width:11px; height:11px; border: 2px solid red; margin-right: 5px; vertical-align: middle;"></span>On Critical Path</span></div>"""
         st.markdown(legend_html, unsafe_allow_html=True)
-    else:
-        st.warning("No project management tasks found to display Gantt chart.")
+    else: st.warning("No project management tasks found to display Gantt chart.")
 
 def render_risk_and_fmea_dashboard(ssm: SessionStateManager) -> None:
     st.subheader("2. DHF Risk Artifacts (ISO 14971)")
@@ -342,8 +325,7 @@ def render_risk_and_fmea_dashboard(ssm: SessionStateManager) -> None:
     def render_fmea_risk_matrix_plot(fmea_data: List[Dict[str, Any]], title: str):
         if not fmea_data: st.warning(f"No {title} data available."); return
         df = pd.DataFrame(fmea_data)
-        if not all(c in df.columns for c in ['S', 'O', 'D']):
-             st.error(f"FMEA data for '{title}' is missing required S, O, or D columns."); return
+        if not all(c in df.columns for c in ['S', 'O', 'D']): st.error(f"FMEA data for '{title}' is missing required S, O, or D columns."); return
         df['RPN'] = df['S'] * df['O'] * df['D']
         rng = np.random.default_rng(0)
         df['S_jitter'] = df['S'] + rng.uniform(-0.15, 0.15, len(df))
@@ -488,8 +470,10 @@ def render_qbd_and_mfg_readiness(ssm: SessionStateManager) -> None:
             col1, col2 = st.columns(2)
             with col1: st.plotly_chart(surface_fig, use_container_width=True)
             with col2: st.plotly_chart(contour_fig, use_container_width=True)
-            with st.expander("View RSM Model Summary"):
-                st.dataframe(model_summary.style.format("{:.4f}"))
+            
+            # FIX: Removed the nested st.expander to prevent StreamlitAPIException
+            st.subheader("RSM Model Summary")
+            st.dataframe(model_summary.style.format("{:.4f}"))
         else: st.warning("Response Surface Methodology (RSM) data not available.")
     
     with qbd_tabs[1]:
@@ -699,12 +683,18 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager) -> None:
     ml_tabs = st.tabs(["Classifier Perf", "Explainability (SHAP)", "Fragmentomics"])
     X, y = ssm.get_data("ml_models", "classifier_data")
     
+    @st.cache_resource
+    def get_model(X_train, y_train):
+        model = RandomForestClassifier(random_state=42)
+        model.fit(X_train, y_train)
+        return model
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    model = get_model(X_train, y_train)
+
     with ml_tabs[0]:
         st.subheader("Classifier Performance Analysis")
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        model = RandomForestClassifier(random_state=42).fit(X_train, y_train)
         y_scores = model.predict_proba(X_test)[:, 1]
-        
         col1, col2 = st.columns(2)
         with col1: st.plotly_chart(create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y_test}), 'score', 'truth'), use_container_width=True)
         with col2:
@@ -713,8 +703,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager) -> None:
 
     with ml_tabs[1]:
         st.subheader("Classifier Explainability (SHAP)")
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        model = RandomForestClassifier(random_state=42).fit(X_train, y_train)
         explainer = shap.Explainer(model, X_train)
         shap_values = explainer(X_test.head(25))
         st.image(create_shap_summary_plot(shap_values.values[:,:,1], X_test.head(25)))
@@ -765,3 +753,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+        
