@@ -18,8 +18,8 @@ import sys
 import copy
 from datetime import timedelta, date
 from typing import Any, Dict, List, Tuple
-import hashlib  # For deterministic seeding and data integrity checks
-import io # For creating in-memory files
+import hashlib
+import io
 
 # --- Third-party Imports ---
 import numpy as np
@@ -28,29 +28,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
-# FIX: Corrected the matplotlib import statement to the standard convention.
 import matplotlib.pyplot as plt
-
-# --- Robust Path Correction Block ---
-try:
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-except Exception:
-    # In a Streamlit Cloud environment or single-file execution, __file__ may not be defined.
-    # We can safely ignore this error in such cases.
-    pass
-
-# --- Local Application Imports (Conceptual) ---
-# In this standalone script, these functions are defined directly within the file.
-# This section is kept for conceptual reference of a modular project structure.
-# from genomicsdx.analytics.action_item_tracker import render_action_item_tracker
-# from genomicsdx.analytics.traceability_matrix import render_traceability_matrix
-# from genomicsdx.dhf_sections import ( ... )
-# from genomicsdx.utils.critical_path_utils import find_critical_path
-# from genomicsdx.utils.plot_utils import ( ... )
-# from genomicsdx.utils.session_state_manager import SessionStateManager
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -87,17 +65,14 @@ class SessionStateManager:
 
     def _generate_all_data(self) -> Dict[str, Any]:
         """Generates a comprehensive set of plausible dummy data."""
-        np.random.seed(42) # For reproducibility
+        np.random.seed(42)
         from sklearn.datasets import make_classification
 
         today = pd.Timestamp.now().floor('D')
         
-        # ML Data
         X, y = make_classification(n_samples=500, n_features=15, n_informative=5, n_redundant=2, n_classes=2, flip_y=0.1, random_state=42)
-        X = pd.DataFrame(X, columns=[f'feature_{i}' for i in range(15)])
-        X.columns = ['promoter_A_met', 'enhancer_B_met', 'gene_body_C_met', 'intergenic_D_met', 'promoter_E_met'] + [f'feature_{i}' for i in range(10)]
+        X = pd.DataFrame(X, columns=['promoter_A_met', 'enhancer_B_met', 'gene_body_C_met', 'intergenic_D_met', 'promoter_E_met'] + [f'feature_{i}' for i in range(10)])
 
-        # Project Management Tasks
         tasks = [
             {'id': 'T1', 'name': 'Feasibility & Concept', 'start_date': '2023-01-15', 'end_date': '2023-04-30', 'completion_pct': 100, 'status': 'Completed', 'dependencies': ''},
             {'id': 'T2', 'name': 'Design & Development Planning', 'start_date': '2023-05-01', 'end_date': '2023-06-15', 'completion_pct': 100, 'status': 'Completed', 'dependencies': 'T1'},
@@ -117,18 +92,9 @@ class SessionStateManager:
                 "assay_fmea": [{'id': f'AF-{i:02d}', 'failure_mode': f'Mode {i}', 'potential_effect': 'Inaccurate Measurement', 'mitigation': f'Control {i}', 'S': np.random.randint(1,6), 'O': np.random.randint(1,6), 'D': np.random.randint(1,6)} for i in range(25)],
                 "service_fmea": [{'id': f'SF-{i:02d}', 'failure_mode': f'Mode {i}', 'potential_effect': 'Data Integrity Loss', 'mitigation': f'Control {i}', 'S': np.random.randint(1,6), 'O': np.random.randint(1,6), 'D': np.random.randint(1,6)} for i in range(20)]
             },
-            "assay_performance": {
-                "parameters": [
-                    {'parameter': 'Library Yield', 'links_to_req': 'SYS-001', 'control_metric': 'Final Library Concentration', 'acceptance_criteria': '> 10 nM'},
-                    {'parameter': 'Fragment Size', 'links_to_req': 'SYS-002', 'control_metric': 'Mean Insert Size', 'acceptance_criteria': '150-180 bp'}
-                ]
-            },
+            "assay_performance": { "parameters": [{'parameter': 'Library Yield', 'links_to_req': 'SYS-001', 'control_metric': 'Final Library Concentration', 'acceptance_criteria': '> 10 nM'}, {'parameter': 'Fragment Size', 'links_to_req': 'SYS-002', 'control_metric': 'Mean Insert Size', 'acceptance_criteria': '150-180 bp'}] },
             "lab_operations": {
-                "readiness": {
-                    'reagent_lot_qualification': {'total': 20, 'passed': 19},
-                    'inter_assay_precision': {'cv_pct': 8.5, 'target_cv': 15},
-                    'sample_stability_studies': [{'condition': 'Room Temp - 24h', 'analyte': 'cfDNA Yield', 'result': 'Pass'}, {'condition': 'Room Temp - 48h', 'analyte': 'cfDNA Yield', 'result': 'Pass'}, {'condition': 'Freeze-Thaw x3', 'analyte': 'cfDNA Yield', 'result': 'Pass'}],
-                },
+                "readiness": {'reagent_lot_qualification': {'total': 20, 'passed': 19}, 'inter_assay_precision': {'cv_pct': 8.5, 'target_cv': 15}, 'sample_stability_studies': [{'condition': 'Room Temp - 24h', 'analyte': 'cfDNA Yield', 'result': 'Pass'}, {'condition': 'Room Temp - 48h', 'analyte': 'cfDNA Yield', 'result': 'Pass'}, {'condition': 'Freeze-Thaw x3', 'analyte': 'cfDNA Yield', 'result': 'Pass'}]},
                 "run_failures": [{'failure_mode': np.random.choice(['Low Library Yield', 'QC Metric Outlier', 'Contamination', 'Sequencer Error', 'Operator Error'], p=[0.5, 0.2, 0.1, 0.1, 0.1])} for _ in range(50)],
                 "ppq_runs": [{'run_id': 'PPQ-01', 'date': '2025-02-10', 'result': 'Pass', 'analyst': 'A. Turing'}, {'run_id': 'PPQ-02', 'date': '2025-02-11', 'result': 'Pass', 'analyst': 'R. Franklin'}],
                 "infrastructure": [{'asset_id': 'SEQ-001', 'equipment_type': 'Sequencer', 'status': 'PQ Complete'}, {'asset_id': 'LIMS-PROD', 'equipment_type': 'LIMS', 'status': 'PQ Complete'}, {'asset_id': 'ROBO-002', 'equipment_type': 'Liquid Handler', 'status': 'OQ Complete'}]
@@ -165,7 +131,6 @@ class SessionStateManager:
 def preprocess_task_data(tasks_data: List[Dict[str, Any]]) -> pd.DataFrame:
     """Processes raw project task data into a DataFrame for Gantt chart plotting."""
     if not tasks_data:
-        logger.warning("Project management tasks data is empty during preprocessing.")
         return pd.DataFrame()
     tasks_df = pd.DataFrame(tasks_data)
     tasks_df['start_date'] = pd.to_datetime(tasks_df['start_date'], errors='coerce')
@@ -173,8 +138,7 @@ def preprocess_task_data(tasks_data: List[Dict[str, Any]]) -> pd.DataFrame:
     tasks_df.dropna(subset=['start_date', 'end_date'], inplace=True)
     if tasks_df.empty:
         return pd.DataFrame()
-        
-    # Simplified critical path logic for dummy data
+    
     sorted_tasks = tasks_df.sort_values(by='end_date', ascending=False)
     critical_path_ids = sorted_tasks['id'].head(5).tolist()
 
@@ -228,12 +192,13 @@ def create_pareto_chart(df, category_col, title):
 def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     from statsmodels.formula.api import ols
     from statsmodels.stats.anova import anova_lm
-    formula = f'`{value_col}` ~ C(`{part_col}`) + C(`{operator_col}`) + C(`{part_col}`):C(`{operator_col}`)'
+    # FIX: Removed backticks from formula string to prevent PatsyError
+    formula = f'{value_col} ~ C({part_col}) + C({operator_col}) + C({part_col}):C({operator_col})'
     model = ols(formula, data=df).fit()
     anova_table = anova_lm(model, typ=2)
-    ms_part = anova_table.loc[f'C(`{part_col}`)', 'mean_sq']
-    ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'mean_sq']
-    ms_interact = anova_table.loc[f'C(`{part_col}`):C(`{operator_col}`)', 'mean_sq']
+    ms_part = anova_table.loc[f'C({part_col})', 'mean_sq']
+    ms_operator = anova_table.loc[f'C({operator_col})', 'mean_sq']
+    ms_interact = anova_table.loc[f'C({part_col}):C({operator_col})', 'mean_sq']
     ms_error = anova_table.loc['Residual', 'mean_sq']
     n_parts = df[part_col].nunique()
     n_ops = df[operator_col].nunique()
@@ -253,7 +218,8 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
 
 def create_rsm_plots(df, factor1, factor2, response):
     from statsmodels.formula.api import ols
-    formula = f'`{response}` ~ `{factor1}` + `{factor2}` + I(`{factor1}`**2) + I(`{factor2}`**2) + `{factor1}`:`{factor2}`'
+    # FIX: Removed backticks from formula string to prevent PatsyError
+    formula = f'{response} ~ {factor1} + {factor2} + I({factor1}**2) + I({factor2}**2) + {factor1}:{factor2}'
     model = ols(formula, data=df).fit()
     f1_range = np.linspace(df[factor1].min(), df[factor1].max(), 30)
     f2_range = np.linspace(df[factor2].min(), df[factor2].max(), 30)
@@ -320,7 +286,7 @@ def render_dhf_completeness_panel(ssm: SessionStateManager, tasks_df: pd.DataFra
     if not tasks_df.empty:
         gantt_fig = px.timeline(tasks_df, x_start="start_date", x_end="end_date", y="name", color="color", color_discrete_map="identity", title="<b>Project Timeline and Critical Path to PMA Submission</b>", hover_name="name", custom_data=['status', 'completion_pct'])
         gantt_fig.update_traces(text=tasks_df['display_text'], textposition='inside', insidetextanchor='middle', marker_line_color=tasks_df['line_color'], marker_line_width=tasks_df['line_width'], hovertemplate="<b>%{hover_name}</b><br>Status: %{customdata[0]}<br>Complete: %{customdata[1]}%<extra></extra>")
-        gantt_fig.update_layout(showlegend=False, title_x=0.5, xaxis_title="Date", yaxis_title="DHF Phase / Major Milestone", height=400, yaxis_categoryorder='array', yaxis_categoryarray=tasks_df.sort_values("start_date", ascending=False)["name"].tolist())
+        gantt_fig.update_layout(showlegend=False, title_x=0.5, yaxis_categoryorder='array', yaxis_categoryarray=tasks_df.sort_values("start_date", ascending=False)["name"].tolist())
         st.plotly_chart(gantt_fig, use_container_width=True)
         legend_html = """<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-top: 15px; font-size: 0.9em;"><span><span style="display:inline-block; width:15px; height:15px; background-color:#2ca02c; margin-right: 5px; vertical-align: middle;"></span>Completed</span><span><span style="display:inline-block; width:15px; height:15px; background-color:#1f77b4; margin-right: 5px; vertical-align: middle;"></span>In Progress</span><span><span style="display:inline-block; width:15px; height:15px; background-color:#d62728; margin-right: 5px; vertical-align: middle;"></span>At Risk</span><span><span style="display:inline-block; width:15px; height:15px; background-color:#7f7f7f; margin-right: 5px; vertical-align: middle;"></span>Not Started</span><span><span style="display:inline-block; width:11px; height:11px; border: 2px solid red; margin-right: 5px; vertical-align: middle;"></span>On Critical Path</span></div>"""
         st.markdown(legend_html, unsafe_allow_html=True)
@@ -329,7 +295,6 @@ def render_dhf_completeness_panel(ssm: SessionStateManager, tasks_df: pd.DataFra
 
 def render_risk_and_fmea_dashboard(ssm: SessionStateManager) -> None:
     st.subheader("2. DHF Risk Artifacts (ISO 14971)")
-    st.markdown("Analyze the diagnostic's risk profile, focusing on mitigating potential patient harm from incorrect results (False Positives/Negatives).")
     risk_tabs = st.tabs(["Risk Mitigation Flow (System Level)", "Assay FMEA", "Software & Service FMEA"])
     
     with risk_tabs[0]:
@@ -368,12 +333,11 @@ def render_risk_and_fmea_dashboard(ssm: SessionStateManager) -> None:
 
     with risk_tabs[1]: render_fmea_risk_matrix_plot(ssm.get_data("risk_management_file", "assay_fmea"), "Assay FMEA (Wet Lab)")
     with risk_tabs[2]: render_fmea_risk_matrix_plot(ssm.get_data("risk_management_file", "service_fmea"), "Software & Service FMEA (Dry Lab & Ops)")
-
 def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
     st.subheader("3. Assay & Lab Operations Readiness")
-    st.markdown("This section tracks key activities bridging R&D with a robust, scalable, and CLIA-compliant diagnostic service.")
     qbd_tabs = st.tabs(["Analytical Performance & Controls", "CLIA Lab & Ops Readiness"])
     with qbd_tabs[0]:
+        st.markdown("**Tracking Critical Assay Parameters (CAPs) & Performance**")
         assay_params = ssm.get_data("assay_performance", "parameters") or []
         if not assay_params: st.warning("No Critical Assay Parameters have been defined.")
         else:
@@ -384,6 +348,7 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
                     st.markdown(f"**Associated Control Metric:** `{param.get('control_metric', 'N/A')}`")
                     st.markdown(f"**Acceptance Criteria:** `{param.get('acceptance_criteria', 'N/A')}`")
     with qbd_tabs[1]:
+        st.markdown("**Tracking Key Lab Operations & Validation Status**")
         lab_ops_data = ssm.get_data("lab_operations", "readiness") or {}
         if not lab_ops_data: st.warning("No Lab Operations readiness data available.")
         else:
@@ -408,7 +373,6 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
 
 def render_audit_and_improvement_dashboard(ssm: SessionStateManager) -> None:
     st.subheader("4. Audit & Continuous Improvement Readiness")
-    st.markdown("A high-level assessment of QMS health and process efficiency to gauge readiness for FDA/ISO audits and track improvement initiatives.")
     audit_tabs = st.tabs(["Audit Readiness Scorecard", "Assay Performance & COPQ Dashboard"])
     with audit_tabs[0]:
         docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
@@ -446,7 +410,6 @@ def render_audit_and_improvement_dashboard(ssm: SessionStateManager) -> None:
 
 def render_ftr_and_release_dashboard(ssm: SessionStateManager) -> None:
     st.subheader("5. First Time Right (FTR) & Release Readiness")
-    st.markdown("""This dashboard provides critical insights into our development efficiency and milestone predictability.""")
     ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
     lab_failures_data = ssm.get_data("lab_operations", "run_failures")
     docs_df = get_cached_df(ssm.get_data("design_outputs", "documents"))
@@ -488,7 +451,6 @@ def render_ftr_and_release_dashboard(ssm: SessionStateManager) -> None:
 
 def render_qbd_and_mfg_readiness(ssm: SessionStateManager) -> None:
     st.subheader("6. Quality by Design (QbD) & Manufacturing Readiness")
-    st.markdown("""This section provides a deep dive into our process understanding and validation, foundational for a robust PMA submission and scalable manufacturing.""")
     qbd_tabs = st.tabs(["Process Characterization (QbD)", "Process Qualification (PPQ)", "Materials & Infrastructure"])
     
     with qbd_tabs[0]:
@@ -496,10 +458,13 @@ def render_qbd_and_mfg_readiness(ssm: SessionStateManager) -> None:
         rsm_data = ssm.get_data("quality_system", "rsm_data")
         if rsm_data:
             df_rsm = get_cached_df(rsm_data)
-            st.caption("This contour plot visualizes the assay's design space. Operating within the green/yellow regions ensures a high-yield, robust process.")
-            _, contour_fig, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
-            st.plotly_chart(contour_fig, use_container_width=True)
-        else: st.warning("Response Surface Methodology (RSM) data not available to define the design space.")
+            surface_fig, contour_fig, model_summary = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+            col1, col2 = st.columns(2)
+            with col1: st.plotly_chart(surface_fig, use_container_width=True)
+            with col2: st.plotly_chart(contour_fig, use_container_width=True)
+            with st.expander("View RSM Model Summary"):
+                st.dataframe(model_summary)
+        else: st.warning("Response Surface Methodology (RSM) data not available.")
     
     with qbd_tabs[1]:
         st.markdown("#### Process Performance Qualification (PPQ)")
@@ -536,69 +501,49 @@ def render_qbd_and_mfg_readiness(ssm: SessionStateManager) -> None:
                 st.metric("Approved Critical Suppliers", f"{passed_count} / {total_count}")
                 st.dataframe(df_suppliers[['supplier', 'status', 'date']], hide_index=True, use_container_width=True)
             else: st.caption("No supplier audit data.")
-    # ==============================================================================
+
+# ==============================================================================
 # --- MAIN TAB RENDERING FUNCTIONS ---
 # ==============================================================================
 
 def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame) -> None:
-    """Renders the main DHF Health Dashboard tab."""
     st.header("Executive Health Summary")
 
     weights = {'schedule': 0.4, 'quality': 0.4, 'execution': 0.2}
     
-    # --- KPI Calculations ---
     try:
-        # Schedule Score
         if not tasks_df.empty:
             today = pd.Timestamp.now().floor('D')
             in_progress_tasks = tasks_df[tasks_df['status'] == 'In Progress']
-            if not in_progress_tasks.empty:
-                overdue_in_progress = in_progress_tasks[in_progress_tasks['end_date'] < today]
-                schedule_score = (1 - (len(overdue_in_progress) / len(in_progress_tasks))) * 100
-            else:
-                schedule_score = 100
-        else:
-            schedule_score = 100
+            schedule_score = (1 - (len(in_progress_tasks[in_progress_tasks['end_date'] < today]) / len(in_progress_tasks))) * 100 if not in_progress_tasks.empty else 100
+        else: schedule_score = 100
 
-        # Risk Score
         hazards_df = get_cached_df(ssm.get_data("risk_management_file", "hazards"))
-        if not hazards_df.empty and all(c in hazards_df.columns for c in ['initial_S', 'initial_O', 'final_S', 'final_O']):
-            initial_rpn_sum = (hazards_df['initial_S'] * hazards_df['initial_O']).sum()
-            final_rpn_sum = (hazards_df['final_S'] * hazards_df['final_O']).sum()
-            risk_score = ((initial_rpn_sum - final_rpn_sum) / initial_rpn_sum) * 100 if initial_rpn_sum > 0 else 100
-        else:
-            risk_score = 100
+        if not hazards_df.empty:
+            initial_rpn = (hazards_df['initial_S'] * hazards_df['initial_O']).sum()
+            final_rpn = (hazards_df['final_S'] * hazards_df['final_O']).sum()
+            risk_score = ((initial_rpn - final_rpn) / initial_rpn) * 100 if initial_rpn > 0 else 100
+        else: risk_score = 100
         
-        # Execution Score & Overdue Items
         reviews_data = ssm.get_data("design_reviews", "reviews") or []
-        action_items = [item for review in reviews_data for item in review.get('action_items', [])]
-        action_items_df = get_cached_df(action_items)
-        if not action_items_df.empty and 'status' in action_items_df.columns:
+        action_items_df = get_cached_df([item for review in reviews_data for item in review.get('action_items', [])])
+        if not action_items_df.empty:
             open_items = action_items_df[action_items_df['status'] != 'Completed']
             overdue_actions_count = len(open_items[open_items['status'] == 'Overdue'])
             execution_score = (1 - (overdue_actions_count / len(open_items))) * 100 if not open_items.empty else 100
-        else:
-            overdue_actions_count = 0
-            execution_score = 100
+        else: overdue_actions_count, execution_score = 0, 100
 
         overall_health_score = (schedule_score * weights['schedule']) + (risk_score * weights['quality']) + (execution_score * weights['execution'])
         
-        # V&V and Clinical KPIs
         ver_tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
         av_pass_rate = (len(ver_tests_df[ver_tests_df['result'] == 'Pass']) / len(ver_tests_df)) * 100 if not ver_tests_df.empty else 0
-        
         reqs_df = get_cached_df(ssm.get_data("design_inputs", "requirements"))
         trace_coverage = (ver_tests_df.dropna(subset=['input_verified_id'])['input_verified_id'].nunique() / reqs_df['id'].nunique()) * 100 if not reqs_df.empty and not ver_tests_df.empty and reqs_df['id'].nunique() > 0 else 0
-        
         study_df = get_cached_df(ssm.get_data("clinical_study", "enrollment"))
         enrollment_rate = (study_df['enrolled'].sum() / study_df['target'].sum()) * 100 if not study_df.empty and study_df['target'].sum() > 0 else 0
-        
     except Exception as e:
-        st.error(f"An error occurred while calculating dashboard KPIs: {e}")
-        logger.error(f"Error in KPI calculation: {e}", exc_info=True)
-        return
+        st.error(f"An error occurred while calculating dashboard KPIs: {e}"); return
 
-    # --- UI Rendering ---
     col1, col2 = st.columns([1.5, 2])
     with col1:
         fig = go.Figure(go.Indicator(mode="gauge+number", value=overall_health_score, title={'text': "<b>Overall Program Health Score</b>"}, number={'font': {'size': 48}}, domain={'x': [0, 1], 'y': [0, 1]}, gauge={'axis': {'range': [None, 100]}, 'bar': {'color': "green" if overall_health_score > 80 else "orange" if overall_health_score > 60 else "red"}, 'steps' : [{'range': [0, 60], 'color': "#fdecec"}, {'range': [60, 80], 'color': "#fef3e7"}, {'range': [80, 100], 'color': "#eaf5ea"}]}))
@@ -628,21 +573,20 @@ def render_health_dashboard_tab(ssm: SessionStateManager, tasks_df: pd.DataFrame
 
 def render_dhf_explorer_tab(ssm: SessionStateManager) -> None:
     st.header("🗂️ Design History File Explorer")
-    st.markdown("Select a DHF section from the sidebar to view its contents. Each section corresponds to a requirement under **21 CFR 820.30**.")
-    # In a real app, these functions would be imported from other modules.
     DHF_PAGES = {
-        "1. Design & Development Plan": lambda s: st.json(s.get_data("design_plan")),
-        "2. Risk Management (ISO 14971)": lambda s: st.json(s.get_data("risk_management_file")),
-        "4. Design Inputs (Requirements)": lambda s: st.dataframe(get_cached_df(s.get_data("design_inputs", "requirements"))),
-        "5. Design Outputs (Documents)": lambda s: st.dataframe(get_cached_df(s.get_data("design_outputs", "documents"))),
-        "7. Design Verification (AV Tests)": lambda s: st.dataframe(get_cached_df(s.get_data("design_verification", "tests"))),
+        "Design Plan": ("design_plan", None), "Risk Management File": ("risk_management_file", None),
+        "Requirements": ("design_inputs", "requirements"), "AV Tests": ("design_verification", "tests"),
+        "Documents": ("design_outputs", "documents"), "CAPA Records": ("quality_system", "capa_records"),
     }
     with st.sidebar:
         st.header("DHF Section Navigation")
-        dhf_selection = st.radio("Select a section to view:", DHF_PAGES.keys(), key="sidebar_dhf_selection")
-    st.divider()
-    page_function = DHF_PAGES.get(dhf_selection, lambda s: st.error("Selected page not found."))
-    page_function(ssm)
+        selection = st.radio("Select a DHF artifact to view:", DHF_PAGES.keys())
+    
+    st.subheader(f"Viewing: {selection}")
+    primary, secondary = DHF_PAGES[selection]
+    data = ssm.get_data(primary, secondary)
+    if isinstance(data, list): st.dataframe(get_cached_df(data), use_container_width=True)
+    elif isinstance(data, dict): st.json(data)
 
 def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
     st.header("🔬 Advanced Compliance & Project Analytics")
@@ -653,9 +597,8 @@ def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
         tests_df = get_cached_df(ssm.get_data("design_verification", "tests"))
         if not reqs_df.empty and not tests_df.empty:
             merged = pd.merge(reqs_df, tests_df, left_on='id', right_on='input_verified_id', how='left')
-            st.dataframe(merged[['id_x', 'description', 'id_y', 'test_name', 'result']].rename(columns={'id_x': 'Requirement ID', 'description': 'Requirement Desc.', 'id_y': 'Test ID', 'test_name': 'Test Name', 'result': 'Test Result'}), use_container_width=True)
-        else:
-            st.warning("Requirements or Verification data not available.")
+            st.dataframe(merged[['id_x', 'description', 'id_y', 'test_name', 'result']].rename(columns={'id_x': 'Req ID', 'description': 'Requirement', 'id_y': 'Test ID', 'test_name': 'Test Name', 'result': 'Result'}), use_container_width=True)
+        else: st.warning("Requirements or Verification data not available.")
             
     with analytics_tabs[1]:
         st.subheader("Consolidated Action Item Tracker")
@@ -666,95 +609,63 @@ def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
             
     with analytics_tabs[2]:
         st.subheader("Project Timeline and Task Editor")
-        st.warning("Directly edit project timelines, statuses, and dependencies. All changes are logged.", icon="⚠️")
-        tasks_data_to_edit = ssm.get_data("project_management", "tasks") or []
-        if not tasks_data_to_edit: st.info("No tasks to display or edit."); return
-        
-        edited_df = st.data_editor(pd.DataFrame(tasks_data_to_edit), key="main_task_editor", num_rows="dynamic", use_container_width=True, column_config={"start_date": st.column_config.DateColumn("Start Date", format="YYYY-MM-DD", required=True), "end_date": st.column_config.DateColumn("End Date", format="YYYY-MM-DD", required=True)})
-        
-        if not pd.DataFrame(tasks_data_to_edit).equals(edited_df):
+        st.warning("Directly edit project timelines. Changes are reflected on next run.", icon="⚠️")
+        tasks_data = ssm.get_data("project_management", "tasks")
+        edited_df = st.data_editor(pd.DataFrame(tasks_data), key="task_editor", num_rows="dynamic", use_container_width=True, column_config={"start_date": st.column_config.DateColumn("Start Date", format="YYYY-MM-DD"), "end_date": st.column_config.DateColumn("End Date", format="YYYY-MM-DD")})
+        if not pd.DataFrame(tasks_data).equals(edited_df):
             ssm.update_data(edited_df.to_dict('records'), "project_management", "tasks")
-            st.toast("Project tasks updated! Rerunning...", icon="✅"); st.rerun()
+            st.button("Commit Changes & Rerun")
 
 def render_statistical_tools_tab(ssm: SessionStateManager) -> None:
-    st.header("📈 Statistical Workbench for Assay & Lab Development")
-    st.info("Utilize this interactive workbench for rigorous statistical analysis of assay performance, a cornerstone of the Analytical Validation required for a PMA.")
-    tool_tabs = st.tabs(["Process Control (L-J)", "Anomaly Detection", "Hypothesis Testing", "Equivalence (TOST)", "Pareto Analysis", "Gauge R&R", "DOE / RSM"])
+    st.header("📈 Statistical Workbench")
+    tool_tabs = st.tabs(["Process Control", "Hypothesis Testing", "Equivalence (TOST)", "Pareto Analysis", "Gauge R&R", "DOE / RSM"])
     
     with tool_tabs[0]:
-        st.subheader("Classical Statistical Process Control (SPC)")
-        spc_data = ssm.get_data("quality_system", "spc_data")
-        fig = create_levey_jennings_plot(spc_data)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(create_levey_jennings_plot(ssm.get_data("quality_system", "spc_data")), use_container_width=True)
 
     with tool_tabs[1]:
-        st.subheader("ML-Based Process Anomaly Detection")
-        from sklearn.ensemble import IsolationForest
-        spc_data = ssm.get_data("quality_system", "spc_data")
-        if spc_data and spc_data.get('measurements'):
-            df_spc = pd.DataFrame({'value': spc_data['measurements']}).reset_index()
-            model = IsolationForest(contamination=0.05, random_state=42).fit(df_spc[['value']])
-            df_spc['anomaly'] = model.predict(df_spc[['value']])
-            fig = px.scatter(df_spc, x='index', y='value', color='anomaly', color_discrete_map={1: 'blue', -1: 'red'}, title="<b>Anomaly Detection in Process Control Data</b>")
-            st.plotly_chart(fig, use_container_width=True)
-
-    with tool_tabs[2]:
-        st.subheader("Hypothesis Testing for Assay Comparability")
         ht_data = ssm.get_data("quality_system", "hypothesis_testing_data")
         if ht_data:
-            df_a, df_b = pd.DataFrame({'value': ht_data['pipeline_a']}), pd.DataFrame({'value': ht_data['pipeline_b']})
-            p_a, p_b = stats.shapiro(df_a['value']).pvalue, stats.shapiro(df_b['value']).pvalue
+            a, b = ht_data['pipeline_a'], ht_data['pipeline_b']
+            p_a, p_b = stats.shapiro(a).pvalue, stats.shapiro(b).pvalue
             is_normal = p_a > 0.05 and p_b > 0.05
-            test_name, p_val = ("Welch's T-Test", stats.ttest_ind(df_a['value'], df_b['value'], equal_var=False).pvalue) if is_normal else ("Mann-Whitney U", stats.mannwhitneyu(df_a['value'], df_b['value']).pvalue)
+            test_name, p_val = ("Welch's T-Test", stats.ttest_ind(a, b, equal_var=False).pvalue) if is_normal else ("Mann-Whitney U", stats.mannwhitneyu(a, b).pvalue)
             st.metric(label=f"{test_name} p-value", value=f"{p_val:.4f}", help="p < 0.05 indicates a significant difference.")
             if p_val < 0.05: st.error("Conclusion: Statistically significant difference detected.")
             else: st.success("Conclusion: No statistically significant difference detected.")
-            fig = px.box(pd.concat([df_a.assign(group='A'), df_b.assign(group='B')]), x='group', y='value', points='all')
-            st.plotly_chart(fig, use_container_width=True)
 
-    with tool_tabs[3]:
-        st.subheader("Equivalence Testing (TOST) for Change Control")
+    with tool_tabs[2]:
         eq_data = ssm.get_data("quality_system", "equivalence_data")
-        margin_pct = st.slider("Select Equivalence Margin (%)", 5, 25, 10, key="tost_slider")
+        margin_pct = st.slider("Equivalence Margin (%)", 5, 25, 10, key="tost_slider")
         lot_a, lot_b = np.array(eq_data['reagent_lot_a']), np.array(eq_data['reagent_lot_b'])
         margin_abs = (margin_pct / 100) * lot_a.mean()
         fig, p_value = create_tost_plot(lot_a, lot_b, -margin_abs, margin_abs)
         st.plotly_chart(fig, use_container_width=True)
-        if p_value < 0.05: st.success(f"**Conclusion:** Equivalence demonstrated (p = {p_value:.4f}).")
-        else: st.error(f"**Conclusion:** Equivalence not demonstrated (p = {p_value:.4f}).")
+        if p_value < 0.05: st.success(f"Conclusion: Equivalence demonstrated (p={p_value:.4f}).")
+        else: st.error(f"Conclusion: Equivalence not demonstrated (p={p_value:.4f}).")
+
+    with tool_tabs[3]:
+        st.plotly_chart(create_pareto_chart(get_cached_df(ssm.get_data("lab_operations", "run_failures")), 'failure_mode', 'Pareto Analysis of Assay Run Failures'), use_container_width=True)
 
     with tool_tabs[4]:
-        st.subheader("Pareto Analysis of Run Failures")
-        failure_data = ssm.get_data("lab_operations", "run_failures")
-        if failure_data:
-            fig = create_pareto_chart(get_cached_df(failure_data), 'failure_mode', 'Pareto Analysis of Assay Run Failures')
-            st.plotly_chart(fig, use_container_width=True)
-
-    with tool_tabs[5]:
-        st.subheader("Measurement System Analysis (Gauge R&R)")
         msa_data = ssm.get_data("quality_system", "msa_data")
         if msa_data:
             fig, results_df = create_gauge_rr_plot(get_cached_df(msa_data), 'part', 'operator', 'measurement')
-            st.dataframe(results_df, use_container_width=True)
+            st.dataframe(results_df.style.format("{:.2f}"))
             st.plotly_chart(fig, use_container_width=True)
-            total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
-            if total_grr < 10: st.success(f"**Conclusion:** The measurement system is acceptable (Total GR&R = {total_grr:.2f}%).")
-            else: st.error(f"**Conclusion:** The measurement system is unacceptable (Total GR&R = {total_grr:.2f}%).")
 
-    with tool_tabs[6]:
-        st.subheader("DOE / RSM for Process Optimization")
+    with tool_tabs[5]:
         rsm_data = ssm.get_data("quality_system", "rsm_data")
         if rsm_data:
             df_rsm = get_cached_df(rsm_data)
-            surface_fig, contour_fig, model_summary = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+            surface, contour, summary = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
             col1, col2 = st.columns(2)
-            with col1: st.plotly_chart(surface_fig, use_container_width=True)
-            with col2: st.plotly_chart(contour_fig, use_container_width=True)
-            st.dataframe(model_summary)
+            with col1: st.plotly_chart(surface, use_container_width=True)
+            with col2: st.plotly_chart(contour, use_container_width=True)
+            st.dataframe(summary)
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager) -> None:
-    st.header("🤖 Machine Learning & Bioinformatics Lab")
-    st.info("This lab provides tools to analyze the performance and interpretability of the core classifier, a critical component of our SaMD validation package.")
+    st.header("🤖 ML & Bioinformatics Lab")
     from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import train_test_split
@@ -764,47 +675,54 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager) -> None:
     import shap
     import lightgbm as lgb
     
-    ml_tabs = st.tabs(["Classifier Performance", "Explainability (SHAP)", "CSO Analysis", "Predictive Ops", "Time Series Forecast", "Feature Importance", "Fragmentomics", "Error Modeling", "Predictive Run QC"])
+    ml_tabs = st.tabs(["Classifier Perf", "Explainability (SHAP)", "Fragmentomics", "Error Modeling"])
     X, y = ssm.get_data("ml_models", "classifier_data")
     
-    @st.cache_resource
-    def get_lr_model(_X, _y):
-        scaler = StandardScaler().fit(_X)
-        X_scaled = scaler.transform(_X)
-        model = LogisticRegression(penalty='l1', solver='liblinear', C=0.5, random_state=42).fit(X_scaled, _y)
-        return model, scaler
-
-    lr_model, scaler = get_lr_model(X, y)
-
     with ml_tabs[0]:
         st.subheader("Classifier Performance Analysis")
-        X_scaled = scaler.transform(X)
-        y_scores_lr = lr_model.predict_proba(X_scaled)[:, 1]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        model = RandomForestClassifier(random_state=42).fit(X_train, y_train)
+        y_scores = model.predict_proba(X_test)[:, 1]
+        
         col1, col2 = st.columns(2)
-        with col1: st.plotly_chart(create_roc_curve(pd.DataFrame({'score': y_scores_lr, 'truth': y}), 'score', 'truth'), use_container_width=True)
+        with col1: st.plotly_chart(create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y_test}), 'score', 'truth'), use_container_width=True)
         with col2:
-            precision, recall, _ = precision_recall_curve(y, y_scores_lr)
+            precision, recall, _ = precision_recall_curve(y_test, y_scores)
             st.plotly_chart(px.area(x=recall, y=precision, title="<b>Precision-Recall Curve</b>", labels={'x':'Recall', 'y':'Precision'}), use_container_width=True)
-            
+
     with ml_tabs[1]:
-        st.subheader("Cancer Classifier Explainability (SHAP)")
-        @st.cache_resource
-        def get_rf_model(_X, _y): return RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42).fit(_X, _y)
-        rf_model = get_rf_model(X, y)
-        
-        @st.cache_data
-        def get_shap_values(_model, _X_sample): return shap.Explainer(_model)(_X_sample)
-        
-        X_sample = X.sample(50, random_state=1)
-        shap_values = get_shap_values(rf_model, X_sample)
-        st.image(create_shap_summary_plot(shap_values.values[:,:,1], X_sample))
-    
-    # ... Other ML tabs would follow similar, optimized patterns ...
+        st.subheader("Classifier Explainability (SHAP)")
+        X_train, X_test, _, _ = train_test_split(X, y, test_size=0.3, random_state=42)
+        model = RandomForestClassifier(random_state=42).fit(X_train, y)
+        explainer = shap.Explainer(model, X_train)
+        shap_values = explainer(X_test.head(25))
+        st.image(create_shap_summary_plot(shap_values.values[:,:,1], X_test.head(25)))
+
+    with ml_tabs[2]:
+        st.subheader("ctDNA Signal Enhancement via Fragmentomics")
+        healthy_frags = np.random.normal(167, 10, 5000)
+        cancer_frags = np.random.normal(145, 15, 5000)
+        df_frags = pd.DataFrame({'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]), 'Sample Type': ['Healthy'] * 5000 + ['Cancer'] * 5000})
+        st.plotly_chart(px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100, barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes</b>"), use_container_width=True)
+
+    with ml_tabs[3]:
+        st.subheader("Modeling Sequencing Error Profiles")
+        error_rate_dist = np.random.beta(a=0.5, b=200, size=100)
+        alpha0, beta0, _, _ = beta.fit(error_rate_dist, floc=0, fscale=1)
+        st.write(f"**Fitted Error Model Parameters:** `alpha = {alpha0:.3f}`, `beta = {beta0:.3f}`")
+        true_vaf = st.slider("True VAF", 0.0, 0.01, 0.005, step=0.0005, format="%.4f")
+        observed_vaf = true_vaf + np.random.beta(alpha0, beta0) / 10
+        p_value = 1.0 - beta.cdf(observed_vaf, alpha0, beta0)
+        st.metric("P-value (Probability of Observation by Chance)", f"{p_value:.2e}")
+        if p_value < 1e-6: st.success("Significant: Confidently a true mutation.")
+        else: st.error("Not significant: Likely sequencing noise.")
 
 def render_compliance_guide_tab() -> None:
     st.header("🏛️ The Regulatory & Methodological Compendium")
     st.markdown("This guide serves as the definitive reference for the regulatory, scientific, and statistical frameworks governing the GenomicsDx Sentry™ program.")
-    # ... Content for compliance guide ...
+    # Abridged for brevity, but full content would be here.
+    with st.expander("⭐ **I. The GxP Paradigm: Proactive Quality by Design & The Role of the DHF**", expanded=True):
+        st.info("The entire regulatory structure is predicated on the principle of **Quality by Design (QbD)**: quality, safety, and effectiveness must be designed and built into the product, not merely inspected or tested into it after the fact.")
 
 # ==============================================================================
 # --- MAIN APPLICATION LOGIC ---
@@ -830,10 +748,6 @@ def main() -> None:
     with tab4: render_statistical_tools_tab(ssm)
     with tab5: render_machine_learning_lab_tab(ssm)
     with tab6: render_compliance_guide_tab()
-
-# ==============================================================================
-# --- SCRIPT EXECUTION ---
-# ==============================================================================
 
 if __name__ == "__main__":
     main()
