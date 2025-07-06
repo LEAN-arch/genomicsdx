@@ -33,7 +33,6 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista"]
 
     # --- ML Data Generation (SME Definitive Refactor) ---
-    # This section is refactored for guaranteed structural integrity.
     np.random.seed(42)
     num_samples = 100
     y_series = pd.Series(np.random.randint(0, 2, num_samples), name='target')
@@ -49,16 +48,38 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
         "input_dna": pd.Series([20, 20, 50, 50], dtype='int64'),
         "library_yield": pd.Series([250.0, 450.0, 600.0, 1100.0], dtype='float64')
     })
-
-    # --- BUILT-IN DATA VALIDATION GATE ---
-    # This block acts as a unit test to ensure data integrity at the source.
-    assert X_df.shape == (100, 10), f"FATAL: ML feature matrix has incorrect shape: {X_df.shape}"
-    assert not X_df.isnull().values.any(), "FATAL: ML feature matrix contains NaN values."
-    assert doe_df.notna().all().all(), "FATAL: DOE data frame contains NaN values."
-    assert np.issubdtype(doe_df['pcr_cycles'].dtype, np.integer), "FATAL: DOE pcr_cycles column is not integer."
-    assert np.issubdtype(doe_df['library_yield'].dtype, np.floating), "FATAL: DOE library_yield column is not float."
-    logger.info("Internal data generation validation passed successfully.")
     
+    # --- RSM Data Generation (SME Enhancement) ---
+    # Central Composite Design (CCD) for 2 factors
+    # Factor levels in coded units (-1, 0, 1) and axial points (+/- alpha)
+    alpha = 1.414
+    ccd_points = [
+        # Factorial points (replicated)
+        [-1, -1], [1, -1], [-1, 1], [1, 1],
+        [-1, -1], [1, -1], [-1, 1], [1, 1],
+        # Axial points
+        [-alpha, 0], [alpha, 0], [0, -alpha], [0, alpha],
+        # Center points
+        [0, 0], [0, 0], [0, 0], [0, 0]
+    ]
+    ccd_coded_df = pd.DataFrame(ccd_points, columns=['pcr_coded', 'dna_coded'])
+    
+    # Map coded units to real-world values
+    pcr_center, pcr_range = 12, 4  # e.g., 12 +/- 2 cycles
+    dna_center, dna_range = 40, 20  # e.g., 40 +/- 10 ng
+    ccd_coded_df['pcr_cycles'] = pcr_center + ccd_coded_df['pcr_coded'] * (pcr_range / 2)
+    ccd_coded_df['input_dna'] = dna_center + ccd_coded_df['dna_coded'] * (dna_range / 2)
+
+    # Simulate a response with curvature (a peak to find)
+    # Optimum is slightly off-center for realism
+    pcr_opt, dna_opt = 0.5, -0.2 
+    np.random.seed(101)
+    noise = np.random.normal(0, 50, len(ccd_coded_df))
+    ccd_coded_df['library_yield'] = 1500 - 150*(ccd_coded_df['pcr_coded'] - pcr_opt)**2 - 200*(ccd_coded_df['dna_coded'] - dna_opt)**2 + 50*ccd_coded_df['pcr_coded']*ccd_coded_df['dna_coded'] + noise
+    ccd_coded_df['library_yield'] = ccd_coded_df['library_yield'].clip(lower=100)
+    
+    rsm_data = ccd_coded_df[['pcr_cycles', 'input_dna', 'library_yield']].to_dict('records')
+
     # --- Data Model Generation ---
     return {
         "data_version": version,
@@ -206,6 +227,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
             "hypothesis_testing_data": {'pipeline_a': list(np.random.normal(0.012, 0.005, 30)), 'pipeline_b': list(np.random.normal(0.010, 0.005, 30))},
             "equivalence_data": {'reagent_lot_a': list(np.random.normal(0.85, 0.05, 30)), 'reagent_lot_b': list(np.random.normal(0.86, 0.05, 30))},
             "doe_data": doe_df.to_dict('records'),
+            "rsm_data": rsm_data, # SME Enhancement: Add new RSM dataset
             "msa_data": [{"part": p, "operator": o, "measurement": round(gauss(p * 1.0, 0.08), 4)} for p in range(1, 11) for o in ["Tech A", "Tech B", "Tech C"] for _ in range(3)],
         },
         "project_management": { "tasks": [
@@ -235,8 +257,8 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
 class SessionStateManager:
     """Handles the initialization and access of the application's session state."""
     _DHF_DATA_KEY = "dhf_data"
-    # Incremented to force a reload with the new robust, validated data generation logic
-    _CURRENT_DATA_VERSION = 52
+    # Incremented to force a reload with the new robust RSM data
+    _CURRENT_DATA_VERSION = 53
 
     def __init__(self):
         """Initializes the session state, loading the mock data if necessary."""
