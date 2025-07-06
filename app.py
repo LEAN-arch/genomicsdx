@@ -1249,6 +1249,131 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.success("The forecast projects a continued upward trend in sample volume, suggesting the need to review reagent inventory and staffing levels for the upcoming month.")
         except Exception as e:
             st.error(f"Could not generate time series forecast. Error: {e}")
+          
+    ############## NEW TOOLS +++++++++++++++++++++++++++++++
+    # --- Tool 7: ctDNA Fragmentomics Analysis (NEW) ---
+    with ml_tabs[6]:
+        st.subheader("ctDNA Signal Enhancement via Fragmentomics")
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To leverage the biological insight that ctDNA fragments are often shorter than background cell-free DNA (cfDNA) from healthy apoptotic cells. This tool models these fragment size distributions to enhance the detection of a cancer signal.
+
+            **Conceptual Walkthrough:**
+            Imagine cfDNA in a blood sample as a collection of different lengths of string. Most strings (from healthy cells) are around 167 base pairs long. However, strings from cancer cells are often shorter, peaking around 145 base pairs. Instead of looking just for specific mutations, we can analyze the *overall distribution* of string lengths. A sample with an unusually high proportion of short strings is more likely to contain a cancer signal. This tool builds a classifier based on features derived from these distributions (e.g., percentage of fragments < 150bp).
+
+            **Mathematical Basis:**
+            This is a feature engineering and classification problem. We extract features that describe the fragment size distribution for each sample. Key features might include:
+            - **Short Fragment Fraction:** The percentage of DNA fragments below a certain length (e.g., 150 bp).
+            - **Distributional Moments:** Mean, variance, skewness, and kurtosis of the fragment lengths.
+            - **Mode(s):** The location of peaks in the distribution.
+            A classifier, such as a **Gradient Boosting Machine**, is then trained on these engineered features to distinguish between "Cancer-like" and "Healthy-like" fragment profiles.
+
+            **Significance of Results:**
+            Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals. This is a critical piece of evidence for the PMA, showing the *mechanism* by which our test works and de-risking the algorithm from being reliant on spurious correlations.
+            """)
+        np.random.seed(42)
+        healthy_frags = np.random.normal(167, 10, 5000)
+        cancer_frags = np.random.normal(145, 15, 5000)
+        df_frags = pd.DataFrame({
+            'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]),
+            'Sample Type': ['Healthy'] * 5000 + ['Cancer'] * 5000
+        })
+        fig_hist = px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100,
+                                barmode='overlay', histnorm='probability density',
+                                title="<b>Distribution of DNA Fragment Sizes</b>")
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+        n_samples = 100
+        X_frag, y_frag = [], []
+        for i in range(n_samples):
+            sample_h = np.random.normal(167, 10, 200)
+            X_frag.append([np.mean(sample_h), np.std(sample_h), (sample_h < 150).mean()])
+            y_frag.append(0)
+            sample_c = np.random.normal(145, 15, 200)
+            X_frag.append([np.mean(sample_c), np.std(sample_c), (sample_c < 150).mean()])
+            y_frag.append(1)
+        X_frag, y_frag = pd.DataFrame(X_frag, columns=['mean_frag_size', 'std_frag_size', 'short_frag_pct']), np.array(y_frag)
+
+        X_train, X_test, y_train, y_test = train_test_split(X_frag, y_frag, test_size=0.3, random_state=42)
+        frag_model = GradientBoostingClassifier(random_state=42)
+        frag_model.fit(X_train, y_train)
+        accuracy = frag_model.score(X_test, y_test)
+        st.success(f"A classifier trained solely on fragment size features achieved an accuracy of **{accuracy:.1%}**. This confirms that fragmentomics provides significant discriminatory information, strengthening the scientific rationale for our assay.")
+
+    # --- Tool 8: Sequencing Error Modeling (NEW) ---
+    with ml_tabs[7]:
+        st.subheader("Modeling Sequencing Error Profiles for Variant Calling")
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To accurately distinguish true, low-frequency mutations in ctDNA from the background of inevitable sequencing errors. This is the most critical challenge for achieving a low Limit of Detection (LoD).
+
+            **Conceptual Walkthrough:**
+            Imagine trying to hear a faint whisper (a true mutation) in a room with a constant, low hum (sequencing errors). To be confident you heard the whisper, you first need to understand the exact pitch and volume of the hum. This tool does that for our sequencer. It analyzes a large number of healthy samples to build a high-resolution "error fingerprint" for every possible type of mutation (e.g., C>T, G>A) in every possible sequence context. When we analyze a new sample and see a potential mutation, we compare it to this fingerprint. If it looks exactly like a common error, we require a much stronger signal to believe it's real.
+
+            **Mathematical Basis:**
+            The number of reads supporting a variant allele at a given position can be modeled by a **Beta-Binomial distribution**. Unlike a simple Binomial distribution, it accounts for overdispersion—the fact that error rates can vary slightly from run to run. For each genomic context, we fit a beta-binomial model to data from normal samples to learn its characteristic error parameters, $\alpha_0$ and $\beta_0$. For a new sample with $k$ variant reads out of $n$ total reads, we can then calculate a p-value:
+            """)
+            st.latex(r'''
+            P(\text{reads} \ge k \mid n, \alpha_0, \beta_0)
+            ''')
+            st.markdown(r"""
+            This p-value represents the probability of observing at least $k$ variant reads *by chance alone*, according to our error model. A very low p-value gives us confidence that the variant is real.
+            """)
+        np.random.seed(123)
+        error_rate_dist = np.random.beta(a=0.5, b=200, size=100)
+        alpha0, beta0, _, _ = beta.fit(error_rate_dist, floc=0, fscale=1)
+        st.write(f"**Fitted Error Model Parameters:** `alpha = {alpha0:.3f}`, `beta = {beta0:.3f}`")
+
+        depth = 5000
+        true_vaf = st.slider("Select True Variant Allele Frequency (VAF) of a test sample", 0.0, 0.01, 0.005, step=0.0005, format="%.4f", key="vaf_slider")
+        observed_variant_reads = np.random.binomial(depth, true_vaf)
+        observed_vaf = observed_variant_reads / depth
+        p_value = 1.0 - beta.cdf(observed_vaf, alpha0, beta0)
+        st.metric("P-value (Probability of Observation by Chance)", f"{p_value:.2e}")
+        if p_value < 1e-6:
+             st.success(f"The observed VAF of **{observed_vaf:.4f}** is highly statistically significant (p < 0.000001). We can confidently call this a true mutation.")
+        else:
+             st.error(f"The observed VAF of **{observed_vaf:.4f}** is not statistically significant. It is likely a result of sequencing noise and should not be called.")
+
+    # --- Tool 9: Predictive Run QC from On-Instrument Metrics (NEW) ---
+    with ml_tabs[8]:
+        st.subheader("Predictive Run QC from Early On-Instrument Metrics")
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To predict the final quality of a sequencing run using real-time metrics generated by the sequencer *during the first few hours* of the run. This allows for the early termination of runs that are destined to fail, saving significant instrument time and reagent costs.
+
+            **Conceptual Walkthrough:**
+            Think of a multi-day sequencing run as a long-haul flight. Instead of waiting until landing to see if the journey was smooth, we can check key engine performance metrics during takeoff and initial ascent. This tool analyzes early-run metrics like **Cluster Density**, **% Q30 score at cycle 25**, and **% Phasing**. A model trained on historical data learns the "signature" of a run that will ultimately succeed or fail. If a current run's early metrics match the signature of a failure, we can abort the mission and troubleshoot immediately.
+
+            **Mathematical Basis:**
+            This is a binary classification problem. We use **Logistic Regression** to model the probability of a "Pass" outcome. The model learns a set of coefficients ($\beta_i$) for each early-run QC feature ($x_i$) to predict the log-odds of the run passing its final QC check:
+            """)
+            st.latex(r'''
+            \ln\left(\frac{P(\text{Pass})}{1-P(\text{Pass})}\right) = \beta_0 + \beta_1x_{\text{Q30}} + \beta_2x_{\text{Density}} + \dots
+            ''')
+        np.random.seed(42)
+        n_runs, pass_rate = 200, 0.9
+        n_pass, n_fail = int(n_runs * pass_rate), int(n_runs * (1-pass_rate))
+        df_on_instrument = pd.DataFrame({
+            'q30_at_cycle_25': np.concatenate([np.random.normal(95, 2, n_pass), np.random.normal(85, 5, n_fail)]),
+            'cluster_density_k_mm2': np.concatenate([np.random.normal(1200, 150, n_pass), np.random.normal(1800, 200, n_fail)]),
+            'final_outcome': ['Pass'] * n_pass + ['Fail'] * n_fail
+        }).sample(frac=1).reset_index(drop=True)
+        X_oi, y_oi = df_on_instrument.drop('final_outcome', axis=1), df_on_instrument['final_outcome'].apply(lambda x: 1 if x == 'Pass' else 0)
+
+        X_train, X_test, y_train, y_test = train_test_split(X_oi, y_oi, test_size=0.3, random_state=42, stratify=y_oi)
+        model_oi_qc = LogisticRegression(random_state=42)
+        model_oi_qc.fit(X_train, y_train)
+        y_pred = model_oi_qc.predict(X_test)
+        st.write("##### On-Instrument QC Model Performance (on Test Set)")
+        cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+        fig_cm_oi = create_confusion_matrix_heatmap(cm, ['Fail', 'Pass'])
+        st.plotly_chart(fig_cm_oi, use_container_width=True)
+        tn, fp, fn, tp = cm.ravel()
+        st.success(f"**Model Evaluation:** The model correctly predicted **{tp}** successful runs and **{tn}** failing runs based on early metrics alone, enabling proactive intervention.")
 
 def render_compliance_guide_tab():
     """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
