@@ -380,20 +380,18 @@ def create_confusion_matrix_heatmap(cm: np.ndarray, class_names: List[str]) -> g
         logger.error(f"Error creating confusion matrix heatmap: {e}", exc_info=True)
         return _create_placeholder_figure("Confusion Matrix Error", "Confusion Matrix", "⚠️")
 
-def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) -> Optional[io.BytesIO]:
+def create_shap_summary_plot(shap_values: Any, features: pd.DataFrame) -> Optional[io.BytesIO]:
     """
     Creates a SHAP summary plot and returns it as an in-memory PNG image buffer.
+    Accepts shap_values as either a numpy array or a SHAP Explanation object.
     Returns None on failure.
     """
     try:
         import shap
         import matplotlib.pyplot as plt
 
-        if shap_values.shape[1] != features.shape[1]:
-            logger.error(f"SHAP plot error: Mismatch in shapes. SHAP values have {shap_values.shape[1]} features, data has {features.shape[1]}.")
-            return None
-
         fig, ax = plt.subplots()
+        # The modern `summary_plot` can handle both numpy arrays and Explanation objects.
         shap.summary_plot(shap_values, features, show=False)
         plt.title("SHAP Feature Importance Summary", fontsize=16)
         plt.tight_layout()
@@ -432,25 +430,26 @@ def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, respon
         # Calculate mean response for each of the 4 combinations
         means = df.groupby([factor1, factor2])[response].mean()
         
-        f1_low, f1_high = df[factor1].unique()
-        f2_low, f2_high = df[factor2].unique()
+        f1_levels = sorted(df[factor1].unique())
+        f2_levels = sorted(df[factor2].unique())
 
-        y1 = means.loc[f1_low, f2_low]    # Factor1 Low, Factor2 Low
-        y2 = means.loc[f1_high, f2_low]   # Factor1 High, Factor2 Low
-        y3 = means.loc[f1_low, f2_high]   # Factor1 Low, Factor2 High
-        y4 = means.loc[f1_high, f2_high]  # Factor1 High, Factor2 High
+        y1 = means.loc[f1_levels[0], f2_levels[0]]    # Factor1 Low, Factor2 Low
+        y2 = means.loc[f1_levels[1], f2_levels[0]]   # Factor1 High, Factor2 Low
+        y3 = means.loc[f1_levels[0], f2_levels[1]]   # Factor1 Low, Factor2 High
+        y4 = means.loc[f1_levels[1], f2_levels[1]]  # Factor1 High, Factor2 High
 
         # --- Main Effects Calculation ---
         main_effect_f1 = ((y2 - y1) + (y4 - y3)) / 2
         main_effect_f2 = ((y3 - y1) + (y4 - y2)) / 2
-        effects_data = pd.DataFrame([
-            {'Effect': f'Main Effect: {factor1}', 'Value': main_effect_f1},
-            {'Effect': f'Main Effect: {factor2}', 'Value': main_effect_f2}
-        ])
         
         # --- Interaction Effect Calculation ---
         interaction_effect = ((y4 - y3) - (y2 - y1)) / 2
-        effects_data.loc[len(effects_data)] = {'Effect': f'Interaction: {factor1}:{factor2}', 'Value': interaction_effect}
+
+        effects_data = pd.DataFrame([
+            {'Effect': f'Main Effect: {factor1}', 'Value': main_effect_f1},
+            {'Effect': f'Main Effect: {factor2}', 'Value': main_effect_f2},
+            {'Effect': f'Interaction: {factor1}:{factor2}', 'Value': interaction_effect}
+        ])
 
         # --- Create Main Effects Plot ---
         effects_fig = px.bar(effects_data, x='Effect', y='Value', title="<b>Calculated Factor Effects</b>",
@@ -460,7 +459,7 @@ def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, respon
         # --- Create Interaction Plot ---
         interaction_df = means.reset_index()
         interaction_fig = px.line(interaction_df, x=factor1, y=response, color=factor2, markers=True,
-                                  title=f"<b>Interaction Plot: {factor1} vs {factor2}</b>")
+                                  title=f"<b>Interaction Plot</b>", category_orders={factor1: f1_levels, factor2: f2_levels})
         interaction_fig.update_traces(marker=dict(size=12), line=dict(width=3))
         interaction_fig.update_layout(
             xaxis=dict(type='category'),
