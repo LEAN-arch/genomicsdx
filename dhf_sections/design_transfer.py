@@ -86,17 +86,14 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         ]
         tabs = st.tabs(tab_titles)
 
-        # <<< FIX FOR INFINITE LOOP: Reworked this function with robust comparison >>>
-        def render_editor_tab(df_key: str, column_config: Dict):
+        # <<< FIX FOR TypeError: Redefined function to accept an explicit list of date columns >>>
+        def render_editor_tab(df_key: str, column_config: Dict, date_columns: List[str] = None):
+            if date_columns is None:
+                date_columns = []
+
             data_list = transfer_data.get(df_key, [])
             df = pd.DataFrame(data_list)
             
-            # Identify date columns from the configuration
-            date_columns = [
-                col for col, config in column_config.items() 
-                if isinstance(config, st.column_config.DateColumn)
-            ]
-
             # 1. Prepare DataFrame for the editor
             for col in date_columns:
                 if col in df.columns:
@@ -128,6 +125,7 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         with tabs[0]:
             st.subheader("Standard Operating Procedures (SOPs)")
             st.caption("Track the transfer of R&D processes into formal, version-controlled SOPs for the clinical lab.")
+            # Pass an empty list for date_columns as there are none
             render_editor_tab("sops", {
                 "doc_id": "SOP ID", "title": st.column_config.TextColumn("SOP Title", width="large"), "version": "Version",
                 "status": st.column_config.SelectboxColumn("Status", options=["Draft", "In Review", "Approved"])
@@ -138,15 +136,8 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
             st.caption("Track and document that all lab personnel are trained on all effective, approved SOPs before performing patient testing.")
             approved_sops = [s.get('doc_id') for s in sop_data if s.get('status') == 'Approved']
             if approved_sops and lab_techs:
-                # This is a display-only matrix, so no need to save it. We can build it on the fly.
                 training_matrix_df = pd.DataFrame(index=approved_sops, columns=lab_techs).fillna(False)
-                st.data_editor(
-                    training_matrix_df, 
-                    use_container_width=True, 
-                    key="training_matrix_editor",
-                    # Allow editing but note that it won't be saved in this simplified example
-                    disabled=False
-                )
+                st.data_editor(training_matrix_df, use_container_width=True, key="training_matrix_editor", disabled=False)
                 st.caption("Note: Training matrix state is for display and planning; not persisted in this demo.")
             else:
                 st.info("Define approved SOPs and lab technologists to generate the training matrix.")
@@ -166,6 +157,7 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         with tabs[3]:
             st.subheader("Laboratory Equipment & LIMS Qualification")
             st.caption("Document the IQ/OQ/PQ of all critical lab instruments and the validation of the Laboratory Information Management System (LIMS).")
+            # Pass an empty list for date_columns
             render_editor_tab("infrastructure", {
                 "asset_id": "Asset ID", "equipment_type": "Equipment/System",
                 "status": st.column_config.SelectboxColumn("Qualification Status", options=["Pending", "IQ Complete", "OQ Complete", "PQ Complete"]),
@@ -175,20 +167,22 @@ def render_design_transfer(ssm: SessionStateManager) -> None:
         with tabs[4]:
             st.subheader("Bioinformatics Pipeline & Classifier Deployment (IEC 62304)")
             st.caption("Track the formal, controlled deployment of the locked bioinformatics pipeline and classifier algorithm to the validated production infrastructure.")
+            # Explicitly pass the name of the date column
             render_editor_tab("software_deployment", {
                 "component": "Software Component", "version": "Deployed Version/Hash", "deployment_date": st.column_config.DateColumn("Deployment Date", format="YYYY-MM-DD"),
                 "validation_protocol": "Validation Protocol ID", "validation_report_link": st.column_config.LinkColumn("Validation Report")
-            })
+            }, date_columns=['deployment_date'])
 
         with tabs[5]:
             st.subheader("Process Performance Qualification (PPQ) & Stability")
             st.caption("Document the capstone PPQ runs demonstrating process robustness, and track ongoing stability studies.")
             st.markdown("**PPQ Runs**")
+            # Explicitly pass the name of the date column
             render_editor_tab("ppq_runs", {
                 "run_id": "PPQ Run ID", "description": st.column_config.TextColumn("Run Description", width="large"),
                 "run_date": st.column_config.DateColumn("Run Date", format="YYYY-MM-DD"), "result": st.column_config.SelectboxColumn("Result", options=["Not Started", "In Progress", "Pass", "Fail"]),
                 "summary_report_link": st.column_config.LinkColumn("Summary Report")
-            })
+            }, date_columns=['run_date'])
             st.markdown("**Stability Program**")
             stability_df = pd.DataFrame(transfer_data.get("readiness", {}).get("sample_stability_studies", []))
             st.dataframe(stability_df, use_container_width=True, hide_index=True)
