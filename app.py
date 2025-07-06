@@ -1387,6 +1387,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
     # --- Tool 10: 3D Optimization Visualization ---
 
+    # --- Tool 10: 3D Optimization Visualization ---
     with ml_tabs[9]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
@@ -1428,7 +1429,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             kernel = C(1.0, (1e-3, 1e3)) * RBF([1, 1], (1e-2, 1e2))
             gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9, random_state=42)
-            gp.fit(X_rsm, y_rsm)
+            # --- FIX: Fit on NumPy array (.values) to prevent feature name warnings ---
+            gp.fit(X_rsm.values, y_rsm)
 
             x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
             y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
@@ -1499,7 +1501,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[0]], y=[path_df['y'].iloc[0]], z=[path_df['z'].iloc[0]], mode='markers', marker=dict(color='lime', size=10, symbol='circle'), name='Start Point'))
             fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[-1]], y=[path_df['y'].iloc[-1]], z=[path_df['z'].iloc[-1]], mode='markers', marker=dict(color='red', size=12, symbol='x'), name='Converged Point'))
             
-            # Global Optimum found by the GP model (CORRECTED LINE)
+            # Global Optimum found by the GP model
             fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='diamond', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
 
             fig.update_layout(
