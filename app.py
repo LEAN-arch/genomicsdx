@@ -1,3 +1,4 @@
+#genomicsdx/app.py
 # --- SME-Revised, PMA-Ready, and Unabridged Enhanced Version (Corrected) ---
 """
 Main application entry point for the GenomicsDx Command Center.
