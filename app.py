@@ -562,15 +562,23 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
 
             **Mathematical Basis:**
             The chart is based on the principles of the Gaussian (Normal) distribution. The control limits are established based on the mean ($\mu$) and standard deviation ($\sigma$) of a set of historical, in-control data. The limits are typically set at $\mu \pm 1\sigma$, $\mu \pm 2\sigma$, and $\mu \pm 3\sigma$.
-
+            """)
+            st.markdown("**Core Formulas:**")
+            st.latex(r'''
+            \text{Mean: } \bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i
+            ''')
+            st.latex(r'''
+            \text{Standard Deviation: } s = \sqrt{\frac{1}{n-1}\sum_{i=1}^{n} (x_i - \bar{x})^2}
+            ''')
+            st.markdown("""
             **Procedure:**
             1. A stable mean and standard deviation are established for a QC material from at least 20 historical data points.
             2. Control limits are calculated and drawn on the chart.
             3. For each subsequent run, the new QC value is plotted on the chart.
-            4. The plot is evaluated against a set of rules (e.g., Westgard rules) to detect shifts or trends that may indicate a problem with the process.
+            4. The plot is evaluated against a set of rules (e.g., Westgard rules like 1_3s, 2_2s, R_4s, 4_1s) to detect shifts or trends that may indicate a problem with the process.
 
             **Significance of Results:**
-            A Levey-Jennings chart provides an early warning system for process drift or instability. A point outside the $\pm 3\sigma$ limits or patterns of points (e.g., 7 consecutive points on one side of the mean) indicates a loss of statistical control, triggering an investigation and preventing the release of potentially erroneous patient results.
+            A Levey-Jennings chart provides an early warning system for process drift or instability. A point outside the $\pm 3\sigma$ limits or patterns of points indicates a loss of statistical control, triggering an investigation (e.g., a CAPA) and preventing the release of potentially erroneous patient results.
             """)
         spc_data = ssm.get_data("quality_system", "spc_data")
         fig = create_levey_jennings_plot(spc_data)
@@ -583,23 +591,32 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         with st.expander("View Method Explanation"):
             st.markdown(r"""
             **Purpose of the Tool:**
-            To determine if there is a statistically significant difference between the means of two groups. This is used, for example, to compare the output of a new bioinformatics pipeline version against the old one.
+            To determine if there is a statistically significant difference between the means of two independent groups. This is used, for example, to compare the output of a new bioinformatics pipeline version against the old one.
 
             **Mathematical Basis:**
             The framework is Null Hypothesis Significance Testing (NHST). We start with a **Null Hypothesis ($H_0$)** that there is no difference between the groups ($\mu_1 = \mu_2$). We then calculate the probability (**p-value**) of observing our data (or more extreme data) if the null hypothesis were true.
-
-            - **Welch's t-test (for Normal Data):** Used when the data in both groups are normally distributed. It does not assume equal variances. The t-statistic is calculated as:
-              $t = \frac{\bar{x_1} - \bar{x_2}}{\sqrt{\frac{s_1^2}{n_1} + \frac{s_2^2}{n_2}}}$
-            - **Mann-Whitney U test (for Non-Normal Data):** A non-parametric test that works on ranked data, not the actual values. It tests if the two distributions are the same.
-
+            """)
+            st.markdown("**Key Formulas & Tests:**")
+            st.markdown("- **Shapiro-Wilk Test:** Tests the null hypothesis that data was drawn from a normal distribution. The test statistic W is a ratio of two estimates of the variance.")
+            st.markdown(r"""- **Welch's t-test (for Normal Data):** Used when the data in both groups are normally distributed. It does not assume equal variances. The t-statistic is calculated as:""")
+            st.latex(r'''
+            t = \frac{\bar{x_1} - \bar{x_2}}{\sqrt{\frac{s_1^2}{n_1} + \frac{s_2^2}{n_2}}}
+            ''')
+            st.markdown(r"""The degrees of freedom are approximated using the Welch–Satterthwaite equation.""")
+            st.markdown(r"""- **Mann-Whitney U test (for Non-Normal Data):** A non-parametric test that works on ranked data. It tests the null hypothesis that for randomly selected values X and Y from two populations, the probability of X being greater than Y is equal to the probability of Y being greater than X. The U statistic for group 1 is:""")
+            st.latex(r'''
+            U_1 = R_1 - \frac{n_1(n_1+1)}{2}
+            ''')
+            st.markdown(r"""where $R_1$ is the sum of ranks in group 1.""")
+            st.markdown("""
             **Procedure:**
-            1. Check if the data in each group is normally distributed using a test like the **Shapiro-Wilk test**.
-            2. If both groups are normal, perform a t-test. Otherwise, perform a Mann-Whitney U test.
+            1. Check if the data in each group is normally distributed using the Shapiro-Wilk test.
+            2. If both groups are normal (p > 0.05), perform a Welch's t-test. Otherwise, perform a Mann-Whitney U test.
             3. Compare the resulting p-value to a pre-defined significance level ($\alpha$, typically 0.05).
 
             **Significance of Results:**
             - If **p < 0.05**, we reject the null hypothesis and conclude there is a statistically significant difference between the groups.
-            - If **p ≥ 0.05**, we fail to reject the null hypothesis, meaning we do not have sufficient evidence to conclude that a difference exists.
+            - If **p ≥ 0.05**, we fail to reject the null hypothesis, meaning we do not have sufficient evidence to conclude that a difference exists. This does not prove they are the same.
             """)
         ht_data = ssm.get_data("quality_system", "hypothesis_testing_data")
         df_a = pd.DataFrame({'value': ht_data['pipeline_a'], 'group': 'Pipeline A'})
@@ -642,7 +659,13 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             TOST (Two One-Sided Tests) flips the null hypothesis. Instead of a null of "no difference," we have two null hypotheses of **non-equivalence**:
             - $H_{01}: \mu_1 - \mu_2 \le -\Delta$ (The difference is less than the lower equivalence bound)
             - $H_{02}: \mu_1 - \mu_2 \ge +\Delta$ (The difference is greater than the upper equivalence bound)
-            We perform two separate one-sided t-tests. If **both** tests are significant (p < 0.05), we can reject both nulls and conclude that the true difference lies within the equivalence bounds $[-\Delta, +\Delta]$. The final TOST p-value is the larger of the two individual p-values.
+            We perform two separate one-sided t-tests. The test statistics are:
+            """)
+            st.latex(r'''
+            t_1 = \frac{(\bar{x_1} - \bar{x_2}) - (-\Delta)}{SE_{diff}} \quad \text{and} \quad t_2 = \frac{(\bar{x_1} - \bar{x_2}) - (+\Delta)}{SE_{diff}}
+            ''')
+            st.markdown(r"""
+            If **both** tests are significant (p < 0.05), we can reject both nulls and conclude that the true difference lies within the equivalence bounds $[-\Delta, +\Delta]$. The final TOST p-value is the larger of the two individual p-values, $p_{TOST} = \max(p_1, p_2)$.
 
             **Procedure:**
             1. Define a scientifically justifiable equivalence margin, $\Delta$. This is the largest difference that is considered clinically or scientifically irrelevant.
@@ -707,12 +730,13 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             To quantify the amount of variation in your data that comes from the measurement system itself, as opposed to the actual variation between the items being measured. A reliable measurement system is a prerequisite for any valid process control or improvement.
 
             **Mathematical Basis:**
-            Analysis of Variance (ANOVA) is used to partition the total observed variance ($\sigma^2_{\text{Total}}$) into its constituent components:
-            - **Repeatability ($\sigma^2_{\text{Repeat}}$):** Variation when one operator measures the same part multiple times. This is inherent equipment variation (EV).
-            - **Reproducibility ($\sigma^2_{\text{Repro}}$):** Variation when different operators measure the same part. This is appraiser variation (AV).
-            - **Gauge R&R ($\sigma^2_{\text{GRR}}$):** The total measurement system variation, where $\sigma^2_{\text{GRR}} = \sigma^2_{\text{Repeat}} + \sigma^2_{\text{Repro}}$.
-            - **Part-to-Part ($\sigma^2_{\text{Part}}$):** The true variation between the different parts being measured.
-
+            Analysis of Variance (ANOVA) is used to partition the total observed variance ($\sigma^2_{\text{Total}}$) into its constituent components. An ANOVA table is constructed (Source, Sum of Squares, Degrees of Freedom, Mean Square). From the Mean Square (MS) values, the variance components are estimated:
+            - $\sigma^2_{\text{Repeatability}} = MS_{Error}$
+            - $\sigma^2_{\text{Operator}} = \frac{MS_{Operator} - MS_{Operator:Part}}{n_{parts} \cdot n_{replicates}}$
+            - $\sigma^2_{\text{Operator:Part}} = \frac{MS_{Operator:Part} - MS_{Error}}{n_{replicates}}$
+            - $\sigma^2_{\text{Reproducibility}} = \sigma^2_{\text{Operator}} + \sigma^2_{\text{Operator:Part}}$
+            - $\sigma^2_{\text{Part}} = \frac{MS_{Part} - MS_{Operator:Part}}{n_{operators} \cdot n_{replicates}}$
+            
             **Procedure:**
             A structured experiment is performed where multiple operators measure multiple parts multiple times. The resulting data is analyzed using ANOVA to calculate the variance components.
             
@@ -752,12 +776,18 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             To efficiently identify which of many potential factors have a significant effect on a process output. It allows for the simultaneous study of many factors, unlike traditional one-factor-at-a-time (OFAT) experiments, which are inefficient and fail to detect interactions.
 
             **Mathematical Basis:**
-            A factorial design (e.g., 2-level full factorial) is used to create an experimental plan. The results are analyzed using a linear model to estimate the **main effect** of each factor and the **interaction effects** between factors. The main effect is the average change in the response when a factor is moved from its low level to its high level. An interaction effect means the effect of one factor depends on the level of another.
+            A factorial design (e.g., 2-level full factorial, $2^k$) is used to create an orthogonal experimental plan. The results are analyzed using a linear model to estimate the **main effect** of each factor and the **interaction effects** between factors. The main effect for a factor is calculated as:
+            """)
+            st.latex(r'''
+            \text{Effect}_A = \bar{y}_{A,high} - \bar{y}_{A,low}
+            ''')
+            st.markdown("""
+            An interaction effect (e.g., AB) measures how the effect of factor A changes at different levels of factor B.
 
             **Procedure:**
             1. Identify potential factors and their high/low levels.
             2. Run the experiments according to the factorial design matrix.
-            3. Analyze the results to determine which effects are statistically significant.
+            3. Analyze the results (e.g., with an ANOVA or effects plots) to determine which effects are statistically significant.
             
             **Significance of Results:**
             A screening DOE quickly narrows down a large problem space, allowing the team to focus subsequent, more intensive optimization experiments (like RSM) only on the "vital few" factors that actually matter. It is a foundational tool for efficient process development and characterization.
@@ -789,7 +819,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             After a screening DOE identifies significant factors, RSM is used to find the optimal settings for those factors. It uses a more detailed experimental design (like a Central Composite Design) to fit a **quadratic model**, allowing us to visualize and analyze curvature in the response. The ultimate goal is to find the "peak" or "valley" of the response surface, defining a robust **Normal Operating Range (NOR)**.
 
             **The Mathematical Basis & Method:**
-            A second-order polynomial model is fit to the data:
+            A second-order polynomial model is fit to the data using the method of least squares. In matrix notation, this is $Y = X\beta + \epsilon$, where the coefficients $\beta$ are estimated as $\hat{\beta} = (X'X)^{-1}X'Y$. The model equation is:
             $Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2$  
             The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
 
@@ -854,7 +884,13 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
 
             **Mathematical Basis:**
-            SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
+            SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
+            """)
+            st.latex(r'''
+            \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]
+            ''')
+            st.markdown(r"""
+            where $F$ is the set of all features, $S$ is a subset of features not including $i$, and $v(S)$ is the model's output with only the features in coalition $S$. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
 
             **Procedure:**
             1. An explainer object is created from a trained model and a background dataset.
@@ -896,8 +932,17 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             **Mathematical Basis:**
             **Logistic Regression** is used as the classification algorithm. It models the probability of a binary outcome (Pass/Fail) by fitting data to a logistic (sigmoid) function. The model learns a set of coefficients ($\beta_i$) for each input feature ($x_i$) to predict the log-odds of failure:
-            $log(\frac{P(Fail)}{1-P(Fail)}) = \beta_0 + \beta_1x_1 + ... + \beta_nx_n$
-            
+            """)
+            st.latex(r'''
+            \ln\left(\frac{P(\text{Fail})}{1-P(\text{Fail})}\right) = \beta_0 + \beta_1x_1 + \dots + \beta_nx_n
+            ''')
+            st.markdown(r"""
+            This log-odds value is then transformed into a probability between 0 and 1 using the sigmoid function:
+            """)
+            st.latex(r'''
+            P(\text{Fail}) = \frac{1}{1 + e^{-(\beta_0 + \beta_1x_1 + \dots)}}
+            ''')
+            st.markdown("""
             **Procedure:**
             1. Historical run data with pre-sequencing QC metrics (e.g., library concentration) and the final outcome (Pass/Fail) is collected.
             2. The data is split into training and testing sets.
@@ -940,15 +985,15 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             To forecast future demand (e.g., incoming sample volume) based on historical data. This is crucial for proactive lab management, including reagent inventory control, staffing, and capacity planning.
 
             **Mathematical Basis:**
-            An **ARIMA (Autoregressive Integrated Moving Average)** model is used. It is a powerful class of models for analyzing and forecasting time series data. It combines three components:
-            - **AR (Autoregressive, p):** A regression model that uses the dependent relationship between an observation and some number of lagged observations.
-            - **I (Integrated, d):** The use of differencing of raw observations (e.g., subtracting an observation from an observation at the previous time step) in order to make the time series stationary.
-            - **MA (Moving Average, q):** A model that uses the dependency between an observation and a residual error from a moving average model applied to lagged observations.
-            An ARIMA(p,d,q) model is a standard, statistically robust method for forecasting.
-
+            An **ARIMA (Autoregressive Integrated Moving Average)** model is used. It is a powerful class of models for analyzing and forecasting time series data. An ARIMA(p,d,q) model can be written using the backshift operator $L$ (where $L_kX_t = X_{t-k}$):
+            $$ \left(1 - \sum_{i=1}^{p} \phi_i L^i\right) (1-L)^d X_t = c + \left(1 + \sum_{i=1}^{q} \theta_i L^i\right) \epsilon_t $$
+            - **p (Autoregressive):** The $\phi_i$ terms model the dependency on *p* past values.
+            - **d (Integrated):** The $(1-L)^d$ term represents differencing the series *d* times to achieve stationarity.
+            - **q (Moving Average):** The $\theta_i$ terms model the dependency on *q* past forecast errors ($\epsilon_t$).
+            
             **Procedure:**
             1. Historical time series data is collected (e.g., daily sample volume).
-            2. The model (in this case, a pre-selected ARIMA(5,1,0)) is fit to the historical data.
+            2. The model (in this case, a pre-selected ARIMA(5,1,0)) is fit to the historical data by estimating the $\phi_i$ coefficients.
             3. The fitted model is used to project future values, along with confidence intervals.
 
             **Significance of Results:**
