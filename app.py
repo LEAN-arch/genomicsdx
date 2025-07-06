@@ -130,36 +130,43 @@ def get_cached_df(data: List[Dict[str, Any]]) -> pd.DataFrame:
 
 def create_rsm_and_gradient_descent_plot(df, x_col, y_col, z_col):
     """
-    Creates a 3D surface plot for RSM and visualizes the path of a Gradient Descent optimization.
-    This provides a powerful comparison between statistical and iterative optimization methods.
+    Creates a 3D surface plot for RSM and visualizes the path of a Gradient Ascent optimization.
+    This version is robust and handles parameter access by name.
     """
+    from statsmodels.formula.api import ols # Ensure ols is available in this scope
+    import numpy as np
+    import pandas as pd
+    import plotly.graph_objects as go
+
     # 1. Fit the RSM model to find the surface equation
-    # Using a simple polynomial model for demonstration
     formula = f'{z_col} ~ {x_col} + {y_col} + I({x_col}**2) + I({y_col}**2) + {x_col}:{y_col}'
     model = ols(formula, data=df).fit()
+    p = model.params
     
     # 2. Create the grid for the 3D surface plot
-    x_range = np.linspace(df[x_col].min(), df[x_col].max(), 50)
-    y_range = np.linspace(df[y_col].min(), df[y_col].max(), 50)
+    x_range = np.linspace(df[x_col].min(), df[x_col].max(), 30)
+    y_range = np.linspace(df[y_col].min(), df[y_col].max(), 30)
     xx, yy = np.meshgrid(x_range, y_range)
     df_grid = pd.DataFrame({x_col: xx.ravel(), y_col: yy.ravel()})
     zz = model.predict(df_grid).values.reshape(xx.shape)
 
-    # 3. Simulate Gradient Ascent to find the maximum yield
-    # The gradient components are the partial derivatives of the fitted model
-    p = model.params
+    # 3. Simulate Gradient Ascent to find the maximum
+    # Define gradient functions using robust parameter access by name
     grad_z_x = lambda x, y: p[x_col] + 2 * p[f'I({x_col} ** 2)'] * x + p[f'{x_col}:{y_col}'] * y
     grad_z_y = lambda x, y: p[y_col] + 2 * p[f'I({y_col} ** 2)'] * y + p[f'{x_col}:{y_col}'] * x
     
-    # Start at a non-optimal point
+    # Start at a non-optimal point for visualization
     current_point = np.array([df[x_col].min(), df[y_col].max()])
     path = [current_point]
-    learning_rate = 0.1  # A visually effective learning rate
+    learning_rate = 0.05  # A smaller learning rate for smoother path
     
-    for _ in range(15):  # 15 iterative steps
+    for _ in range(20):  # More steps for a clearer path
         grad = np.array([grad_z_x(*current_point), grad_z_y(*current_point)])
-        if np.linalg.norm(grad) < 1e-3: break # Stop if gradient is negligible
+        if np.linalg.norm(grad) < 1e-4: break # Stop if gradient is negligible
         current_point = current_point + learning_rate * grad
+        # Constrain path to be within the data range
+        current_point[0] = np.clip(current_point[0], df[x_col].min(), df[x_col].max())
+        current_point[1] = np.clip(current_point[1], df[y_col].min(), df[y_col].max())
         path.append(current_point)
     
     path = np.array(path)
@@ -167,27 +174,26 @@ def create_rsm_and_gradient_descent_plot(df, x_col, y_col, z_col):
     path_z = model.predict(path_df)
 
     # 4. Create the 3D plot
-    fig = go.Figure(data=[go.Surface(z=zz, x=x_range, y=y_range, colorscale='Viridis', opacity=0.8, cmin=zz.min(), cmax=zz.max())])
+    fig = go.Figure(data=[go.Surface(z=zz, x=x_range, y=y_range, colorscale='Viridis', opacity=0.9, cmin=zz.min(), cmax=zz.max(), colorbar_title=z_col)])
     
-    # Add the gradient ascent path trace
     fig.add_trace(go.Scatter3d(
-        x=path[:, 0], y=path[:, 1], z=path_z + 10, # Add slight z-offset for visibility
+        x=path[:, 0], y=path[:, 1], z=path_z + (zz.max() * 0.02), # Offset for visibility
         mode='lines+markers',
         name='Gradient Ascent Path',
         line=dict(color='red', width=6),
-        marker=dict(size=5, color='white', symbol='circle')
+        marker=dict(size=4, color='white')
     ))
     
-    # Mark the start and end points clearly
-    fig.add_trace(go.Scatter3d(x=[path[0, 0]], y=[path[0, 1]], z=[path_z[0] + 15], mode='markers', name='Start Point', marker=dict(size=8, color='#FFA500', symbol='circle'))) # Orange
-    fig.add_trace(go.Scatter3d(x=[path[-1, 0]], y=[path[-1, 1]], z=[path_z[-1] + 15], mode='markers', name='Converged Optimum', marker=dict(size=10, color='#FF0000', symbol='x'))) # Red 'X'
+    fig.add_trace(go.Scatter3d(x=[path[0, 0]], y=[path[0, 1]], z=[path_z[0] + (zz.max() * 0.04)], mode='markers', name='Start Point', marker=dict(size=7, color='orange', symbol='circle')))
+    fig.add_trace(go.Scatter3d(x=[path[-1, 0]], y=[path[-1, 1]], z=[path_z[-1] + (zz.max() * 0.04)], mode='markers', name='Converged Optimum', marker=dict(size=8, color='red', symbol='x')))
 
     fig.update_layout(
         title=f"<b>3D Response Surface & Gradient Ascent Optimization</b>",
         scene=dict(
             xaxis_title=x_col.replace('_', ' ').title(),
             yaxis_title=y_col.replace('_', ' ').title(),
-            zaxis_title=z_col.replace('_', ' ').title()
+            zaxis_title=z_col.replace('_', ' ').title(),
+            aspectmode='cube'
         ),
         margin=dict(l=0, r=0, b=0, t=40),
         legend=dict(x=0.01, y=0.95, bordercolor="Black", borderwidth=1)
@@ -1225,40 +1231,41 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.success(f"The CSO classifier achieved an overall Top-1 accuracy of **{accuracy:.1%}**. The confusion matrix highlights strong performance for Lung and Colorectal signals, guiding where model improvement efforts should be focused.", icon="🎯")
    
     # --- Tool 4: NEW 3D Optimization Visualization Case ---
-    with ml_tabs[3]:
-        st.subheader("Process Optimization: 3D RSM vs. Gradient Ascent")
-        st.info("This tool provides a powerful visual comparison between two core optimization strategies. RSM provides a global, statistical view, while Gradient Ascent demonstrates an iterative, local search algorithm commonly used to train machine learning models.")
+with ml_tabs[3]:
+    st.subheader("Process Optimization: 3D RSM vs. Gradient Ascent")
+    st.info("This tool provides a powerful visual comparison between two core optimization strategies. RSM provides a global, statistical view, while Gradient Ascent demonstrates an iterative, local search algorithm commonly used to train machine learning models.")
+    
+    with st.expander("View Method Explanation & Strategic Context", expanded=False):
+        st.markdown(r"""
+        **Purpose of this Comparison:** To visually contrast how a classical statistical method finds an optimum versus how a foundational machine learning algorithm "learns" its way to an optimum.
+        - **Response Surface Methodology (RSM):** Takes a "snapshot" of the entire experimental space by fitting a single quadratic equation to all data points at once to create a smooth surface map. The "optimal" point is then calculated by finding the peak of this surface.
+          - *Pros:* Statistically rigorous, provides a global view, well-understood by regulators.
+          - *Cons:* Assumes the underlying process can be described by a simple quadratic surface.
+        - **Gradient Ascent:** An iterative, "hill-climbing" algorithm. It starts at a point and takes small, repeated steps in the direction of the steepest ascent (the gradient) until it can no longer find a "higher" step.
+          - *Pros:* Can navigate very complex, non-linear surfaces where RSM would fail.
+          - *Cons:* Can get stuck in a "local optimum" (a small hill) and miss the true global optimum (the highest mountain).
+        **Significance:** We use RSM to define our official **Design Space** for regulatory filings. We use iterative methods like Gradient Ascent internally to explore complex parameter spaces and confirm that our RSM-defined space is not missing a major, non-obvious performance peak.
+        """)
         
-        with st.expander("View Method Explanation & Strategic Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of this Comparison:** To visually contrast how a classical statistical method finds an optimum versus how a foundational machine learning algorithm "learns" its way to an optimum.
-            - **Response Surface Methodology (RSM):** Takes a "snapshot" of the entire experimental space by fitting a single quadratic equation to all data points at once to create a smooth surface map. The "optimal" point is then calculated by finding the peak of this surface.
-              - *Pros:* Statistically rigorous, provides a global view, well-understood by regulators.
-              - *Cons:* Assumes the underlying process can be described by a simple quadratic surface.
-            - **Gradient Ascent:** An iterative, "hill-climbing" algorithm. It starts at a point and takes small, repeated steps in the direction of the steepest ascent (the gradient) until it can no longer find a "higher" step.
-              - *Pros:* Can navigate very complex, non-linear surfaces where RSM would fail.
-              - *Cons:* Can get stuck in a "local optimum" (a small hill) and miss the true global optimum (the highest mountain).
-            **Significance:** We use RSM to define our official **Design Space** for regulatory filings. We use iterative methods like Gradient Ascent internally to explore complex parameter spaces and confirm that our RSM-defined space is not missing a major, non-obvious performance peak.
-            """)
+    try:
+        rsm_data = ssm.get_data("quality_system", "rsm_data")
+        if rsm_data:
+            df_rsm = pd.DataFrame(rsm_data)
+            with st.spinner("Fitting response surface and simulating gradient ascent path..."):
+                # This call now works because the helper function is self-contained or `ols` is imported globally.
+                fig_3d = create_rsm_and_gradient_descent_plot(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
             
-        try:
-            rsm_data = ssm.get_data("quality_system", "rsm_data")
-            if rsm_data:
-                df_rsm = pd.DataFrame(rsm_data)
-                with st.spinner("Fitting response surface and simulating gradient ascent path..."):
-                    fig_3d = create_rsm_and_gradient_descent_plot(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
-                
-                st.plotly_chart(fig_3d, use_container_width=True)
-                
-                st.success("""
-                **Observation:** The Gradient Ascent algorithm (red path) successfully navigates the response surface, starting from a suboptimal region and iteratively climbing to the peak identified by the statistical RSM model. This provides strong, cross-methodological confidence in the identified optimal operating conditions for the assay.
-                """, icon="🤝")
-            else:
-                st.warning("Response Surface Methodology (RSM) data not available for this analysis.")
-                
-        except Exception as e:
-            st.error(f"An error occurred during 3D optimization visualization: {e}")
-            logger.error(f"Error in RSM/Gradient Descent tab: {e}", exc_info=True)
+            st.plotly_chart(fig_3d, use_container_width=True)
+            
+            st.success("""
+            **Observation:** The Gradient Ascent algorithm (red path) successfully navigates the response surface, starting from a suboptimal region and iteratively climbing to the peak identified by the statistical RSM model. This provides strong, cross-methodological confidence in the identified optimal operating conditions for the assay.
+            """, icon="🤝")
+        else:
+            st.warning("Response Surface Methodology (RSM) data not available for this analysis.")
+            
+    except Exception as e:
+        st.error(f"An error occurred during 3D optimization visualization: {e}")
+        logger.error(f"Error in RSM/Gradient Descent tab: {e}", exc_info=True)
     # --- Tool 4: RSM vs ML ---
     with ml_tabs[4]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
