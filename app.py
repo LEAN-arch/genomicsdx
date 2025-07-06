@@ -559,7 +559,12 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown("""
             **Purpose of the Tool:**
             To monitor the stability and consistency of a process over time. For our assay, this is used to track the performance of quality control (QC) materials to ensure the assay is performing as expected on a day-to-day basis.
-
+            """)
+            st.markdown("""
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            Imagine our assay process is a river. When everything is normal, the river flows steadily down the center of its channel. The **mean ($\mu$)** is that center line. The **standard deviation ($\sigma$)** tells us how wide the normal, "safe" channel is. The Levey-Jennings chart draws "guard rails" at 1, 2, and 3 standard deviations from the center. Each time we run a QC sample, we're checking where the river is flowing on that day. A single point outside the $\pm3\sigma$ guard rails is a major flood warning. The Westgard rules are more subtle; they look for patterns, like if the river is consistently hugging one bank for several days in a row, which might indicate a slow, systematic change in our process that needs investigation.
+            """)
+            st.markdown("""
             **Mathematical Basis:**
             The chart is based on the principles of the Gaussian (Normal) distribution. The control limits are established based on the mean ($\mu$) and standard deviation ($\sigma$) of a set of historical, in-control data. The limits are typically set at $\mu \pm 1\sigma$, $\mu \pm 2\sigma$, and $\mu \pm 3\sigma$.
             """)
@@ -592,7 +597,12 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Tool:**
             To determine if there is a statistically significant difference between the means of two independent groups. This is used, for example, to compare the output of a new bioinformatics pipeline version against the old one.
-
+            """)
+            st.markdown(r"""
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            Think of this as a statistical courtroom drama. The **Null Hypothesis ($H_0$)** is the "defendant," and it's presumed innocent—meaning, we assume there is no difference between our two groups. Our data is the "evidence" we present to the court. The **p-value** is the key output: it's the probability that we would see evidence this strong (or stronger) *if the defendant were truly innocent*. If the p-value is very low (typically < 0.05), it's like saying, "The chance of this happening randomly is so small, the defendant must be guilty!" We then "convict" the null hypothesis, reject it, and declare that a significant difference exists. If the p-value is high, we don't have enough evidence to convict, so we "fail to reject" the null hypothesis.
+            """)
+            st.markdown(r"""
             **Mathematical Basis:**
             The framework is Null Hypothesis Significance Testing (NHST). We start with a **Null Hypothesis ($H_0$)** that there is no difference between the groups ($\mu_1 = \mu_2$). We then calculate the probability (**p-value**) of observing our data (or more extreme data) if the null hypothesis were true.
             """)
@@ -654,7 +664,15 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Tool:**
             To demonstrate that two groups are "the same" within a pre-defined margin. This is the correct statistical approach for validating a change, such as qualifying a new reagent lot, where the goal is to prove it performs identically to the old lot. Standard hypothesis testing can only fail to find a difference; it cannot prove similarity.
-
+            """)
+            st.markdown(r"""
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            Proving two things are the same is statistically difficult. A standard t-test is designed to find a difference, not prove its absence. TOST solves this by flipping the problem. Imagine we've set "goalposts" on a field ($-\Delta$ and $+\Delta$). We are saying, "Any difference that falls inside these goalposts is practically meaningless." TOST then runs two tests simultaneously:
+            1. Is the difference "guilty" of being too low (i.e., less than $-\Delta$)?
+            2. Is the difference "guilty" of being too high (i.e., greater than $+\Delta$)?
+            If we can prove that our difference is *not guilty* on both counts, then by logical elimination, it *must* lie within the goalposts. The 90% confidence interval is like a "net" we cast for the true difference; if the entire net falls inside the goalposts, we have demonstrated equivalence.
+            """)
+            st.markdown(r"""
             **Mathematical Basis:**
             TOST (Two One-Sided Tests) flips the null hypothesis. Instead of a null of "no difference," we have two null hypotheses of **non-equivalence**:
             - $H_{01}: \mu_1 - \mu_2 \le -\Delta$ (The difference is less than the lower equivalence bound)
@@ -699,6 +717,9 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown("""
             **Purpose of the Tool:**
             To identify the most frequent causes of a problem, enabling focused process improvement efforts. It is based on the **Pareto Principle**, or the "80/20 rule," which posits that roughly 80% of effects come from 20% of the causes.
+            
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            Imagine you're an emergency room doctor with a waiting room full of patients. You can't treat everyone at once. You must **triage**: identify and treat the most critical patients first. A Pareto chart is a triage tool for process problems. It takes all the reasons for failure, counts them up, and sorts them from most common to least common. The chart immediately and visually points out the "biggest bleeders"—the one or two causes that are responsible for the majority of your problems. This allows you to apply your limited resources (time, people, money) where they will have the greatest effect.
 
             **Mathematical Basis:**
             This is a descriptive statistical tool, not an inferential one. It involves calculating simple frequencies and cumulative frequencies.
@@ -728,6 +749,12 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Tool:**
             To quantify the amount of variation in your data that comes from the measurement system itself, as opposed to the actual variation between the items being measured. A reliable measurement system is a prerequisite for any valid process control or improvement.
+            
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            Imagine you are trying to measure the heights of several different people (the "Parts"). Your measurement tool is a camera. The total variation you see in the photos comes from two sources: the *real* differences in height between the people, and the "error" from your measurement system. This error also has two parts:
+            - **Repeatability** is the "shakiness" of the camera. If you take three photos of the *same* person, are the heights identical? The variation between those photos is repeatability.
+            - **Reproducibility** is the difference between photographers. If you and a friend both take photos of the same group of people, will your measurements be identical? The variation between your results and your friend's is reproducibility.
+            A Gauge R&R study tells you what percentage of the total variation is just "camera shake" and "photographer difference." If that percentage is too high, you can't trust your photos to tell you who is actually taller. You need to fix your measurement system first.
 
             **Mathematical Basis:**
             Analysis of Variance (ANOVA) is used to partition the total observed variance ($\sigma^2_{\text{Total}}$) into its constituent components. An ANOVA table is constructed (Source, Sum of Squares, Degrees of Freedom, Mean Square). From the Mean Square (MS) values, the variance components are estimated:
@@ -774,6 +801,9 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown("""
             **Purpose of the Tool:**
             To efficiently identify which of many potential factors have a significant effect on a process output. It allows for the simultaneous study of many factors, unlike traditional one-factor-at-a-time (OFAT) experiments, which are inefficient and fail to detect interactions.
+            
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            Imagine you're trying to perfect a cake recipe with four ingredients you can change: Flour, Sugar, Eggs, and Baking Time. The traditional way is to bake a cake, change only the flour, bake another, then change only the sugar, and so on. This is slow and misses the key insight that maybe more sugar *only* works if you also use more eggs (an interaction). A DOE is a smarter way. It gives you a specific, minimal set of recipes to bake (e.g., "high sugar, low time," "low sugar, high time," etc.) that cleverly covers all the combinations. By analyzing the results of just these few cakes, the math can untangle the effect of each ingredient individually (main effects) and also detect any crucial interactions between them.
 
             **Mathematical Basis:**
             A factorial design (e.g., 2-level full factorial, $2^k$) is used to create an orthogonal experimental plan. The results are analyzed using a linear model to estimate the **main effect** of each factor and the **interaction effects** between factors. The main effect for a factor is calculated as:
@@ -817,6 +847,9 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Method:**
             After a screening DOE identifies significant factors, RSM is used to find the optimal settings for those factors. It uses a more detailed experimental design (like a Central Composite Design) to fit a **quadratic model**, allowing us to visualize and analyze curvature in the response. The ultimate goal is to find the "peak" or "valley" of the response surface, defining a robust **Normal Operating Range (NOR)**.
+            
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            If a screening DOE is about finding which mountains are worth climbing, RSM is about finding the exact peak of the one you chose. A simple linear model can only describe a flat, tilted plane—it can't describe a peak. RSM uses a more complex (quadratic) equation that can model curves, hills, and valleys. By running a few extra, cleverly placed experiments (the "star points" of a CCD), we give the model enough information to learn the curvature of the performance landscape. The 3D surface plot is a visual representation of this landscape, and the contour plot is the topographical map. Our goal is to find the "X" on the map that marks the highest point.
 
             **The Mathematical Basis & Method:**
             A second-order polynomial model is fit to the data using the method of least squares. In matrix notation, this is $Y = X\beta + \epsilon$, where the coefficients $\beta$ are estimated as $\hat{\beta} = (X'X)^{-1}X'Y$. The model equation is:
@@ -883,6 +916,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Purpose of the Tool:**
             To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
 
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            Imagine our machine learning model is like a sports team, and its final prediction is the team's score. The features (our biomarkers) are the players. SHAP analysis is like a sophisticated "Most Valuable Player" calculation for every single game (every single patient sample). It doesn't just tell you who the best player is overall; it tells you exactly how much each player contributed to the final score in that specific game. For one patient, a high value for `promoter_A_met` might have pushed the score up by 0.3, while a low value for `enhancer_B_met` might have pulled it down by 0.1. The summary plot aggregates thousands of these "game reports" to show which players are consistently the most impactful and whether their impact is positive or negative.
+
             **Mathematical Basis:**
             SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
             """)
@@ -929,6 +965,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown("""
             **Purpose of the Tool:**
             To build a predictive model that can identify sequencing runs likely to fail QC *before* committing expensive reagents and sequencer time. This is a proactive quality control tool aimed at improving operational efficiency and reducing the Cost of Poor Quality (COPQ).
+
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            This tool acts like a simple gatekeeper. Before we start an expensive sequencing run, we have some early QC data (like library concentration). We feed this data to our trained logistic regression model. The model has learned from all past runs what combinations of early QC metrics are associated with success and failure. It then calculates the probability that the current run will fail. If the probability is high, we can stop the process, investigate the sample, and save significant time and money. It's about making a cheap, early decision to avoid an expensive, late failure.
 
             **Mathematical Basis:**
             **Logistic Regression** is used as the classification algorithm. It models the probability of a binary outcome (Pass/Fail) by fitting data to a logistic (sigmoid) function. The model learns a set of coefficients ($\beta_i$) for each input feature ($x_i$) to predict the log-odds of failure:
@@ -983,6 +1022,12 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose of the Tool:**
             To forecast future demand (e.g., incoming sample volume) based on historical data. This is crucial for proactive lab management, including reagent inventory control, staffing, and capacity planning.
+
+            **Conceptual Walkthrough: What's Happening in the Background?**
+            An ARIMA model is a sophisticated way to "learn the rhythm" of a process over time. It essentially looks at the historical data and breaks it down into three components:
+            1. **Autoregression (AR):** How much does yesterday's value influence today's value? It assumes that recent history is a good predictor of the near future.
+            2. **Integration (I):** Does the data have a trend (e.g., consistently increasing)? The "I" part accounts for this by looking at the *differences* from one day to the next, which makes the data more stable and easier to model.
+            3. **Moving Average (MA):** This part looks at past *forecast errors*. It tries to correct for previous mistakes, making the model self-adjusting. By combining these three pieces, the model can make a robust, data-driven projection of where the "rhythm" is headed next.
 
             **Mathematical Basis:**
             An **ARIMA (Autoregressive Integrated Moving Average)** model is used. It is a powerful class of models for analyzing and forecasting time series data. An ARIMA(p,d,q) model can be written using the backshift operator $L$ (where $L_kX_t = X_{t-k}$):
