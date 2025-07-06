@@ -1080,7 +1080,6 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"Could not perform RSM analysis. Error: {e}")
             logger.error(f"RSM analysis failed: {e}", exc_info=True)
-
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
@@ -1162,7 +1161,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_main)
             if plot_buffer:
                 st.image(plot_buffer)
-                st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result.")
+                st.success("The SHAP analysis confirms that known oncogenic methylation markers are the most significant drivers of a 'Cancer Signal Detected' result.")
             else:
                 st.error("Could not generate SHAP summary plot.")
         except Exception as e:
@@ -1198,35 +1197,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         - The model correctly identified **{tp}** out of **{tp+fn}** failing runs in the test set.
         - This predictive tool shows promise for integration into the pre-run QC checklist to reduce overall COPQ.
         """)
-        # --- Tool 3: CSO Analysis ---
-    # --- Tool 3: CSO Analysis ---
-    with ml_tabs[2]:
-        st.subheader("Cancer Signal of Origin (CSO) Analysis")
-        with st.expander("View Method Explanation"):
-            st.markdown("""
-            **Purpose of the Tool:**
-            For an MCED test, detecting a cancer signal is only half the battle. A key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**, which guides the subsequent clinical workup. This tool analyzes the performance of the CSO prediction model.
-            
-            **Conceptual Walkthrough:**
-            After the first model says "Cancer Signal Detected," a second, multi-class classifier is used to predict the tissue of origin (e.g., Lung, Colon, Pancreatic). A **confusion matrix** is the perfect tool for visualizing its performance. It's a grid that shows us not just what we got right, but also where we went wrong. For example, it might reveal that the model frequently confuses Lung and Head & Neck cancers, which is biologically plausible and provides valuable insight for improving the model or refining the clinical report.
-            """)
-        st.write("Generating synthetic CSO data and training a simple model...")
-        np.random.seed(123)
-        cso_classes = ['Lung', 'Colon', 'Pancreatic', 'Liver', 'Ovarian']
-        cancer_samples_X = X[y == 1]
-        if not cancer_samples_X.empty:
-            true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X))
-            cso_model = RandomForestClassifier(n_estimators=50, random_state=123)
-            cso_model.fit(cancer_samples_X, true_cso)
-            predicted_cso = cso_model.predict(cancer_samples_X)
-            cm_cso = confusion_matrix(true_cso, predicted_cso, labels=cso_classes)
-            fig_cm_cso = create_confusion_matrix_heatmap(cm_cso, cso_classes)
-            st.plotly_chart(fig_cm_cso, use_container_width=True)
-            accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
-            st.success(f"The CSO classifier achieved an overall accuracy of **{accuracy:.1%}**.")
-        else:
-            st.warning("No 'cancer positive' samples available in the dataset to perform CSO analysis.")
-            
+
     # --- Tool 3: Time Series Forecasting ---
     with ml_tabs[2]:
         st.subheader("Time Series Forecasting for Lab Operations")
@@ -1374,7 +1345,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         fig_cm_oi = create_confusion_matrix_heatmap(cm, ['Fail', 'Pass'])
         st.plotly_chart(fig_cm_oi, use_container_width=True)
         tn, fp, fn, tp = cm.ravel()
-        st.success(f"**Model Evaluation:** The model correctly predicted **{tp}** successful runs and **{tn}** failing runs based on early metrics alone, enabling proactive intervention.")
+        st.success(f"**Model Evaluation:** The model correctly predicted **{tp}** successful runs and **{tn}** failing runs based on early metrics alone, enabling proactive intervention."))
 
 def render_compliance_guide_tab():
     """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
