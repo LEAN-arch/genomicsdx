@@ -878,8 +878,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """
-    Renders the tab containing machine learning and bioinformatics tools,
-    rebuilt with an emphasis on SaMD validation, explainability, and diagnostics-specific applications.
+    Renders the tab containing machine learning and bioinformatics tools.
     """
     st.header("🤖 ML & Bioinformatics Lab")
     st.info("""
@@ -887,28 +886,25 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     Explainability, scientific plausibility, and rigorous performance evaluation are paramount for **Software as a Medical Device (SaMD)** regulatory submissions.
     """)
     
-    # Dependencies are already handled at the top of the file
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import train_test_split
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import precision_recall_curve, auc, confusion_matrix
-    import shap
+    try:
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import precision_recall_curve, auc, confusion_matrix
+        import shap
+    except ImportError as e:
+        st.error(f"This function requires advanced libraries. Please run: pip install scikit-learn shap. Error: {e}", icon="🚨")
+        return
 
-    # ADDED TWO NEW CASES
     ml_tabs = st.tabs([
-        "1. Classifier Performance (ROC & PR)",
-        "2. Classifier Explainability (SHAP)",
-        "3. Cancer Signal of Origin (CSO)",
-        "4. NGS: Fragmentomics",
-        "5. NGS: Methylation Entropy",
-        "6. NGS: Copy Number Variation (CNV)", # NEW
-        "7. NGS: Immune Repertoire", # NEW
-        "8. Ops: Time Series Forecasting",
-        "9. Ops: Predictive Run QC",
+        "1. Classifier Performance", "2. Classifier Explainability", "3. Cancer Signal of Origin",
+        "4. NGS: Fragmentomics", "5. NGS: Methylation Entropy", "6. NGS: CNV Analysis",
+        "7. NGS: Immune Repertoire", "8. Ops: Time Series Forecasting", "9. Ops: Predictive Run QC"
     ])
 
     X, y = ssm.get_data("ml_models", "classifier_data")
     model = ssm.get_data("ml_models", "classifier_model")
+    
     # --- Tool 1: ROC & PR ---
     with ml_tabs[0]:
         st.subheader("Classifier Performance: ROC and Precision-Recall")
