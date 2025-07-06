@@ -249,7 +249,7 @@ def render_design_risk_management(ssm: SessionStateManager) -> None:
                 parents = parents,
                 values = values,
                 textinfo = "label+value",
-                marker_colorscalefast = True,
+                # SME Definitive Fix: Corrected invalid property 'marker_colorscalefast' to 'marker.colorscale'
                 marker=dict(colorscale='Reds')
             ))
             fta_fig.update_layout(
