@@ -319,7 +319,6 @@ def render_audit_and_improvement_dashboard(ssm: SessionStateManager) -> None:
                 else: st.metric("Process Capability (Cpk)", "N/A", help="SPC data missing.")
                 st.caption("Increased Cpk from process optimization (DOE) directly reduces failed runs and COPQ.")
         except Exception as e: st.error("Could not render Assay Performance & COPQ Dashboard."); logger.error(f"Error in render_audit_and_improvement_dashboard (COPQ): {e}", exc_info=True)
-
 #######NEW FUNCTION: FTY and Bootlenecks ++++++++++++++++++++++++++++++++++++++++++++++++++++++
 def render_ftr_and_release_dashboard(ssm: SessionStateManager) -> None:
     """Renders the First Time Right (FTR) and Release Readiness dashboard."""
@@ -421,7 +420,6 @@ def render_ftr_and_release_dashboard(ssm: SessionStateManager) -> None:
     except Exception as e:
         st.error("Could not render First Time Right & Release Readiness dashboard.")
         logger.error(f"Error in render_ftr_and_release_dashboard: {e}", exc_info=True)
-        
 # ==============================================================================
 # --- TAB RENDERING FUNCTIONS ---
 # ==============================================================================
