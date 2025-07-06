@@ -1097,7 +1097,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.error("This tab requires `scikit-learn`, `shap`, and `statsmodels`. Please install them to enable ML features.", icon="🚨")
         return
         
-    ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)"])
+    ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)","ctDNA Fragmentomics Analysis", "Sequencing Error Profile Modeling", "Predictive Run QC (On-Instrument)" ])
 
     # --- Tool 1: SHAP ---
     with ml_tabs[0]:
