@@ -28,6 +28,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
+from matplotlib.pyplot as plt
 
 # --- Robust Path Correction Block ---
 try:
