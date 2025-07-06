@@ -1056,51 +1056,63 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision across a range of recall values, indicating strong performance for a screening application.", icon="✅")
 
  # --- Tool 2: SHAP ---
-    with ml_tabs[1]:
-        st.subheader("Cancer Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation"):
-            st.markdown(r"""
-            **Purpose of the Tool:**
-            To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
+```python
+with ml_tabs[0]:
+    st.subheader("Cancer Classifier Explainability (SHAP)")
+    
+    with st.expander("View Method Explanation"):
+        st.markdown(r"""
+        **Purpose of the Tool:**
+        To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
 
-            **Conceptual Walkthrough:**
-            Imagine our machine learning model is like a sports team, and its final prediction is the team's score. The features (our biomarkers) are the players. SHAP analysis is like a sophisticated "Most Valuable Player" calculation for every single game (every single patient sample). It doesn't just tell you who the best player is overall; it tells you exactly how much each player contributed to the final score in that specific game. For one patient, a high value for `promoter_A_met` might have pushed the score up by 0.3, while a low value for `enhancer_B_met` might have pulled it down by 0.1. The summary plot aggregates thousands of these "game reports" to show which players are consistently the most impactful and whether their impact is positive or negative.
+        **Conceptual Walkthrough:**
+        Imagine our machine learning model is like a sports team, and its final prediction is the team's score. The features (our biomarkers) are the players. SHAP analysis is like a sophisticated "Most Valuable Player" calculation for every single game (every single patient sample). It doesn't just tell you who the best player is overall; it tells you exactly how much each player contributed to the final score in that specific game. For one patient, a high value for `promoter_A_met` might have pushed the score up by 0.3, while a low value for `enhancer_B_met` might have pulled it down by 0.1. The summary plot aggregates thousands of these "game reports" to show which players are consistently the most impactful and whether their impact is positive or negative.
 
-            **Mathematical Basis:**
-            SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
-            """)
-            st.latex(r'''
-            \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]
-            ''')
-            st.markdown(r"""
-            where $F$ is the set of all features, $S$ is a subset of features not including $i$, and $v(S)$ is the model's output with only the features in coalition $S$. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
+        **Mathematical Basis:**
+        SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
+        """)
+        st.latex(r'''
+        \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]
+        ''')
+        st.markdown(r"""
+        where $F$ is the set of all features, $S$ is a subset of features not including $i$, and $v(S)$ is the model's output with only the features in coalition $S$. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
 
-            **Procedure:**
-            1. An explainer object is created from a trained model and a background dataset.
-            2. The explainer calculates the SHAP values for each feature for every sample in a test set.
-            3. A **summary plot** visualizes these values. Each point is a single feature for a single sample. The color indicates the feature's value (high/low), and its position on the x-axis indicates its impact on the model's output (pushing the prediction higher or lower).
+        **Procedure:**
+        1. An explainer object is created from a trained model and a background dataset.
+        2. The explainer calculates the SHAP values for each feature for every sample in a test set.
+        3. A **summary plot** visualizes these values. Each point is a single feature for a single sample. The color indicates the feature's value (high/low), and its position on the x-axis indicates its impact on the model's output (pushing the prediction higher or lower).
 
-            **Significance of Results:**
-            The SHAP summary plot provides powerful evidence for scientific and clinical validation. It allows us to confirm that the model has learned biologically relevant signals (e.g., known oncogenic methylation markers are the top features) and is not relying on spurious correlations or batch effects. This is a critical piece of evidence for de-risking the algorithm portion of a PMA submission.
-            """)
-        st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
-        try:
-            explainer = shap.Explainer(model, X)
-            shap_values_obj = explainer(X)
-            
-            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            
-            shap_values_for_plot = shap_values_obj.values[:,:,1]
+        **Significance of Results:**
+        The SHAP summary plot provides powerful evidence for scientific and clinical validation. It allows us to confirm that the model has learned biologically relevant signals (e.g., known oncogenic methylation markers are the top features) and is not relying on spurious correlations or batch effects. This is a critical piece of evidence for de-risking the algorithm portion of a PMA submission.
+        """)
+    
+    st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
 
-            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X)
-            if plot_buffer:
-                st.image(plot_buffer)
-                st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
-            else:
-                st.error("Could not generate SHAP summary plot.")
-        except Exception as e:
-            st.error(f"Could not perform SHAP analysis. Error: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+    # Use cached model
+    main_model = get_main_classifier(X_main, y_main)
+    
+    try:
+        # Use a background dataset sample for SHAP explainer to improve performance
+        explainer = shap.Explainer(main_model, X_main.sample(100, random_state=1))
+        shap_values_obj = explainer(X_main)
+        
+        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+        
+        # Extract SHAP values for the positive class (class index 1)
+        shap_values_for_plot = shap_values_obj.values[:, :, 1]
+
+        # Create and display SHAP summary plot
+        plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_main)
+        
+        if plot_buffer:
+            st.image(plot_buffer)
+            st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result.")
+        else:
+            st.error("Could not generate SHAP summary plot.")
+    
+    except Exception as e:
+        st.error(f"Could not perform SHAP analysis. Error: {e}")
+        logger.error(f"SHAP analysis failed: {e}", exc_info=True)
 
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
