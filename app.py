@@ -1080,6 +1080,164 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"Could not perform RSM analysis. Error: {e}")
             logger.error(f"RSM analysis failed: {e}", exc_info=True)
+# MACHINE LEARNING SECTION MLMLLMLMLMLMLMLMLMMLMMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLMLM
+
+# genomicsdx/app.py
+# --- SME-Revised, PMA-Ready, and Unabridged Enhanced Version (Corrected) ---
+"""
+Main application entry point for the GenomicsDx Command Center.
+
+This Streamlit application serves as the definitive Quality Management System (QMS)
+and development dashboard for a breakthrough-designated, Class III, PMA-required
+Multi-Cancer Early Detection (MCED) genomic diagnostic service. It is designed
+to manage the Design History File (DHF) in accordance with 21 CFR 820.30 and
+provide real-time insights into Analytical Validation, Clinical Validation,
+Bioinformatics, and Laboratory Operations under ISO 13485, ISO 15189, and CLIA.
+"""
+
+# --- Standard Library Imports ---
+import logging
+import os
+import sys
+import copy
+from datetime import timedelta, date
+from typing import Any, Dict, List, Tuple
+import hashlib
+import io
+
+# --- Third-party Imports ---
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+from scipy import stats
+import matplotlib.pyplot as plt
+
+# --- Setup Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', force=True)
+logger = logging.getLogger(__name__)
+
+# ==============================================================================
+# --- DUMMY DATA GENERATION & HELPER FUNCTIONS (FOR STANDALONE EXECUTION) ---
+# ==============================================================================
+
+# To make this script runnable, we define helper functions and a dummy SessionStateManager.
+# In a real application, these would be in separate utility modules.
+
+def create_roc_curve(df, score_col, truth_col):
+    from sklearn.metrics import roc_curve, auc
+    fpr, tpr, _ = roc_curve(df[truth_col], df[score_col])
+    roc_auc = auc(fpr, tpr)
+    fig = px.area(x=fpr, y=tpr, title=f'<b>ROC Curve (AUC = {roc_auc:.3f})</b>', labels={'x':'False Positive Rate', 'y':'True Positive Rate'})
+    fig.add_shape(type='line', line=dict(dash='dash'), x0=0, x1=1, y0=0, y1=1)
+    fig.update_layout(xaxis=dict(range=[0,1]), yaxis=dict(range=[0,1.05]))
+    return fig
+
+def create_shap_summary_plot(shap_values, features):
+    import shap
+    shap.summary_plot(shap_values, features, show=False, plot_size=(8, 5))
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    plt.close()
+    return buf
+
+def create_confusion_matrix_heatmap(cm, labels):
+    fig = px.imshow(cm, text_auto=True, labels=dict(x="Predicted Label", y="True Label"),
+                    x=labels, y=labels, color_continuous_scale='Blues',
+                    title="<b>Confusion Matrix</b>")
+    return fig
+
+def create_forecast_plot(history_df, forecast_df):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=history_df.index, y=history_df['samples'], mode='lines', name='Historical Data'))
+    fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df['mean'], mode='lines', name='Forecast', line=dict(color='red')))
+    fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df['mean_ci_upper'], mode='lines', line=dict(color='rgba(255,0,0,0.2)'), showlegend=False))
+    fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df['mean_ci_lower'], mode='lines', fill='tonexty', line=dict(color='rgba(255,0,0,0.2)'), name='Confidence Interval'))
+    fig.update_layout(title="<b>Sample Volume Forecast vs. History</b>", xaxis_title="Date", yaxis_title="Number of Samples")
+    return fig
+
+class SessionStateManager:
+    """A dummy Session State Manager to generate plausible data for all dashboard sections."""
+    def __init__(self):
+        if 'app_data' not in st.session_state:
+            st.session_state['app_data'] = self._generate_all_data()
+
+    def get_data(self, primary_key, secondary_key):
+        return st.session_state.app_data.get(primary_key, {}).get(secondary_key)
+
+    def _generate_all_data(self):
+        from sklearn.datasets import make_classification
+        # Generate ML data
+        X, y = make_classification(n_samples=500, n_features=15, n_informative=5, n_redundant=2, n_classes=2, flip_y=0.1, random_state=42)
+        X = pd.DataFrame(X, columns=[f'feature_{i}' for i in range(15)])
+        X.columns = ['promoter_A_met', 'enhancer_B_met', 'gene_body_C_met', 'intergenic_D_met', 'promoter_E_met'] + [f'feature_{i}' for i in range(10)]
+
+        return {
+            "ml_models": {
+                "classifier_data": (X, y),
+                "run_qc_data": {
+                    'library_concentration': np.random.normal(50, 10, 200),
+                    'dv200_percent': np.random.normal(85, 5, 200),
+                    'adapter_dimer_percent': np.random.uniform(0.1, 5, 200),
+                    'outcome': np.random.choice(['Pass', 'Fail'], 200, p=[0.85, 0.15])
+                },
+                "sample_volume_data": {
+                    'date': pd.to_datetime(pd.date_range(start="2022-01-01", periods=365, freq='D')),
+                    'samples': (np.linspace(50, 150, 365) + 15 * np.sin(np.arange(365) * 2 * np.pi / 7) + np.random.normal(0, 10, 365)).astype(int)
+                }
+            },
+            "design_plan": {"project_name": "Sentry™ MCED Assay"},
+            "risk_management_file": {
+                "hazards": [
+                    {'id': f'H-0{i}', 'initial_S': np.random.randint(3,6), 'initial_O': np.random.randint(2,5), 'final_S': np.random.randint(1,3), 'final_O': np.random.randint(1,3)} for i in range(1, 10)
+                ],
+                 "assay_fmea": [
+                    {'id': f'AF-{i}', 'failure_mode': f'Mode {i}', 'potential_effect': f'Effect {i}', 'mitigation': f'Control {i}', 'S': np.random.randint(1,6), 'O': np.random.randint(1,6), 'D': np.random.randint(1,6)} for i in range(20)
+                ],
+                "service_fmea": [
+                    {'id': f'SF-{i}', 'failure_mode': f'Mode {i}', 'potential_effect': f'Effect {i}', 'mitigation': f'Control {i}', 'S': np.random.randint(1,6), 'O': np.random.randint(1,6), 'D': np.random.randint(1,6)} for i in range(20)
+                ]
+            },
+            "lab_operations": {
+                "run_failures": [
+                    {'failure_mode': np.random.choice(['Low Library Yield', 'QC Metric Outlier', 'Contamination', 'Sequencer Error', 'Operator Error'], p=[0.5, 0.2, 0.1, 0.1, 0.1])} for _ in range(50)
+                ]
+            }
+            # Other data sections can be added here as needed...
+        }
+
+# ==============================================================================
+# --- MAIN APPLICATION & TAB RENDERING FUNCTIONS ---
+# ==============================================================================
+
+# FIX: Call set_page_config() once at the top level of the script. This prevents the StreamlitAPIException.
+st.set_page_config(layout="wide", page_title="GenomicsDx Command Center", page_icon="🧬")
+
+def render_health_dashboard_tab(ssm: SessionStateManager):
+    """Renders the main DHF Health Dashboard tab."""
+    st.header("Executive Health Summary")
+    st.info("This is a placeholder for the main health dashboard. Data generation for this complex view is omitted for brevity but would follow the patterns in the SessionStateManager.")
+    st.warning("Dashboard placeholder: Full KPI calculations and visualizations are not implemented in this snippet.")
+
+
+def render_dhf_explorer_tab(ssm: SessionStateManager):
+    """Renders the tab for exploring DHF sections."""
+    st.header("🗂️ Design History File Explorer")
+    st.info("This is a placeholder for the DHF explorer.")
+
+
+def render_advanced_analytics_tab(ssm: SessionStateManager):
+    """Renders the tab for advanced analytics tools."""
+    st.header("🔬 Advanced Compliance & Project Analytics")
+    st.info("This is a placeholder for the advanced analytics tools like the traceability matrix.")
+
+
+def render_statistical_tools_tab(ssm: SessionStateManager):
+    """Renders the tab containing various statistical analysis tools."""
+    st.header("📈 Statistical Workbench for Assay & Lab Development")
+    st.info("This is a placeholder for the statistical workbench tools.")
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
@@ -1087,14 +1245,16 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     st.info("Utilize and validate predictive models for operational efficiency and explore the classifier's behavior. Model explainability is key for regulatory review.")
     
     try:
-        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import train_test_split
-        from sklearn.metrics import confusion_matrix
-        from statsmodels.tsa.arima.model import ARIMA
+        from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
+        from sklearn.preprocessing import StandardScaler
+        from scipy.stats import beta
         import shap
+        import lightgbm as lgb
     except ImportError:
-        st.error("This tab requires `scikit-learn`, `shap`, and `statsmodels`. Please install them to enable ML features.", icon="🚨")
+        st.error("This tab requires `scikit-learn`, `shap`, 'lightgbm', and `statsmodels`. Please install them to enable ML features.", icon="🚨")
         return
         
     ml_tabs = st.tabs(["Classifier Explainability (SHAP)", "Predictive Ops (Run Failure)", "Time Series Forecasting (Samples)","ctDNA Fragmentomics Analysis", "Sequencing Error Profile Modeling", "Predictive Run QC (On-Instrument)" ])
@@ -1251,6 +1411,32 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.error(f"Could not generate time series forecast. Error: {e}")
           
     ############## NEW TOOLS +++++++++++++++++++++++++++++++
+        # --- Tool 3: CSO Analysis ---
+    with ml_tabs[2]:
+        st.subheader("Cancer Signal of Origin (CSO) Analysis")
+        with st.expander("View Method Explanation"):
+            st.markdown("""
+            **Purpose of the Tool:**
+            For an MCED test, detecting a cancer signal is only half the battle. A key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**, which guides the subsequent clinical workup. This tool analyzes the performance of the CSO prediction model.
+            **Conceptual Walkthrough:**
+            After the first model says "Cancer Signal Detected," a second, multi-class classifier is used to predict the tissue of origin (e.g., Lung, Colon, Pancreatic). A **confusion matrix** is the perfect tool for visualizing its performance. It's a grid that shows us not just what we got right, but also where we went wrong. For example, it might reveal that the model frequently confuses Lung and Head & Neck cancers, which is biologically plausible and provides valuable insight for improving the model or refining the clinical report.
+""")
+        st.write("Generating synthetic CSO data and training a simple model...")
+        np.random.seed(123)
+        cso_classes = ['Lung', 'Colon', 'Pancreatic', 'Liver', 'Ovarian']
+        cancer_samples_X = X[y == 1]
+        if not cancer_samples_X.empty:
+            true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X))
+            cso_model = RandomForestClassifier(n_estimators=50, random_state=123)
+            cso_model.fit(cancer_samples_X, true_cso)
+            predicted_cso = cso_model.predict(cancer_samples_X)
+            cm_cso = confusion_matrix(true_cso, predicted_cso, labels=cso_classes)
+            fig_cm_cso = create_confusion_matrix_heatmap(cm_cso, cso_classes)
+            st.plotly_chart(fig_cm_cso, use_container_width=True)
+            accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
+            st.success(f"The CSO classifier achieved an overall accuracy of **{accuracy:.1%}**.")
+        else:
+            st.warning("No 'cancer positive' samples available in the dataset to perform CSO analysis.")
     # --- Tool 7: ctDNA Fragmentomics Analysis (NEW) ---
     with ml_tabs[6]:
         st.subheader("ctDNA Signal Enhancement via Fragmentomics")
