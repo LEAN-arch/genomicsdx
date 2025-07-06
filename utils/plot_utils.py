@@ -380,28 +380,28 @@ def create_confusion_matrix_heatmap(cm: np.ndarray, class_names: List[str]) -> g
         logger.error(f"Error creating confusion matrix heatmap: {e}", exc_info=True)
         return _create_placeholder_figure("Confusion Matrix Error", "Confusion Matrix", "⚠️")
 
-def create_shap_summary_plot(shap_values: Any, features: pd.DataFrame) -> Optional[io.BytesIO]:
+def create_shap_summary_plot(shap_values: np.ndarray, features: pd.DataFrame) -> Optional[io.BytesIO]:
     """
-    Creates a SHAP summary plot from a modern Explanation object or legacy array.
-    This function is now robust to the output of `shap.Explainer`.
+    Creates a SHAP summary plot from a simple NumPy array of SHAP values.
+    This function is hardened to expect a pre-processed 2D array.
     Returns None on failure.
     """
     try:
         import shap
         import matplotlib.pyplot as plt
 
-        # SME Definitive Fix: Handle both modern shap.Explanation objects and legacy numpy arrays
-        plot_values = shap_values
-        if hasattr(shap_values, 'values'):
-            # This is a modern Explanation object. For binary classification, we need
-            # the values for the positive class (index 1).
-            if len(shap_values.values.shape) == 3:
-                 plot_values = shap_values.values[:,:,1]
-            else: # It's a single-output model
-                 plot_values = shap_values.values
+        # This function now expects a simple 2D numpy array.
+        # The caller is responsible for extracting the correct values.
+        if len(shap_values.shape) != 2:
+            logger.error(f"SHAP plot error: Expected a 2D numpy array, but got shape {shap_values.shape}.")
+            return None
+
+        if shap_values.shape[1] != features.shape[1]:
+            logger.error(f"SHAP plot error: Mismatch in feature count. SHAP values have {shap_values.shape[1]} features, data has {features.shape[1]}.")
+            return None
 
         fig, ax = plt.subplots()
-        shap.summary_plot(plot_values, features, show=False)
+        shap.summary_plot(shap_values, features, show=False)
         plt.title("SHAP Feature Importance Summary", fontsize=16)
         plt.tight_layout()
         
@@ -435,23 +435,36 @@ def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, respon
     Calculates and plots the main and interaction effects for a 2x2 factorial DOE.
     This is a numerically stable alternative to fitting a regression model.
     """
+    title_effects = "<b>Calculated Factor Effects</b>"
+    title_interaction = "<b>Interaction Plot</b>"
     try:
+        # Aggressively sanitize data within the function to guarantee stability
+        clean_df = df[[factor1, factor2, response]].copy()
+        clean_df[response] = pd.to_numeric(clean_df[response], errors='coerce')
+        clean_df.dropna(inplace=True)
+
+        if len(clean_df) < 4:
+            raise ValueError("Insufficient data for DOE analysis after cleaning.")
+
         # Calculate mean response for each of the 4 combinations
-        means = df.groupby([factor1, factor2])[response].mean()
+        means = clean_df.groupby([factor1, factor2])[response].mean()
         
-        f1_levels = sorted(df[factor1].unique())
-        f2_levels = sorted(df[factor2].unique())
+        f1_levels = sorted(clean_df[factor1].unique())
+        f2_levels = sorted(clean_df[factor2].unique())
 
-        y1 = means.loc[f1_levels[0], f2_levels[0]]    # Factor1 Low, Factor2 Low
-        y2 = means.loc[f1_levels[1], f2_levels[0]]   # Factor1 High, Factor2 Low
-        y3 = means.loc[f1_levels[0], f2_levels[1]]   # Factor1 Low, Factor2 High
-        y4 = means.loc[f1_levels[1], f2_levels[1]]  # Factor1 High, Factor2 High
+        if len(f1_levels) != 2 or len(f2_levels) != 2:
+            raise ValueError("This analysis requires exactly 2 levels for each factor.")
 
-        # --- Main Effects Calculation ---
+        y1 = means.loc[f1_levels[0], f2_levels[0]]  # F1 Low, F2 Low
+        y2 = means.loc[f1_levels[1], f2_levels[0]]  # F1 High, F2 Low
+        y3 = means.loc[f1_levels[0], f2_levels[1]]  # F1 Low, F2 High
+        y4 = means.loc[f1_levels[1], f2_levels[1]]  # F1 High, F2 High
+
+        # Main Effects Calculation
         main_effect_f1 = ((y2 - y1) + (y4 - y3)) / 2
         main_effect_f2 = ((y3 - y1) + (y4 - y2)) / 2
         
-        # --- Interaction Effect Calculation ---
+        # Interaction Effect Calculation
         interaction_effect = ((y4 - y3) - (y2 - y1)) / 2
 
         effects_data = pd.DataFrame([
@@ -460,15 +473,14 @@ def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, respon
             {'Effect': f'Interaction: {factor1}:{factor2}', 'Value': interaction_effect}
         ])
 
-        # --- Create Main Effects Plot ---
-        effects_fig = px.bar(effects_data, x='Effect', y='Value', title="<b>Calculated Factor Effects</b>",
-                             color='Effect', text_auto='.3f')
+        # Create Main Effects Plot
+        effects_fig = px.bar(effects_data, x='Effect', y='Value', title=title_effects, color='Effect', text_auto='.3f')
         effects_fig.update_layout(showlegend=False, yaxis_title="Effect on Response", **_PLOT_LAYOUT_CONFIG)
 
-        # --- Create Interaction Plot ---
+        # Create Interaction Plot
         interaction_df = means.reset_index()
         interaction_fig = px.line(interaction_df, x=factor1, y=response, color=factor2, markers=True,
-                                  title=f"<b>Interaction Plot</b>", category_orders={factor1: f1_levels, factor2: f2_levels})
+                                  title=title_interaction, category_orders={factor1: f1_levels, factor2: f2_levels})
         interaction_fig.update_traces(marker=dict(size=12), line=dict(width=3))
         interaction_fig.update_layout(
             xaxis=dict(type='category'),
@@ -482,6 +494,5 @@ def create_doe_effects_plot(df: pd.DataFrame, factor1: str, factor2: str, respon
 
     except Exception as e:
         logger.error(f"Error creating DOE effects plot: {e}", exc_info=True)
-        title = "<b>DOE Analysis Error</b>"
-        return _create_placeholder_figure("Could not calculate effects.", title, "⚠️"), \
-               _create_placeholder_figure("Could not create interaction plot.", title, "⚠️")
+        return _create_placeholder_figure("Could not calculate effects.", title_effects, "⚠️"), \
+               _create_placeholder_figure("Could not create interaction plot.", title_interaction, "⚠️")
