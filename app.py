@@ -1087,62 +1087,40 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
             """)
         
-        # This block is now correctly indented under the `with ml_tabs[1]:` statement.
-try:
-    with st.spinner("Calculating SHAP values for a data sample... This may take a moment."):
-        # Define a sample size for dashboard performance
-        n_samples_for_shap = min(100, len(X))
-        st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
-        
-        # Create the data sample. Ensure X is a pandas DataFrame.
-        if not isinstance(X, pd.DataFrame):
-            # This is a fallback in case X is a numpy array
-            X_df = pd.DataFrame(X, columns=[f"Feature_{i+1}" for i in range(X.shape[1])])
-            X_sample = X_df.sample(n=n_samples_for_shap, random_state=42)
-        else:
-            X_sample = X.sample(n=n_samples_for_shap, random_state=42)
-        
-        # 1. Create the correct explainer for the model type
-        explainer = shap.TreeExplainer(model)
-        
-        # 2. Get the SHAP values. This returns a list of two arrays for binary classifiers.
-        shap_values_list = explainer.shap_values(X_sample)
-        
-        # 3. *** THE CRUCIAL FIX ***
-        #    Explicitly select the SHAP values for the positive class (class 1).
-        #    This ensures we pass an array of shape (n_samples, n_features) to the plot function.
-        shap_values_for_positive_class = shap_values_list[1]
-        
-        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+        try:
+            with st.spinner("Calculating SHAP values for a data sample... This may take a moment."):
+                n_samples_for_shap = min(100, len(X))
+                st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
+                
+                X_sample = X.sample(n=n_samples_for_shap, random_state=42)
+                
+                explainer = shap.TreeExplainer(model)
+                shap_values_list = explainer.shap_values(X_sample)
+                shap_values_for_positive_class = shap_values_list[1]
+                
+                st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
 
-        # 4. Create a matplotlib figure object to plot onto.
-        #    This is the robust method for displaying in Streamlit.
-        fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
-        
-        # 5. Generate the SHAP plot using the correctly shaped arrays.
-        #    `show=False` is critical to prevent it from plotting twice.
-        shap.summary_plot(
-            shap_values_for_positive_class, 
-            X_sample, 
-            show=False, 
-            plot_type="dot"
-        )
-        fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
-        plt.tight_layout()
+                fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+                shap.summary_plot(
+                    shap_values_for_positive_class, 
+                    X_sample, 
+                    show=False, 
+                    plot_type="dot"
+                )
+                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
+                plt.tight_layout()
 
-    # 6. Use st.pyplot() to render the figure object directly.
-    #    `clear_figure=True` prevents the plot from bleeding into subsequent renders.
-    st.pyplot(fig, clear_figure=True)
-    
-    st.success(
-        "The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, "
-        "providing strong evidence of its scientific validity for the PMA submission.", 
-        icon="✅"
-    )
-
-except Exception as e:
-    st.error(f"An error occurred during SHAP analysis: {e}")
-    logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+            st.pyplot(fig, clear_figure=True)
+            
+            st.success(
+                "The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, "
+                "providing strong evidence of its scientific validity for the PMA submission.", 
+                icon="✅"
+            )
+        except Exception as e:
+            st.error(f"An error occurred during SHAP analysis: {e}")
+            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+            
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
