@@ -1084,8 +1084,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
             """)
-        
-with ml_tabs[0]:
+   with ml_tabs[0]:
 				  			
         st.subheader("Cancer Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation"):
@@ -1116,7 +1115,8 @@ with ml_tabs[0]:
                 st.error("Could not generate SHAP summary plot.")
         except Exception as e:
             st.error(f"Could not perform SHAP analysis. Error: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+            logger.error(f"SHAP analysis failed: {e}", exc_info=True)        
+
 
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
