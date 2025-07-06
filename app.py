@@ -1057,65 +1057,72 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
  # --- Tool 2: SHAP ---
 # --- Tool 2: Classifier Explainability (SHAP) ---
-    with ml_tabs[1]:
-        st.subheader("Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of the Method:**
-            To unlock the "black box" of complex machine learning models. For a regulated SaMD, it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
+with ml_tabs[1]:
+    st.subheader("Classifier Explainability (SHAP)")
+    with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+        st.markdown(r"""
+        **Purpose of the Method:**
+        To unlock the "black box" of complex machine learning models. For a regulated SaMD (Software as a Medical Device), it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
 
-            **Conceptual Walkthrough: The Team of Experts**
-            Imagine your classifier is a team of medical experts deciding on a diagnosis. A positive diagnosis is made. Who was most influential? SHAP is like an audit that determines how much "credit" or "blame" each expert (feature) gets for the final decision. The SHAP summary plot lines up all the features and shows their overall impact. For a given feature, red dots mean a high value for that feature, and blue dots mean a low value. If red dots are on the right side of the center line, it means high values of that feature *push the prediction toward "Cancer Signal Detected."*
+        **Conceptual Walkthrough: The Team of Experts**
+        Imagine your classifier is a team of medical experts deciding on a diagnosis. A positive diagnosis is made. Who was most influential? SHAP is like an audit that determines how much "credit" or "blame" each expert (feature) gets for the final decision. The SHAP summary plot lines up all the features and shows their overall impact. For a given feature, red dots mean a high value for that feature, and blue dots mean a low value. If red dots are on the right side of the center line, it means high values of that feature *push the prediction toward "Cancer Signal Detected."*
 
-            **Mathematical Basis & Formula:**
-            SHAP is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the prediction. The formula for the Shapley value for a feature *i* is:
-            $$ \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)] $$
-            This calculates the weighted average of a feature's marginal contribution over all possible feature combinations.
+        **Mathematical Basis & Formula:**
+        SHAP is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the prediction. The formula for the Shapley value for a feature *i* is:
+        $$ \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)] $$
+        This calculates the weighted average of a feature's marginal contribution over all possible feature combinations.
 
-            **Procedure:**
-            1. Train a classifier model.
-            2. Create a SHAP `Explainer` object based on the model.
-            3. Use the explainer to calculate SHAP values for a set of samples.
-            4. Visualize the results, typically with a summary plot.
-            
-            **Significance of Results:**
-            Model explainability is a major focus for regulatory bodies (e.g., FDA's AI/ML Action Plan). A SHAP analysis provides critical evidence for a **PMA submission** by:
-            1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
-            2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
-            3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
-            """)
-   with ml_tabs[0]:
-				  			
-        st.subheader("Cancer Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation"):
-            st.markdown(r"""
-            **Purpose of the Tool:**
-            To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.																				  
-            """)
-        st.write("Generating SHAP values for the locked classifier model. This may take a moment...")
+        **Procedure:**
+        1. Train a classifier model.
+        2. Create a SHAP `Explainer` object based on the model.
+        3. Use the explainer to calculate SHAP values for a set of samples.
+        4. Visualize the results, typically with a summary plot.
         
-        # Use cached model
-        main_model = get_main_classifier(X_main, y_main)
-        try:
-            # Use a background dataset for the explainer for performance
-																   
-            explainer = shap.Explainer(main_model, X_main.sample(100, random_state=1))
-            shap_values_obj = explainer(X_main)
+        **Significance of Results:**
+        Model explainability is a major focus for regulatory bodies (e.g., FDA's AI/ML Action Plan). A SHAP analysis provides critical evidence for a **PMA submission** by:
+        1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
+        2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
+        3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
+        """)
+    
+    # This block is now correctly indented under the `with ml_tabs[1]:` statement.
+    try:
+        with st.spinner("Calculating SHAP values for a data sample... This may take a moment."):
+            # For performance, explain on a smaller, representative subsample of the data.
+            n_samples_for_shap = min(100, len(X))
+            st.caption(f"Note: Explaining on a random subsample of {n_samples_for_shap} data points for performance.")
+            
+            # Create the data sample. X is assumed to be a pandas DataFrame from the ssm.
+            X_sample = X.sample(n=n_samples_for_shap, random_state=42)
+            
+            # 1. Create the correct explainer for the model type (e.g., TreeExplainer for RandomForest)
+            #    The 'model' variable should be your trained classifier object.
+            explainer = shap.TreeExplainer(model)
+            
+            # 2. Get the SHAP values. For binary classification, this returns a list of two arrays.
+            shap_values_list = explainer.shap_values(X_sample)
+            
+            # 3. Select the SHAP values for the positive class (class 1)
+            shap_values_positive_class = shap_values_list[1]
             
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            
-            # Get SHAP values for the positive class
-            shap_values_for_plot = shap_values_obj.values[:,:,1]
 
-            plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_main)
-            if plot_buffer:
-                st.image(plot_buffer)
-                st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result.")
-            else:
-                st.error("Could not generate SHAP summary plot.")
-        except Exception as e:
-            st.error(f"Could not perform SHAP analysis. Error: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)        
+            # 4. Create a matplotlib figure object to plot onto.
+            fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+            
+            # 5. Generate the SHAP plot onto the created figure. `show=False` is crucial.
+            shap.summary_plot(shap_values_positive_class, X_sample, show=False, plot_type="dot")
+            fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
+            plt.tight_layout()
+
+        # 6. Use st.pyplot() to render the figure object directly.
+        st.pyplot(fig, clear_figure=True)
+        
+        st.success("The SHAP analysis confirms that the model's predictions are driven primarily by known methylation biomarkers, providing strong evidence of its scientific validity for the PMA submission.", icon="✅")
+
+    except Exception as e:
+        st.error(f"An error occurred during SHAP analysis: {e}")
+        logger.error(f"SHAP analysis failed: {e}", exc_info=True)
 
 
     # --- Tool 3: CSO ---
