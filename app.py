@@ -1073,11 +1073,10 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import train_test_split
         from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
-        from statsmodels.tsa.arima.model import ARIMA
-        import shap
         import lightgbm as lgb
+        import shap
     except ImportError:
-        st.error("This tab requires `scikit-learn`, `shap`, and `lightgbm`. Please install them (`pip install scikit-learn shap lightgbm`) to enable ML features.", icon="🚨")
+        st.error("This tab requires `scikit-learn`, `shap`, and `lightgbm`. Please install them to enable ML features.", icon="🚨")
         return
         
     ml_tabs = st.tabs([
@@ -1088,55 +1087,61 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "Time Series Forecasting (ML)"
     ])
 
-    # <<< DEFINITIVE FIX: Encapsulate ALL expensive operations in one cached function >>>
     @st.cache_data
     def get_or_generate_ml_artifacts(_X_numpy, _y_numpy, _feature_names):
         """
         This function trains the model AND generates the SHAP plot, caching both.
-        It will only run ONCE as long as the input data doesn't change,
-        preventing memory-leak-style crashes on reruns.
+        It will only run ONCE as long as the input data doesn't change.
         """
         logger.info("CACHE MISS: Running expensive model training and SHAP calculation...")
         _X_df = pd.DataFrame(_X_numpy, columns=_feature_names)
         
-        # 1. Train a memory-efficient model
         model = RandomForestClassifier(n_estimators=25, max_depth=10, random_state=42)
         model.fit(_X_df, _y_numpy)
         
-        # 2. Generate SHAP values on a subsample for performance
         X_sample = _X_df.sample(n=min(50, len(_X_df)), random_state=42)
         explainer = shap.Explainer(model, X_sample)
         shap_values_obj = explainer(X_sample)
         
-        # 3. Generate the plot buffer
-        shap_values_for_plot = shap_values_obj.values[:,:,1]
-        plot_buffer = create_shap_summary_plot(shap_values_for_plot, X_sample)
+        plot_buffer = create_shap_summary_plot(shap_values_obj.values[:,:,1], X_sample)
         
         logger.info("Model training and SHAP generation complete. Results are now cached.")
         
-        # 4. Return all generated artifacts
         return model, plot_buffer
 
     # --- Tool 1: ROC & PR Curves ---
     with ml_tabs[0]:
         st.subheader("Classifier Performance Analysis")
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To visualize the performance of our binary classifier. The ROC curve assesses the trade-off between sensitivity and specificity, while the Precision-Recall (PR) curve is crucial for evaluating performance on imbalanced datasets like ours.
+
+            **Conceptual Walkthrough:**
+            - **ROC Curve:** Imagine slowly lowering the bar for what we call a "cancer signal." As we lower it, we catch more true cancers (increasing sensitivity, good!) but also misclassify more healthy people (increasing the false positive rate, bad!). The ROC curve plots this entire trade-off. The Area Under the Curve (AUC) is a single number summarizing this: 1.0 is perfect, 0.5 is a random guess.
+            - **PR Curve:** This answers a more practical clinical question: "Of all the patients we flagged as positive, what fraction actually had cancer?" This is **Precision**. The curve shows how precision changes as we try to find more and more of the true cancers (increase **Recall**). In a screening test, maintaining high precision is vital to avoid unnecessary follow-up procedures.
+
+            **Mathematical Basis:**
+            - **ROC:** Plots True Positive Rate ($TPR = \frac{TP}{TP+FN}$) vs. False Positive Rate ($FPR = \frac{FP}{FP+TN}$).
+            - **PR:** Plots Precision ($Precision = \frac{TP}{TP+FP}$) vs. Recall ($Recall = TPR$).
+
+            **Procedure:**
+            1. Train the classifier and get its probability scores for the positive class on a dataset.
+            2. For each metric (ROC and PR), use the true labels and the probability scores to calculate the points on the curve.
+            3. Plot the curves.
+            
+            **Significance of Results:**
+            A high AUC (e.g., >0.9) is a primary requirement for a high-performing diagnostic. A strong PR curve (staying high on the y-axis for as long as possible) demonstrates the test's clinical utility by showing it can detect cancer without an excessive number of false alarms, which is critical for regulatory approval and physician adoption.
+            """)
         X, y_true = ssm.get_data("ml_models", "classifier_data")
-        
-        # Call the cached function to get the trained model. This is fast after the first run.
         model, _ = get_or_generate_ml_artifacts(X.values, y_true, X.columns.tolist())
-        
         y_scores = model.predict_proba(X)[:, 1]
 
         col1, col2 = st.columns(2)
         with col1:
-            with st.expander("View ROC Method Explanation"):
-                st.markdown(r"""**Purpose:** To visualize the trade-off between **Sensitivity** and **1 - Specificity**.""")
             roc_fig = create_roc_curve(pd.DataFrame({'score': y_scores, 'truth': y_true}), 'score', 'truth')
             st.plotly_chart(roc_fig, use_container_width=True)
-
         with col2:
-            with st.expander("View Precision-Recall Method Explanation"):
-                st.markdown(r"""**Purpose:** To visualize the trade-off between **Precision** and **Recall**, critical for imbalanced datasets.""")
             precision, recall, _ = precision_recall_curve(y_true, y_scores)
             pr_fig = px.area(x=recall, y=precision, title="<b>Precision-Recall Curve</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
             pr_fig.update_layout(xaxis=dict(range=[0,1]), yaxis=dict(range=[0,1.05]))
@@ -1146,12 +1151,34 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[1]:
         st.subheader("Cancer Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation"):
-            st.markdown(r"""**Purpose:** To address the "black box" problem of complex ML models by explaining *how* our classifier makes its decisions.""")
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To address the "black box" problem of complex machine learning models. For a high-risk SaMD (Software as a Medical Device), we must not only show that our classifier works, but also provide evidence for *how* it works. SHAP provides this model explainability.
+
+            **Conceptual Walkthrough:**
+            Imagine our machine learning model is like a sports team, and its final prediction is the team's score. The features (our biomarkers) are the players. SHAP analysis is like a sophisticated "Most Valuable Player" calculation for every single game (every single patient sample). It doesn't just tell you who the best player is overall; it tells you exactly how much each player contributed to the final score in that specific game. For one patient, a high value for `promoter_A_met` might have pushed the score up by 0.3, while a low value for `enhancer_B_met` might have pulled it down by 0.1. The summary plot aggregates thousands of these "game reports" to show which players are consistently the most impactful and whether their impact is positive or negative.
+
+            **Mathematical Basis:**
+            SHAP (SHapley Additive exPlanations) is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the final prediction for a single sample. The Shapley value for a feature *i* is its average marginal contribution across all possible feature coalitions:
+            """)
+            st.latex(r'''
+            \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)]
+            ''')
+            st.markdown(r"""
+            where $F$ is the set of all features, $S$ is a subset of features not including $i$, and $v(S)$ is the model's output with only the features in coalition $S$. It's the only feature attribution method with a solid theoretical foundation that guarantees properties like local accuracy and consistency.
+
+            **Procedure:**
+            1. An explainer object is created from a trained model and a background dataset.
+            2. The explainer calculates the SHAP values for each feature for every sample in a test set.
+            3. A **summary plot** visualizes these values. Each point is a single feature for a single sample. The color indicates the feature's value (high/low), and its position on the x-axis indicates its impact on the model's output (pushing the prediction higher or lower).
+
+            **Significance of Results:**
+            The SHAP summary plot provides powerful evidence for scientific and clinical validation. It allows us to confirm that the model has learned biologically relevant signals (e.g., known oncogenic methylation markers are the top features) and is not relying on spurious correlations or batch effects. This is a critical piece of evidence for de-risking the algorithm portion of a PMA submission.
+            """)
         
         X, y = ssm.get_data("ml_models", "classifier_data")
         st.write("Generating SHAP values (will be cached after first run)...")
         
-        # Call the same cached function to get the plot buffer. This will be an instant cache hit.
         _, plot_buffer = get_or_generate_ml_artifacts(X.values, y, X.columns.tolist())
         
         if plot_buffer:
@@ -1164,7 +1191,24 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation"):
-            st.markdown("""**Purpose:** To analyze the performance of the secondary classifier that predicts the tissue of origin.""")
+            st.markdown("""
+            **Purpose of the Tool:**
+            For an MCED test, detecting a cancer signal is only half the battle. A key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**, which guides the subsequent clinical workup. This tool analyzes the performance of the CSO prediction model.
+
+            **Conceptual Walkthrough:**
+            After the first model says "Cancer Signal Detected," a second, multi-class classifier is used to predict the tissue of origin (e.g., Lung, Colon, Pancreatic). A **confusion matrix** is the perfect tool for visualizing its performance. It's a grid that shows us not just what we got right, but also where we went wrong. For example, it might reveal that the model frequently confuses Lung and Head & Neck cancers, which is biologically plausible and provides valuable insight for improving the model or refining the clinical report.
+
+            **Mathematical Basis:**
+            A confusion matrix is an N x N table where N is the number of classes. Rows represent the true class and columns represent the predicted class. Cell (i, j) contains the number of samples whose true class was $i$ but were predicted as class $j$. The diagonal elements (i=j) represent correct predictions.
+            
+            **Procedure:**
+            1. A synthetic multi-class dataset is generated where each 'cancer' sample is assigned a true origin.
+            2. A simple multi-class model (e.g., `RandomForestClassifier`) is trained to predict the origin.
+            3. The predictions on a test set are compared to the true origins and displayed in a confusion matrix heatmap.
+
+            **Significance of Results:**
+            High accuracy on the diagonal of the confusion matrix is required to support a CSO claim. The matrix also provides critical data for the risk assessment (see Hazard H-04) and helps to define the test's performance characteristics and limitations in the final product labeling, which is essential for the PMA submission.
+            """)
         st.write("Generating synthetic CSO data and training a simple model...")
         X_cso, y_true_cso = ssm.get_data("ml_models", "classifier_data")
         np.random.seed(123)
@@ -1178,13 +1222,39 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         fig_cm_cso = create_confusion_matrix_heatmap(cm_cso, cso_classes)
         st.plotly_chart(fig_cm_cso, use_container_width=True)
         accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
-        st.success(f"The CSO classifier achieved an overall accuracy of **{accuracy:.1%}**.")
+        st.success(f"The CSO classifier achieved an overall accuracy of **{accuracy:.1%}**. The confusion matrix highlights specific areas of strength and areas for potential improvement.")
 
     # --- Tool 4: Predictive Operations ---
     with ml_tabs[3]:
         st.subheader("Predictive Operations: Sequencing Run Failure")
         with st.expander("View Method Explanation"):
-            st.markdown("""**Purpose:** To build a model that predicts run failure *before* committing expensive resources.""")
+            st.markdown("""
+            **Purpose of the Tool:**
+            To build a predictive model that can identify sequencing runs likely to fail QC *before* committing expensive reagents and sequencer time. This is a proactive quality control tool aimed at improving operational efficiency and reducing the Cost of Poor Quality (COPQ).
+
+            **Conceptual Walkthrough:**
+            This tool acts like a simple gatekeeper. Before we start an expensive sequencing run, we have some early QC data (like library concentration). We feed this data to our trained logistic regression model. The model has learned from all past runs what combinations of early QC metrics are associated with success and failure. It then calculates the probability that the current run will fail. If the probability is high, we can stop the process, investigate the sample, and save significant time and money.
+
+            **Mathematical Basis:**
+            **Logistic Regression** models the probability of a binary outcome (Pass/Fail) by fitting data to a logistic (sigmoid) function. The model learns a set of coefficients ($\beta_i$) for each input feature ($x_i$) to predict the log-odds of failure:
+            """)
+            st.latex(r'''
+            \ln\left(\frac{P(\text{Fail})}{1-P(\text{Fail})}\right) = \beta_0 + \beta_1x_1 + \dots + \beta_nx_n
+            ''')
+            st.markdown("""
+            **Procedure:**
+            1. Historical run data with pre-sequencing QC metrics and the final outcome (Pass/Fail) is collected.
+            2. The data is split into training and testing sets.
+            3. A logistic regression model is trained on the training set.
+            4. The model's performance is evaluated on the unseen test set using a **confusion matrix**.
+            
+            **Significance of Results:**
+            The confusion matrix shows the model's real-world performance:
+            - **True Positives (TP):** Correctly predicted failures. These represent saved runs.
+            - **False Negatives (FN):** Failures the model missed. These represent the remaining risk.
+            - **False Positives (FP):** Passed runs that were incorrectly predicted to fail. These represent unnecessary investigations.
+            A model with a high True Positive Rate and a low False Positive Rate can be integrated into the lab's pre-run checklist to significantly improve efficiency.
+            """)
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
@@ -1204,7 +1274,24 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting with Machine Learning")
         with st.expander("View Method Explanation"):
-            st.markdown(r"""**Purpose:** To forecast future demand based on historical trends for proactive lab management.""")
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To forecast future demand (e.g., incoming sample volume) based on historical data. This is crucial for proactive lab management, including reagent inventory control, staffing, and capacity planning.
+
+            **Conceptual Walkthrough:**
+            We treat forecasting as a standard machine learning problem instead of using classical statistical models. We "reframe" the problem by creating features from the date (e.g., day of the week, month) and by using past values ("lags") as input features. For example, to predict today's sample volume, we might use the volume from yesterday, 7 days ago, and 14 days ago. A gradient boosting model can then learn the complex patterns between these features and the volume we're trying to predict.
+
+            **Mathematical Basis:**
+            We transform the time series problem into a supervised regression problem. Let $y_t$ be the value at time $t$. We want to predict $y_{t+1}$. We construct a feature vector $X_t$ containing engineered features like lag features ($y_{t-k}$) and calendar features. We then train a model $f$ such that $y_{t+1} \approx f(X_t)$. **LightGBM** is a highly efficient gradient boosting framework that builds an ensemble of decision trees to model this relationship.
+
+            **Procedure:**
+            1. Engineer features from the historical time series data.
+            2. Train a gradient boosting model on these features.
+            3. To forecast, create the corresponding features for future dates and use the model to predict.
+
+            **Significance of Results:**
+            This ML-based approach is often more flexible than classical methods and can easily incorporate external factors (e.g., marketing campaigns, holidays) as additional features. A reliable forecast allows lab managers to move from reactive to proactive resource planning, ensuring they have the reagents and staff on hand to meet projected demand.
+            """)
         ts_data = ssm.get_data("ml_models", "sample_volume_data")
         df_ts = pd.DataFrame(ts_data).set_index('date')
         df_ts.index = pd.to_datetime(df_ts.index)
