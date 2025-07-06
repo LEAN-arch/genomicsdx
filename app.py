@@ -83,6 +83,16 @@ class SessionStateManager:
             {'id': 'T7', 'name': 'PMA Module Preparation', 'start_date': '2024-11-01', 'end_date': '2025-08-31', 'completion_pct': 10, 'status': 'Not Started', 'dependencies': 'T4,T5'},
             {'id': 'T8', 'name': 'Final PMA Submission', 'start_date': '2025-09-01', 'end_date': '2025-09-15', 'completion_pct': 0, 'status': 'Not Started', 'dependencies': 'T6,T7'},
         ]
+        
+        # FIX: Expanded RSM data to be > 20 samples to avoid scipy kurtosistest warning
+        rsm_size = 25
+        rsm_data = pd.DataFrame({
+            'pcr_cycles': np.random.uniform(8, 16, rsm_size).round(0),
+            'input_dna': np.random.uniform(2, 18, rsm_size).round(1)
+        })
+        rsm_data['library_yield'] = (60 + 5 * (rsm_data['pcr_cycles'] - 12) - 0.5 * (rsm_data['pcr_cycles'] - 12)**2 + 
+                                     3 * (rsm_data['input_dna'] - 10) - 0.2 * (rsm_data['input_dna'] - 10)**2 + 
+                                     np.random.normal(0, 5, rsm_size)).round(1)
 
         return {
             "design_plan": {"project_name": "Sentry™ MCED Assay"},
@@ -104,12 +114,13 @@ class SessionStateManager:
                 "capa_records": [{'id': f'CAPA-{i}', 'status': np.random.choice(['Open', 'Closed'], p=[0.2, 0.8]), 'due_date': (today + timedelta(days=np.random.randint(-10, 10))).strftime('%Y-%m-%d')} for i in range(1, 6)],
                 "ncr_records": [{'id': f'NCR-{i}', 'status': np.random.choice(['Open', 'Closed'], p=[0.4, 0.6])} for i in range(1, 8)],
                 "supplier_audits": [{'supplier': f'Supplier {chr(65+i)}', 'status': np.random.choice(['Pass', 'Fail'], p=[0.9, 0.1]), 'date': '2024-05-1' + str(i)} for i in range(5)],
-                "continuous_improvement": pd.DataFrame({'date': pd.to_datetime(pd.date_range(start='2024-01-01', periods=12, freq='M')), 'ftr_rate': np.linspace(75, 92, 12) + np.random.normal(0, 1, 12), 'copq_cost': np.linspace(50000, 15000, 12) + np.random.normal(0, 1000, 12)}).to_dict('records'),
+                # FIX: Changed freq 'M' to 'ME' to resolve FutureWarning
+                "continuous_improvement": pd.DataFrame({'date': pd.to_datetime(pd.date_range(start='2024-01-01', periods=12, freq='ME')), 'ftr_rate': np.linspace(75, 92, 12) + np.random.normal(0, 1, 12), 'copq_cost': np.linspace(50000, 15000, 12) + np.random.normal(0, 1000, 12)}).to_dict('records'),
                 "spc_data": {'measurements': np.random.normal(100, 5, 50).tolist(), 'mean': 100, 'sd': 5, 'usl': 115, 'lsl': 85},
                 "hypothesis_testing_data": {'pipeline_a': np.random.normal(25, 3, 30).tolist(), 'pipeline_b': np.random.normal(26.5, 3.5, 30).tolist()},
                 "equivalence_data": {'reagent_lot_a': np.random.normal(50, 2, 20).tolist(), 'reagent_lot_b': np.random.normal(50.5, 2.1, 20).tolist()},
                 "msa_data": pd.DataFrame({'part': np.repeat(range(1, 6), 6), 'operator': np.tile(np.repeat(['A', 'B'], 3), 5), 'measurement': np.random.normal(10, 1, 30) + np.repeat(np.random.normal(0, 0.5, 5), 6) + np.tile(np.repeat(np.random.normal(0, 0.3, 2), 3), 5)}).to_dict('records'),
-                "rsm_data": pd.DataFrame({'pcr_cycles': [10, 14, 10, 14, 12, 12, 12, 12, 8, 16, 12, 12], 'input_dna': [5, 5, 15, 15, 10, 10, 10, 10, 10, 10, 2, 18], 'library_yield': [50, 75, 65, 90, 85, 88, 86, 87, 40, 60, 35, 55]}).to_dict('records')
+                "rsm_data": rsm_data.to_dict('records')
             },
             "design_verification": {"tests": [{'id': f'AV-{i:03d}', 'input_verified_id': f'REQ-{j:03d}', 'test_name': f'Test {i}', 'result': np.random.choice(['Pass', 'Fail', 'In Progress'], p=[0.8, 0.1, 0.1])} for i,j in zip(range(1,51), np.random.randint(1, 21, 50))]},
             "design_inputs": {"requirements": [{'id': f'REQ-{i:03d}', 'description': f'System shall achieve X for Requirement {i}'} for i in range(1, 21)]},
@@ -192,7 +203,7 @@ def create_pareto_chart(df, category_col, title):
 def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     from statsmodels.formula.api import ols
     from statsmodels.stats.anova import anova_lm
-    # FIX: Removed backticks from formula string to prevent PatsyError
+    # Corrected formula without backticks
     formula = f'{value_col} ~ C({part_col}) + C({operator_col}) + C({part_col}):C({operator_col})'
     model = ols(formula, data=df).fit()
     anova_table = anova_lm(model, typ=2)
@@ -218,19 +229,35 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
 
 def create_rsm_plots(df, factor1, factor2, response):
     from statsmodels.formula.api import ols
-    # FIX: Removed backticks from formula string to prevent PatsyError
+    # Corrected formula without backticks
     formula = f'{response} ~ {factor1} + {factor2} + I({factor1}**2) + I({factor2}**2) + {factor1}:{factor2}'
     model = ols(formula, data=df).fit()
+    
+    # FIX: Replaced pd.read_html with direct programmatic access to model results.
+    # This removes the 'lxml' dependency and is more robust.
+    conf_int = model.conf_int()
+    model_summary = pd.DataFrame({
+        "coef": model.params,
+        "std err": model.bse,
+        "t": model.tvalues,
+        "P>|t|": model.pvalues,
+        "[0.025": conf_int[0],
+        "0.975]": conf_int[1],
+    })
+
     f1_range = np.linspace(df[factor1].min(), df[factor1].max(), 30)
     f2_range = np.linspace(df[factor2].min(), df[factor2].max(), 30)
     grid_x, grid_y = np.meshgrid(f1_range, f2_range)
     grid_df = pd.DataFrame({factor1: grid_x.flatten(), factor2: grid_y.flatten()})
     predicted_yield = model.predict(grid_df)
+    
     surface_fig = go.Figure(data=[go.Surface(z=predicted_yield.values.reshape(grid_x.shape), x=grid_x, y=grid_y, colorscale='Viridis')])
     surface_fig.update_layout(title="<b>Response Surface</b>", scene=dict(xaxis_title=factor1, yaxis_title=factor2, zaxis_title=response))
+    
     contour_fig = go.Figure(data=go.Contour(z=predicted_yield.values.reshape(grid_x.shape), x=f1_range, y=f2_range, colorscale='Viridis', contours=dict(coloring='heatmap', showlabels=True)))
     contour_fig.update_layout(title="<b>Contour Plot</b>", xaxis_title=factor1, yaxis_title=factor2)
-    return surface_fig, contour_fig, pd.read_html(model.summary().tables[1].as_html(), header=0, index_col=0)[0]
+    
+    return surface_fig, contour_fig, model_summary
 
 def create_levey_jennings_plot(spc_data):
     if not spc_data or not spc_data.get('measurements'): return go.Figure().update_layout(title="No SPC Data")
@@ -282,7 +309,6 @@ def create_forecast_plot(history_df, forecast_df):
 
 def render_dhf_completeness_panel(ssm: SessionStateManager, tasks_df: pd.DataFrame) -> None:
     st.subheader("1. DHF Completeness & Phase Gate Readiness")
-    st.markdown("Monitor the flow of Design Controls from inputs to outputs, including cross-functional sign-offs and DHF document status.")
     if not tasks_df.empty:
         gantt_fig = px.timeline(tasks_df, x_start="start_date", x_end="end_date", y="name", color="color", color_discrete_map="identity", title="<b>Project Timeline and Critical Path to PMA Submission</b>", hover_name="name", custom_data=['status', 'completion_pct'])
         gantt_fig.update_traces(text=tasks_df['display_text'], textposition='inside', insidetextanchor='middle', marker_line_color=tasks_df['line_color'], marker_line_width=tasks_df['line_width'], hovertemplate="<b>%{hover_name}</b><br>Status: %{customdata[0]}<br>Complete: %{customdata[1]}%<extra></extra>")
@@ -463,7 +489,7 @@ def render_qbd_and_mfg_readiness(ssm: SessionStateManager) -> None:
             with col1: st.plotly_chart(surface_fig, use_container_width=True)
             with col2: st.plotly_chart(contour_fig, use_container_width=True)
             with st.expander("View RSM Model Summary"):
-                st.dataframe(model_summary)
+                st.dataframe(model_summary.style.format("{:.4f}"))
         else: st.warning("Response Surface Methodology (RSM) data not available.")
     
     with qbd_tabs[1]:
@@ -609,12 +635,11 @@ def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
             
     with analytics_tabs[2]:
         st.subheader("Project Timeline and Task Editor")
-        st.warning("Directly edit project timelines. Changes are reflected on next run.", icon="⚠️")
         tasks_data = ssm.get_data("project_management", "tasks")
         edited_df = st.data_editor(pd.DataFrame(tasks_data), key="task_editor", num_rows="dynamic", use_container_width=True, column_config={"start_date": st.column_config.DateColumn("Start Date", format="YYYY-MM-DD"), "end_date": st.column_config.DateColumn("End Date", format="YYYY-MM-DD")})
-        if not pd.DataFrame(tasks_data).equals(edited_df):
+        if st.button("Commit Task Changes & Rerun"):
             ssm.update_data(edited_df.to_dict('records'), "project_management", "tasks")
-            st.button("Commit Changes & Rerun")
+            st.rerun()
 
 def render_statistical_tools_tab(ssm: SessionStateManager) -> None:
     st.header("📈 Statistical Workbench")
@@ -662,20 +687,16 @@ def render_statistical_tools_tab(ssm: SessionStateManager) -> None:
             col1, col2 = st.columns(2)
             with col1: st.plotly_chart(surface, use_container_width=True)
             with col2: st.plotly_chart(contour, use_container_width=True)
-            st.dataframe(summary)
+            st.dataframe(summary.style.format("{:.4f}"))
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager) -> None:
     st.header("🤖 ML & Bioinformatics Lab")
-    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import train_test_split
-    from sklearn.metrics import confusion_matrix, precision_recall_curve
-    from sklearn.preprocessing import StandardScaler
-    from scipy.stats import beta
+    from sklearn.metrics import precision_recall_curve
     import shap
-    import lightgbm as lgb
     
-    ml_tabs = st.tabs(["Classifier Perf", "Explainability (SHAP)", "Fragmentomics", "Error Modeling"])
+    ml_tabs = st.tabs(["Classifier Perf", "Explainability (SHAP)", "Fragmentomics"])
     X, y = ssm.get_data("ml_models", "classifier_data")
     
     with ml_tabs[0]:
@@ -692,8 +713,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager) -> None:
 
     with ml_tabs[1]:
         st.subheader("Classifier Explainability (SHAP)")
-        X_train, X_test, _, _ = train_test_split(X, y, test_size=0.3, random_state=42)
-        model = RandomForestClassifier(random_state=42).fit(X_train, y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        model = RandomForestClassifier(random_state=42).fit(X_train, y_train)
         explainer = shap.Explainer(model, X_train)
         shap_values = explainer(X_test.head(25))
         st.image(create_shap_summary_plot(shap_values.values[:,:,1], X_test.head(25)))
@@ -705,24 +726,17 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager) -> None:
         df_frags = pd.DataFrame({'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]), 'Sample Type': ['Healthy'] * 5000 + ['Cancer'] * 5000})
         st.plotly_chart(px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100, barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes</b>"), use_container_width=True)
 
-    with ml_tabs[3]:
-        st.subheader("Modeling Sequencing Error Profiles")
-        error_rate_dist = np.random.beta(a=0.5, b=200, size=100)
-        alpha0, beta0, _, _ = beta.fit(error_rate_dist, floc=0, fscale=1)
-        st.write(f"**Fitted Error Model Parameters:** `alpha = {alpha0:.3f}`, `beta = {beta0:.3f}`")
-        true_vaf = st.slider("True VAF", 0.0, 0.01, 0.005, step=0.0005, format="%.4f")
-        observed_vaf = true_vaf + np.random.beta(alpha0, beta0) / 10
-        p_value = 1.0 - beta.cdf(observed_vaf, alpha0, beta0)
-        st.metric("P-value (Probability of Observation by Chance)", f"{p_value:.2e}")
-        if p_value < 1e-6: st.success("Significant: Confidently a true mutation.")
-        else: st.error("Not significant: Likely sequencing noise.")
-
 def render_compliance_guide_tab() -> None:
     st.header("🏛️ The Regulatory & Methodological Compendium")
     st.markdown("This guide serves as the definitive reference for the regulatory, scientific, and statistical frameworks governing the GenomicsDx Sentry™ program.")
-    # Abridged for brevity, but full content would be here.
     with st.expander("⭐ **I. The GxP Paradigm: Proactive Quality by Design & The Role of the DHF**", expanded=True):
         st.info("The entire regulatory structure is predicated on the principle of **Quality by Design (QbD)**: quality, safety, and effectiveness must be designed and built into the product, not merely inspected or tested into it after the fact.")
+    with st.expander("⚖️ **II. The Regulatory Framework: Mandated Compliance**", expanded=False):
+        st.info("This section details the specific regulations and standards that form our compliance obligations.")
+    with st.expander("🔬 **III. Methodologies & Statistical Foundations: The Evidentiary Toolkit**", expanded=False):
+        st.info("This section details the scientific and statistical methods used to generate the objective evidence required for our regulatory submissions.")
+    with st.expander("📄 **IV. The Regulatory Submission: Constructing the PMA**", expanded=False):
+        st.info("The PMA is not a data dump; it is a structured scientific and regulatory argument.")
 
 # ==============================================================================
 # --- MAIN APPLICATION LOGIC ---
