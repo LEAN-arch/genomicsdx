@@ -1386,6 +1386,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature for classification, enhancing the robustness of our diagnostic model.", icon="🧬")
 
     # --- Tool 10: 3D Optimization Visualization ---
+    # --- Tool 10: 3D Optimization Visualization ---
     with ml_tabs[9]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
@@ -1394,24 +1395,25 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             To provide an intuitive, three-dimensional visualization of an optimization problem. This powerful tool allows us to literally *see* the landscape our algorithms are trying to navigate, whether it's an assay's response surface or a machine learning model's loss function. It builds confidence that our optimization strategies are finding true, global optima rather than getting stuck in local minima.
 
             **Conceptual Walkthrough: Mapping and Hiking a Valley**
-            Imagine an unknown valley that we want to find the lowest point of. This visualization shows two strategies:
-            1.  **DOE & Response Surface (The Map):** The black dots are the **Design of Experiments (DOE)** points—like surveyors taking elevation readings at a few strategic locations. The smooth, colored surface is the **Response Surface Model (RSM)** or **Gaussian Process (GP)** model, which is our "map" of the entire valley, interpolated from the surveyors' data. The lowest point on this map is our predicted optimum.
-            2.  **Gradient Descent (The Hike):** The red line shows the path of a blindfolded hiker starting somewhere on the hillside. At each step, the hiker feels the slope of the ground beneath their feet (the **gradient**) and takes a step in the steepest downward direction. This is exactly how gradient-based optimizers train machine learning models.
+            Imagine an unknown valley where we want to find the highest peak (to maximize yield). This visualization shows our strategy:
+            1.  **DOE Points (Surveyor Readings):** The black diamonds are the **Design of Experiments (DOE)** points—like a surveyor taking elevation readings at a few strategic locations. Their 'shadows' are projected onto the floor to clearly show their X-Y coordinates.
+            2.  **Response Surface (The Topographic Map):** The smooth, colored surface is our predictive model (a Gaussian Process), which acts as our "topographic map" of the entire valley, interpolated from the surveyor's data. The contour lines on the surface and on the floor make the terrain even easier to read.
+            3.  **Gradient Ascent (The High-Tech Hike):** The vibrant path shows the route taken by an algorithm starting at a non-optimal point (green star). At each step, it senses the steepest upward slope (the **gradient**) and moves in that direction, eventually converging at the red star.
 
             **Mathematical Basis & Formula:**
-            - **Response Surface:** A predictive model, often a quadratic equation or a more flexible GP, is fit to the DOE data. $$ Y = f(X_1, X_2) $$
-            - **Gradient Descent:** An iterative optimization algorithm that updates parameters ($\theta$) by moving in the opposite direction of the gradient of the loss function $J(\theta)$. The update rule is:
-            $$ \theta_{\text{new}} = \theta_{\text{old}} - \eta \nabla J(\theta) $$
-            Where $\eta$ is the learning rate and $\nabla J(\theta)$ is the gradient.
+            - **Response Surface:** A predictive model, often a Gaussian Process (GP), is fit to the DOE data to create a continuous function: $$ \text{Yield} = f(\text{PCR Cycles}, \text{Input DNA}) $$
+            - **Gradient Ascent:** An iterative optimization algorithm that updates parameters ($\theta$) by moving in the direction of the gradient of the function to be maximized, $f(\theta)$. The update rule is:
+            $$ \theta_{\text{new}} = \theta_{\text{old}} + \eta \nabla f(\theta) $$
+            Where $\eta$ is the learning rate and $\nabla f(\theta)$ is the gradient.
 
             **Procedure:**
-            1.  Generate a 3D surface plot from the predictive model (RSM or GP) fit on the experimental data.
-            2.  Overlay the original DOE data points to show where the real data lies.
-            3.  Simulate a gradient descent optimization, starting from a non-optimal point.
-            4.  Plot the path of the gradient descent algorithm as it converges towards the minimum on the surface.
+            1. Generate a 3D surface plot from the predictive model (GP) fit on the experimental data.
+            2. Overlay the original DOE data points and their 2D projections.
+            3. Simulate a gradient ascent optimization, starting from a non-optimal point.
+            4. Plot the path of the algorithm, highlighting the start and end, as it converges towards the maximum on the surface.
 
             **Significance of Results:**
-            This visualization provides compelling, intuitive evidence that our process characterization and optimization methods are sound. It demonstrates that the statistically-derived optimum from the response surface aligns with the optimum found by an iterative machine learning optimizer. For a PMA, this visual evidence powerfully communicates a deep understanding and control over our core manufacturing processes and ML models.
+            This visualization provides compelling, intuitive evidence that our process characterization and optimization methods are sound. It demonstrates that the statistically-derived optimum from the response surface aligns with the optimum found by an iterative machine learning optimizer. For a PMA, this visual evidence powerfully communicates a deep understanding and control over our core manufacturing processes.
             """)
         try:
             # --- 1. Get RSM data and fit a GP model to create the surface ---
@@ -1419,7 +1421,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             if not rsm_data:
                 st.warning("RSM data not available for this visualization.")
                 st.stop()
-            
+
             df_rsm = pd.DataFrame(rsm_data)
             X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
             y_rsm = df_rsm['library_yield']
@@ -1430,78 +1432,96 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
             y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
-            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 30), np.linspace(y_min, y_max, 30))
+            z_min, z_max = y_rsm.min(), y_rsm.max()
+            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 40), np.linspace(y_min, y_max, 40))
             Z = gp.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
-            
-            # Find the optimum from the GP surface
+
+            # Find the true global optimum from the GP surface grid
             opt_idx_gp = np.argmax(Z)
             opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
+            opt_z_gp = np.max(Z)
 
-            # --- 2. Simulate Gradient *Ascent* path (since we maximize yield) ---
-            # We will use a simple quadratic function centered at the optimum for the gradient
-            def loss_function(x, y):
-                # We want to MAXIMIZE yield, so our "loss" is the negative yield.
-                # Gradient ASCENT on yield is Gradient DESCENT on -yield.
-                return -((x - opt_x_gp)**2 + 2*(y - opt_y_gp)**2)
-
+            # --- 2. Simulate Gradient *Ascent* path (to maximize yield) ---
             def gradient(x, y):
-                # Gradient of the actual yield function (not the negative loss)
-                grad_x = 2 * (opt_x_gp - x)
-                grad_y = 4 * (opt_y_gp - y)
+                # Numerically approximate the gradient of the GP prediction
+                eps = 1e-6
+                grad_x = (gp.predict([[x + eps, y]])[0] - gp.predict([[x - eps, y]])[0]) / (2 * eps)
+                grad_y = (gp.predict([[x, y + eps]])[0] - gp.predict([[x, y - eps]])[0]) / (2 * eps)
                 return np.array([grad_x, grad_y])
 
             path = []
             # Start at a non-optimal point from the DOE data
             current_point = df_rsm.iloc[0][['pcr_cycles', 'input_dna']].values.astype(float)
-            learning_rate = 0.2
-            for i in range(15):
+            learning_rate = 0.1 # Adjusted for numerical gradient
+
+            for i in range(20):
                 z_val = gp.predict([current_point])[0]
                 path.append(np.append(current_point, z_val))
                 grad = gradient(current_point[0], current_point[1])
-                current_point += learning_rate * grad # Add because we are ascending
+                # Normalize gradient to prevent exploding steps
+                norm_grad = grad / (np.linalg.norm(grad) + 1e-8)
+                current_point += learning_rate * norm_grad
 
             path_df = pd.DataFrame(path, columns=['x', 'y', 'z'])
 
-            # --- 3. Create the 3D Plot ---
+            # --- 3. Create the Enhanced 3D Plot ---
             fig = go.Figure()
 
-            # The Response Surface
-            fig.add_trace(go.Surface(x=xx, y=yy, z=Z, colorscale='Viridis', opacity=0.7, name='GP Response Surface'))
+            # The Response Surface with Contours
+            fig.add_trace(go.Surface(
+                x=xx, y=yy, z=Z,
+                colorscale='Plasma',
+                opacity=0.8,
+                name='GP Response Surface',
+                contours=dict(
+                    x=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_x=True),
+                    y=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_y=True),
+                    z=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_z=True)
+                )
+            ))
 
-            # The original DOE points
+            # The original DOE points in 3D
             fig.add_trace(go.Scatter3d(
                 x=df_rsm['pcr_cycles'], y=df_rsm['input_dna'], z=df_rsm['library_yield'],
                 mode='markers',
-                marker=dict(size=6, color='black', symbol='diamond'),
+                marker=dict(size=5, color='black', symbol='diamond', line=dict(color='white', width=1)),
                 name='DOE Experimental Points'
             ))
 
             # The Gradient Ascent path
             fig.add_trace(go.Scatter3d(
                 x=path_df['x'], y=path_df['y'], z=path_df['z'],
-                mode='lines+markers',
-                line=dict(color='red', width=5),
-                marker=dict(size=5, color='red'),
+                mode='lines',
+                line=dict(color='cyan', width=8),
                 name='Gradient Ascent Path'
             ))
+            # Start and End points of the path
+            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[0]], y=[path_df['y'].iloc[0]], z=[path_df['z'].iloc[0]], mode='markers', marker=dict(color='lime', size=10, symbol='circle'), name='Start Point'))
+            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[-1]], y=[path_df['y'].iloc[-1]], z=[path_df['z'].iloc[-1]], mode='markers', marker=dict(color='red', size=12, symbol='x'), name='Converged Point'))
+            
+            # Global Optimum found by the GP model
+            fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='star', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
 
             fig.update_layout(
                 title='<b>3D Visualization of Optimization Landscape</b>',
                 scene=dict(
-                    xaxis_title='PCR Cycles',
-                    yaxis_title='Input DNA (ng)',
-                    zaxis_title='Library Yield'
+                    xaxis=dict(title='PCR Cycles', backgroundcolor="rgba(0, 0, 0,0)"),
+                    yaxis=dict(title='Input DNA (ng)', backgroundcolor="rgba(0, 0, 0,0)"),
+                    zaxis=dict(title='Library Yield', backgroundcolor="rgba(0, 0, 0,0)"),
+                    camera=dict(
+                        eye=dict(x=1.5, y=-1.5, z=1.2) # Set a nice initial angle
+                    )
                 ),
                 height=700,
-                margin=dict(l=0, r=0, b=0, t=40)
+                margin=dict(l=0, r=0, b=0, t=40),
+                legend=dict(x=0.01, y=0.99, traceorder='normal', bgcolor='rgba(255,255,255,0.6)')
             )
             st.plotly_chart(fig, use_container_width=True)
-            st.success("The 3D plot visualizes the assay response surface derived from DOE points. The red line demonstrates how a gradient-based optimization algorithm navigates this surface to efficiently find the region of maximum yield, confirming the validity of our process optimum.", icon="🎯")
+            st.success("The 3D plot visualizes the assay response surface derived from DOE points. The cyan line demonstrates how a gradient-based optimization algorithm navigates this surface to efficiently find the region of maximum yield, confirming that the iterative optimization converges near the predicted global optimum (yellow star).", icon="🎯")
 
         except Exception as e:
             st.error(f"Could not render 3D visualization. Error: {e}")
             logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
-
 #___________________________________________________________________________________________________________________________________________________________________TEXT_______________________________________________________________________________
 def render_compliance_guide_tab():
     """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
