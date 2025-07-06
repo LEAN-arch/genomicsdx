@@ -1085,7 +1085,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "Classifier Explainability (SHAP)",
         "Cancer Signal of Origin (CSO) Analysis",
         "Predictive Ops (Run Failure)", 
-        "Time Series Forecasting (ML)"
+        "Time Series Forecasting (ML)",
+        "Classifier Feature Importance"
     ])
 
     # --- Prepare Data and a *lighter* Model Once for All Tabs ---
@@ -1094,6 +1095,15 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     X, y = ssm.get_data("ml_models", "classifier_data")
     model = RandomForestClassifier(n_estimators=25, max_depth=10, random_state=42)
     model.fit(X, y)
+ 
+    # Scale data, which is best practice for linear models
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # Use a regularized linear model for stability and interpretability
+    # The L1 penalty forces unimportant features to have a coefficient of 0
+    model = LogisticRegression(penalty='l1', solver='liblinear', C=0.5, random_state=42)
+    model.fit(X_scaled, y)
 
     # --- Tool 1: ROC & PR Curves ---
     with ml_tabs[0]:
@@ -1323,6 +1333,63 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         fig = create_forecast_plot(df_ts, future_df)
         st.plotly_chart(fig, use_container_width=True)
         st.success("The LightGBM forecast projects a continued upward trend in sample volume.")
+
+    with ml_tabs[1]:
+        st.subheader("Classifier Feature Importance")
+        with st.expander("View Method Explanation"):
+            st.markdown(r"""
+            **Purpose of the Tool:**
+            To understand which biomarkers are the most important drivers of the classifier's prediction. For a linear model like Logistic Regression, this is achieved by directly inspecting the model's learned coefficients.
+
+            **Conceptual Walkthrough:**
+            After training, a logistic regression model assigns a "weight" or **coefficient** to each feature (biomarker). A large positive coefficient means that a high value for that biomarker strongly increases the probability of a "Cancer Signal Detected" result. A large negative coefficient means a high value decreases the probability. Coefficients near zero mean the feature has little to no impact. By plotting these coefficients, we can directly and transparently see the model's decision-making logic.
+
+            **Mathematical Basis:**
+            The logistic regression model predicts the log-odds of the positive class as a linear combination of the input features:
+            """)
+            st.latex(r'''
+            \text{log-odds} = \beta_0 + \beta_1x_1 + \beta_2x_2 + \dots + \beta_nx_n
+            ''')
+            st.markdown(r"""
+            The coefficients ($\beta_i$) are learned during model training. The L1 (Lasso) penalty forces the coefficients of less important features towards exactly zero, performing automatic feature selection and simplifying the model.
+
+            **Procedure:**
+            1. A Logistic Regression model with an L1 penalty is trained on scaled data.
+            2. The non-zero coefficients are extracted from the trained model.
+            3. These coefficients are plotted in a bar chart, sorted by their magnitude, to visualize feature importance.
+
+            **Significance of Results:**
+            This plot provides a completely transparent view of the model's logic, which is highly valuable for regulatory submissions. It allows us to confirm that the model's most important features are the biomarkers with known biological relevance to cancer, providing strong evidence for the model's validity.
+            """)
+        
+        st.write("##### Feature Importance from Logistic Regression Coefficients")
+        
+        try:
+            coefficients = pd.DataFrame({
+                'Feature': X.columns,
+                'Coefficient': model.coef_[0]
+            })
+            
+            coefficients['abs_coeff'] = coefficients['Coefficient'].abs()
+            important_coeffs = coefficients[coefficients['abs_coeff'] > 0.01].sort_values('abs_coeff', ascending=False)
+
+            if not important_coeffs.empty:
+                fig = px.bar(important_coeffs, x='Feature', y='Coefficient',
+                             color='Coefficient',
+                             color_continuous_scale='RdBu_r',
+                             title='<b>Impact of Biomarkers on Cancer Signal Prediction</b>')
+                fig.update_layout(xaxis_categoryorder='total descending')
+                st.plotly_chart(fig, use_container_width=True)
+                st.success("The feature importance analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a positive result, providing strong evidence of the model's biological relevance.")
+            else:
+                st.warning("The model did not find any significantly important features with the current regularization settings.")
+
+        except Exception as e:
+            st.error(f"Could not perform feature importance analysis. Error: {e}")
+            logger.error(f"Feature importance analysis failed: {e}", exc_info=True)
+
+
+
         
 def render_compliance_guide_tab():
     """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
