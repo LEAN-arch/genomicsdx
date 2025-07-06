@@ -1386,7 +1386,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature for classification, enhancing the robustness of our diagnostic model.", icon="🧬")
 
     # --- Tool 10: 3D Optimization Visualization ---
-    # --- Tool 10: 3D Optimization Visualization ---
+
     with ml_tabs[9]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
@@ -1398,7 +1398,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             Imagine an unknown valley where we want to find the highest peak (to maximize yield). This visualization shows our strategy:
             1.  **DOE Points (Surveyor Readings):** The black diamonds are the **Design of Experiments (DOE)** points—like a surveyor taking elevation readings at a few strategic locations. Their 'shadows' are projected onto the floor to clearly show their X-Y coordinates.
             2.  **Response Surface (The Topographic Map):** The smooth, colored surface is our predictive model (a Gaussian Process), which acts as our "topographic map" of the entire valley, interpolated from the surveyor's data. The contour lines on the surface and on the floor make the terrain even easier to read.
-            3.  **Gradient Ascent (The High-Tech Hike):** The vibrant path shows the route taken by an algorithm starting at a non-optimal point (green star). At each step, it senses the steepest upward slope (the **gradient**) and moves in that direction, eventually converging at the red star.
+            3.  **Gradient Ascent (The High-Tech Hike):** The vibrant path shows the route taken by an algorithm starting at a non-optimal point (green circle). At each step, it senses the steepest upward slope (the **gradient**) and moves in that direction, eventually converging at the red 'x'.
 
             **Mathematical Basis & Formula:**
             - **Response Surface:** A predictive model, often a Gaussian Process (GP), is fit to the DOE data to create a continuous function: $$ \text{Yield} = f(\text{PCR Cycles}, \text{Input DNA}) $$
@@ -1499,8 +1499,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[0]], y=[path_df['y'].iloc[0]], z=[path_df['z'].iloc[0]], mode='markers', marker=dict(color='lime', size=10, symbol='circle'), name='Start Point'))
             fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[-1]], y=[path_df['y'].iloc[-1]], z=[path_df['z'].iloc[-1]], mode='markers', marker=dict(color='red', size=12, symbol='x'), name='Converged Point'))
             
-            # Global Optimum found by the GP model
-            fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='star', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
+            # Global Optimum found by the GP model (CORRECTED LINE)
+            fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='diamond', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
 
             fig.update_layout(
                 title='<b>3D Visualization of Optimization Landscape</b>',
@@ -1517,7 +1517,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
                 legend=dict(x=0.01, y=0.99, traceorder='normal', bgcolor='rgba(255,255,255,0.6)')
             )
             st.plotly_chart(fig, use_container_width=True)
-            st.success("The 3D plot visualizes the assay response surface derived from DOE points. The cyan line demonstrates how a gradient-based optimization algorithm navigates this surface to efficiently find the region of maximum yield, confirming that the iterative optimization converges near the predicted global optimum (yellow star).", icon="🎯")
+            st.success("The 3D plot visualizes the assay response surface derived from DOE points. The cyan line demonstrates how a gradient-based optimization algorithm navigates this surface to efficiently find the region of maximum yield, confirming that the iterative optimization converges near the predicted global optimum (yellow diamond).", icon="🎯")
 
         except Exception as e:
             st.error(f"Could not render 3D visualization. Error: {e}")
