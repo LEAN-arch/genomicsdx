@@ -896,7 +896,7 @@ def render_compliance_guide_tab():
         **Interpretation & Strategic Implications:** These tools satisfy two distinct but equally important validation requirements. A high AUC demonstrates *what* the model can do (its clinical performance). SHAP values demonstrate *how* it does it (its scientific and biological plausibility). Providing strong evidence that the model's predictions are driven by mechanistically relevant biomarkers and not by confounding artifacts is essential for de-risking the AI/ML component of our submission.
         **Dashboard Link:** ***ML & Bioinformatics Lab*** tab.""")
 
-    with st.expander("📄 **IV. The Regulatory Submission: Constructing the PMA**", expanded=False):
+    with st.expander("📄 **III. The Regulatory Submission: Constructing the PMA**", expanded=False):
         st.info("The PMA is not a data dump; it is a structured scientific and regulatory argument. The DHF provides the evidentiary basis for every assertion made in this argument, answering the fundamental questions of safety and effectiveness.")
         
         st.markdown("""
