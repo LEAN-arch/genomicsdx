@@ -28,7 +28,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
-import matplotlib.pyplot as plt # <--- ADD THIS LINE
+import matplotlib.pyplot as plt #
+import statsmodels.api as sm
+from statsmodels.formula.api import ols # <--- ADD THIS LINE
+from statsmodels.tsa.arima.model import ARIMA
 import shap
 
 # --- Robust Path Correction Block ---
