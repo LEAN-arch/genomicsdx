@@ -200,7 +200,7 @@ def create_gauge_rr_plot(df, part_col, operator_col, value_col):
     model = ols(formula, data=df).fit()
     anova_table = anova_lm(model, typ=2)
 
-    # FIX: Calculate Mean Square (MS) from sum_sq and df, as 'mean_sq' column does not exist.
+    # DEFINITIVE FIX: Calculate Mean Square (MS) from sum_sq and df.
     ms_part = anova_table.iloc[0]['sum_sq'] / anova_table.iloc[0]['df']
     ms_operator = anova_table.iloc[1]['sum_sq'] / anova_table.iloc[1]['df']
     ms_interact = anova_table.iloc[2]['sum_sq'] / anova_table.iloc[2]['df']
@@ -624,8 +624,6 @@ def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
         tasks_data = ssm.get_data("project_management", "tasks")
         
         df_to_edit = pd.DataFrame(tasks_data)
-        # FIX: Convert string dates to datetime objects BEFORE passing to data_editor
-        # to prevent the StreamlitAPIException for data type mismatch.
         df_to_edit['start_date'] = pd.to_datetime(df_to_edit['start_date'])
         df_to_edit['end_date'] = pd.to_datetime(df_to_edit['end_date'])
 
@@ -765,6 +763,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
-
-        
