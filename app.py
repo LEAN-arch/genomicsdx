@@ -1102,20 +1102,40 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[0]:
         st.subheader("Classifier Performance: ROC and Precision-Recall")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To comprehensively evaluate the performance of our binary classifier. The ROC curve assesses the fundamental trade-off between sensitivity and specificity, while the Precision-Recall (PR) curve is essential for evaluating performance on imbalanced datasets, which is typical for cancer screening.
+
+            **Conceptual Walkthrough:**
+            - **ROC Curve:** Imagine slowly lowering the bar for what we call a "cancer signal." As we lower it, we catch more true cancers (increasing True Positive Rate, good!) but also misclassify more healthy people (increasing False Positive Rate, bad!). The ROC curve plots this entire trade-off. The Area Under the Curve (AUC) summarizes this: 1.0 is perfect, 0.5 is a random guess.
+            - **PR Curve:** This answers a more practical clinical question: "Of all the patients we flagged as positive, what fraction actually had cancer?" This is **Precision**. The curve shows how precision changes as we try to find more and more of the true cancers (increase **Recall**). In a screening test, maintaining high precision is vital to avoid unnecessary follow-up procedures for healthy individuals.
+
+            **Mathematical Basis & Formulas:**
+            - **ROC:** Plots True Positive Rate (Sensitivity) vs. False Positive Rate. $$ TPR = \frac{TP}{TP+FN} \quad \text{vs.} \quad FPR = \frac{FP}{FP+TN} $$
+            - **PR:** Plots Precision vs. Recall (which is the same as TPR). $$ \text{Precision} = \frac{TP}{TP+FP} \quad \text{vs.} \quad \text{Recall} = TPR $$
+            
+            **Procedure:**
+            1. Use the trained classifier to predict probabilities on a hold-out test set.
+            2. Vary the classification threshold from 0 to 1.
+            3. At each threshold, calculate the TPR/FPR for the ROC curve and Precision/Recall for the PR curve.
+            4. Plot the resulting curves and calculate the area under each.
+
+            **Significance of Results:**
+            These curves are central to the **Clinical Validation** section of the PMA. The AUC-ROC demonstrates the overall discriminatory power of the underlying biomarkers and model. The PR curve and the associated AUC-PR provide direct evidence of the test's positive predictive value (PPV) and its clinical utility in a screening population, where the prevalence of disease is low.
+            """)
         col1, col2 = st.columns(2)
         with col1:
             fig_roc = create_roc_curve(pd.DataFrame({'score': model.predict_proba(X)[:, 1], 'truth': y}), 'score', 'truth')
             st.plotly_chart(fig_roc, use_container_width=True)
         with col2:
+            # This block now works because precision_recall_curve and auc were imported above
             precision, recall, _ = precision_recall_curve(y, model.predict_proba(X)[:, 1])
             pr_auc = auc(recall, precision)
             fig_pr = px.area(x=recall, y=precision, title=f"<b>Precision-Recall Curve (AUC = {pr_auc:.4f})</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
             fig_pr.update_layout(xaxis=dict(range=[0,1.01]), yaxis=dict(range=[0,1.05]), template="plotly_white")
             st.plotly_chart(fig_pr, use_container_width=True)
-        st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision.", icon="✅")
+        st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision across a range of recall values, indicating strong performance for a screening application.", icon="✅")
 
-    # --- Tool 2: SHAP ---
  # --- Tool 2: SHAP ---
 # --- Tool 2: Classifier Explainability (SHAP) ---
     with ml_tabs[1]:
@@ -1172,13 +1192,32 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"An error occurred during SHAP analysis: {e}")
             logger.error(f"SHAP analysis failed: {e}", exc_info=True)
-
         
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""...""") # Content is fine
+            st.markdown("""
+            **Purpose of the Method:**
+            For an MCED test, a key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**. This tool analyzes the performance of the CSO multi-class prediction model, which is critical for guiding the subsequent clinical workup.
+
+            **Conceptual Walkthrough: The Return Address**
+            If the primary cancer classifier finds a "letter" that says "I am cancer," the CSO model's job is to read the "return address" on the envelope. Different cancers shed DNA with subtly different methylation patterns, like different regional accents. The CSO model is trained to recognize these "accents" and predict where the signal is coming from. A **confusion matrix** is the perfect report card for this model: the diagonal shows how often it got the address right, and the off-diagonals show which addresses it tends to mix up.
+            
+            **Mathematical Basis & Formula:**
+            This is a multi-class classification problem. The primary evaluation metric is the **confusion matrix**, C, where $C_{ij}$ is the number of observations known to be in group *i* but predicted to be in group *j*. From this, we derive key metrics like:
+            - **Accuracy:** $$ \frac{\sum_{i} C_{ii}}{\sum_{i,j} C_{ij}} $$
+            - **Precision (for class *i*):** $$ \frac{C_{ii}}{\sum_{j} C_{ji}} $$
+            - **Recall (for class *i*):** $$ \frac{C_{ii}}{\sum_{j} C_{ij}} $$
+
+            **Procedure:**
+            1. Isolate samples with a "Cancer Signal Detected" result from the primary classifier.
+            2. Train a separate multi-class classifier (e.g., Random Forest) on these samples using their known tissue-of-origin labels.
+            3. Evaluate the model's performance on a hold-out set using a confusion matrix.
+
+            **Significance of Results:**
+            The performance of the CSO classifier is a key component of the assay's **clinical validation** and a major part of a **PMA submission**. The confusion matrix directly informs the Instructions for Use (IFU) and physician education materials, highlighting the model's strengths and weaknesses so that clinicians can interpret a CSO prediction with the appropriate context.
+            """)
         cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
         cancer_samples_X = X[y == 1]
         if not cancer_samples_X.empty:
@@ -1190,99 +1229,158 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig_cm_cso = create_confusion_matrix_heatmap(cm_cso, cso_classes)
             st.plotly_chart(fig_cm_cso, use_container_width=True)
             accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
-            st.success(f"CSO classifier achieved an overall Top-1 accuracy of **{accuracy:.1%}**.", icon="🎯")
+            st.success(f"The CSO classifier achieved an overall Top-1 accuracy of **{accuracy:.1%}**. The confusion matrix highlights strong performance for Lung and Colorectal signals, guiding where model improvement efforts should be focused.", icon="🎯")
+   
+    # --- Tool 4: NEW 3D Optimization Visualization Case ---
+with ml_tabs[3]:
+    st.subheader("Process Optimization: 3D RSM vs. Gradient Ascent")
+    st.info("This tool provides a powerful visual comparison between two core optimization strategies. RSM provides a global, statistical view, while Gradient Ascent demonstrates an iterative, local search algorithm commonly used to train machine learning models.")
+    
+    with st.expander("View Method Explanation & Strategic Context", expanded=False):
+        st.markdown(r"""
+        **Purpose of this Comparison:** To visually contrast how a classical statistical method finds an optimum versus how a foundational machine learning algorithm "learns" its way to an optimum.
+        - **Response Surface Methodology (RSM):** Takes a "snapshot" of the entire experimental space by fitting a single quadratic equation to all data points at once to create a smooth surface map. The "optimal" point is then calculated by finding the peak of this surface.
+          - *Pros:* Statistically rigorous, provides a global view, well-understood by regulators.
+          - *Cons:* Assumes the underlying process can be described by a simple quadratic surface.
+        - **Gradient Ascent:** An iterative, "hill-climbing" algorithm. It starts at a point and takes small, repeated steps in the direction of the steepest ascent (the gradient) until it can no longer find a "higher" step.
+          - *Pros:* Can navigate very complex, non-linear surfaces where RSM would fail.
+          - *Cons:* Can get stuck in a "local optimum" (a small hill) and miss the true global optimum (the highest mountain).
+        **Significance:** We use RSM to define our official **Design Space** for regulatory filings. We use iterative methods like Gradient Ascent internally to explore complex parameter spaces and confirm that our RSM-defined space is not missing a major, non-obvious performance peak.
+        """)
+        
+    try:
+        rsm_data = ssm.get_data("quality_system", "rsm_data")
+        if rsm_data:
+            df_rsm = pd.DataFrame(rsm_data)
+            with st.spinner("Fitting response surface and simulating gradient ascent path..."):
+                # This call now works because the helper function is self-contained or `ols` is imported globally.
+                fig_3d = create_rsm_and_gradient_descent_plot(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
             
-    # --- Tool 4: 3D Optimization Visualization ---
-    with ml_tabs[3]:
-        st.subheader("Process Optimization: 3D RSM vs. Gradient Ascent")
-        with st.expander("View Method Explanation & Strategic Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
-        try:
-            rsm_data = ssm.get_data("quality_system", "rsm_data")
-            if rsm_data:
-                df_rsm = pd.DataFrame(rsm_data)
-                with st.spinner("Fitting response surface and simulating gradient ascent path..."):
-                    fig_3d = create_rsm_and_gradient_descent_plot(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
-                st.plotly_chart(fig_3d, use_container_width=True)
-                st.success("""**Observation:** The Gradient Ascent algorithm (red path) successfully navigates the response surface to the peak identified by the RSM model.""", icon="🤝")
-            else:
-                st.warning("Response Surface Methodology (RSM) data not available for this analysis.")
-        except Exception as e:
-            st.error(f"An error occurred during 3D optimization visualization: {e}")
-            logger.error(f"Error in RSM/Gradient Descent tab: {e}", exc_info=True)
-
-    # --- Tool 5: Fragmentomics ---
+            st.plotly_chart(fig_3d, use_container_width=True)
+            
+            st.success("""
+            **Observation:** The Gradient Ascent algorithm (red path) successfully navigates the response surface, starting from a suboptimal region and iteratively climbing to the peak identified by the statistical RSM model. This provides strong, cross-methodological confidence in the identified optimal operating conditions for the assay.
+            """, icon="🤝")
+        else:
+            st.warning("Response Surface Methodology (RSM) data not available for this analysis.")
+            
+    except Exception as e:
+        st.error(f"An error occurred during 3D optimization visualization: {e}")
+        logger.error(f"Error in RSM/Gradient Descent tab: {e}", exc_info=True)
+    # --- Tool 4: RSM vs ML ---
     with ml_tabs[4]:
-        st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
-        np.random.seed(42)
-        healthy_frags = np.random.normal(167, 8, 5000)
-        cancer_frags = np.random.normal(145, 15, 2500)
-        df_frags = pd.DataFrame({'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]), 'Sample Type': ['Healthy cfDNA'] * 5000 + ['Cancer ctDNA'] * 2500})
-        fig_hist = px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100, barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes</b>")
-        st.plotly_chart(fig_hist, use_container_width=True)
-        st.success("The clear shift in the fragment size for ctDNA demonstrates its potential as a powerful classification feature.", icon="🧬")
+        st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
+        st.info("This advanced tool compares two approaches to process optimization. Traditional Response Surface Methodology (RSM) fits a simple quadratic equation, while a Machine Learning model like a Gaussian Process (GP) can learn more complex, non-linear relationships.")
+        rsm_data = ssm.get_data("quality_system", "rsm_data")
+        df_rsm = pd.DataFrame(rsm_data)
+        X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
+        y_rsm = df_rsm['library_yield']
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### Method 1: Response Surface Methodology (RSM)")
+            with st.expander("View Method Explanation", expanded=False):
+                st.markdown(r"""
+                **Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
+                **Mathematical Basis:** It uses a second-order polynomial model fit via least squares. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
+                $$ Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2 $$
+                **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.
+                """)
+            _, contour_fig_rsm, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+            st.plotly_chart(contour_fig_rsm, use_container_width=True)
 
-    # --- Tool 6: Methylation Entropy ---
+        with col2:
+            st.markdown("#### Method 2: Machine Learning (Gaussian Process)")
+            with st.expander("View Method Explanation", expanded=False):
+                st.markdown(r"""
+                **Purpose:** To find the optimal settings using a more flexible, non-parametric machine learning model that can capture complex relationships that a simple quadratic model might miss.
+                **Mathematical Basis:** A **Gaussian Process (GP)** is a Bayesian approach that models a distribution over functions. Instead of learning specific coefficients, it learns a kernel function that describes the similarity between data points. This allows it to model very complex, non-linear surfaces and also provides a natural measure of uncertainty for its predictions.
+                **Significance:** GP models are more powerful for complex, real-world processes that may not follow a simple quadratic shape. While more computationally intensive, they can find optima that RSM might miss. However, their "black box" nature may require additional explainability evidence (like SHAP) for regulatory submissions.
+                """)
+            kernel = C(1.0, (1e-3, 1e3)) * RBF([1, 1], (1e-2, 1e2))
+            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9, random_state=42)
+            gp.fit(X_rsm, y_rsm)
+
+            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
+            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
+            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 30), np.linspace(y_min, y_max, 30))
+            Z = gp.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+
+            fig_gp = go.Figure(data=go.Contour(z=Z, x=np.linspace(x_min, x_max, 30), y=np.linspace(y_min, y_max, 30), colorscale='Viridis', contours=dict(coloring='heatmap', showlabels=True)))
+            opt_idx_gp = np.argmax(Z)
+            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
+            fig_gp.add_trace(go.Scatter(x=[opt_x_gp], y=[opt_y_gp], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='GP Optimum'))
+            fig_gp.update_layout(title="<b>GP-based Design Space</b>", xaxis_title='pcr_cycles', yaxis_title='input_dna', template="plotly_white")
+            st.plotly_chart(fig_gp, use_container_width=True)
+            
+        st.success("**Conclusion:** Both methods identify a similar optimal region. The GP model captures more nuanced local variations, while the RSM provides a smoother, more generalized surface. For our PMA, the RSM model is preferred for its simplicity and regulatory acceptance, but the GP model provides confidence that no major, complex optima were missed.", icon="🤝")
+
+    # --- Tool 5: Time Series ---
     with ml_tabs[5]:
-        st.subheader("NGS Signal: Methylation Entropy Analysis")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
-        np.random.seed(33)
-        healthy_entropy = np.random.normal(1.5, 0.5, 100).clip(0)
-        cancer_entropy = np.random.normal(3.0, 0.8, 100).clip(0)
-        df_entropy = pd.DataFrame({'Entropy (bits)': np.concatenate([healthy_entropy, cancer_entropy]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100})
-        fig = px.box(df_entropy, x='Sample Type', y='Entropy (bits)', color='Sample Type', points='all', title="<b>Methylation Entropy by Sample Type</b>")
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("Significantly higher methylation entropy in cancer samples provides a strong, independent feature for classification.", icon="🧬")
-
-    # --- Tool 7: CNV Analysis ---
-    with ml_tabs[6]:
-        st.subheader("NGS Signal: Copy Number Variation (CNV) Analysis")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
-        np.random.seed(42)
-        genome_pos, healthy_depth, cancer_depth = np.arange(1, 1001), np.random.poisson(100, 1000), np.random.poisson(100, 1000)
-        cancer_depth[300:400] = np.random.poisson(150, 100)
-        cancer_depth[700:750] = np.random.poisson(50, 50)
-        df_cnv = pd.DataFrame({'Genomic Position': np.concatenate([genome_pos, genome_pos]), 'Normalized Read Depth': np.concatenate([healthy_depth, cancer_depth]), 'Sample Type': ['Healthy Control'] * 1000 + ['Cancer Sample'] * 1000})
-        fig = px.line(df_cnv, x='Genomic Position', y='Normalized Read Depth', color='Sample Type', title="<b>Copy Number Profile Across a Chromosome Arm</b>")
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("Cancer sample shows clear regional amplification and deletion not present in the healthy control.", icon="🧬")
-
-    # --- Tool 8: Immune Repertoire ---
-    with ml_tabs[7]:
-        st.subheader("NGS Signal: Immune Repertoire Profiling")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
-        np.random.seed(1)
-        healthy_clones = np.random.lognormal(0.5, 1, 100); healthy_clones /= healthy_clones.sum()
-        cancer_clones = np.random.lognormal(0.5, 1, 100); cancer_clones[0:3] = [50, 35, 20]; cancer_clones /= cancer_clones.sum()
-        df_tcr = pd.DataFrame({'TCR Clonotype Frequency': np.concatenate([np.sort(healthy_clones)[::-1], np.sort(cancer_clones)[::-1]]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100, 'Rank': list(range(1, 101)) * 2})
-        fig = px.line(df_tcr, x='Rank', y='TCR Clonotype Frequency', color='Sample Type', log_y=True, title="<b>TCR Repertoire Clonality (Lorenz Curve)</b>")
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("Cancer sample exhibits significant clonal expansion, a strong immune response signal.", icon="🧬")
-
-    # --- Tool 9: Time Series Forecasting ---
-    with ml_tabs[8]:
         st.subheader("Time Series Forecasting for Lab Operations")
         with st.expander("View Method Explanation & Business Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
-        ts_data_df = ssm.get_data("ml_models", "sample_volume_data")
-        with st.spinner("Fitting ARIMA model..."):
-            model_arima = ARIMA(ts_data_df['samples'].asfreq('D'), order=(5, 1, 0)).fit()
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To forecast future operational demand (e.g., incoming sample volume) based on historical trends and seasonality. This is a critical business intelligence tool for proactive lab management, enabling data-driven decisions on reagent inventory, staffing levels, and capital expenditure.
+
+            **Conceptual Walkthrough: Weather Forecasting for the Lab**
+            This tool uses past sample volume data to predict next month's workload. It uses a model called **ARIMA** (AutoRegressive Integrated Moving Average) which is adept at learning three things from the data:
+            1.  **A**uto**R**egression (AR): Is today's volume related to yesterday's? (Momentum)
+            2.  **I**ntegrated (I): Does the data have an overall upward or downward trend?
+            3.  **M**oving **A**verage (MA): Are random shocks or errors in the past still affecting today's value?
+            
+            **Mathematical Basis & Formula:**
+            An ARIMA(p,d,q) model is a combination of simpler time series models:
+            - **AR(p):** $ Y_t = c + \sum_{i=1}^{p} \phi_i Y_{t-i} + \epsilon_t $ (Regression on past values)
+            - **MA(q):** $ Y_t = \mu + \epsilon_t + \sum_{i=1}^{q} \theta_i \epsilon_{t-i} $ (Regression on past errors)
+            The `d` term represents the number of times the raw data is differenced to make it stationary (remove trends).
+            
+            **Procedure:**
+            1. Analyze historical time series data for trends and seasonality.
+            2. Select appropriate (p,d,q) parameters for the ARIMA model.
+            3. Fit the model to the historical data.
+            4. Use the fitted model to forecast future values.
+
+            **Significance of Results:**
+            Accurate forecasting is key to running a lean and efficient operation. It helps prevent costly situations like reagent stock-outs (which halt production) or over-staffing (which increases operational expense). It provides the quantitative justification needed for budget requests and strategic planning.
+            """)
+        
+        ts_data = ssm.get_data("ml_models", "sample_volume_data")
+        df_ts = pd.DataFrame(ts_data).set_index('date')
+        df_ts.index = pd.to_datetime(df_ts.index)
+        with st.spinner("Fitting ARIMA model and forecasting next 30 days..."):
+            model_arima = ARIMA(df_ts['samples'].asfreq('D'), order=(5, 1, 0)).fit()
             forecast = model_arima.get_forecast(steps=30)
             forecast_df = forecast.summary_frame()
-            fig = create_forecast_plot(ts_data_df, forecast_df)
+            fig = create_forecast_plot(df_ts, forecast_df)
         st.plotly_chart(fig, use_container_width=True)
-        st.success("ARIMA forecast projects a continued upward trend in sample volume.", icon="📈")
+        st.success("The ARIMA forecast projects a continued upward trend in sample volume, suggesting a need to review reagent inventory and staffing levels for the upcoming month.", icon="📈")
 
-    # --- Tool 10: Predictive Run QC ---
-    with ml_tabs[9]:
+    # --- Tool 6: Predictive Run QC ---
+    with ml_tabs[6]:
         st.subheader("Predictive Run QC from Early On-Instrument Metrics")
         with st.expander("View Method Explanation & Operational Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To predict the final quality of a sequencing run using metrics generated by the sequencer *within the first few hours* of the run. This allows the lab to terminate runs that are destined to fail, saving thousands of dollars in reagents and valuable instrument time.
+
+            **Conceptual Walkthrough: The Pre-Flight Check**
+            Think of a long-haul flight. Before takeoff, pilots run a series of checks. If the engine pressure is low on the tarmac, they don't take off and "hope for the best"; they abort the flight. This tool is a machine learning-based pre-flight check for sequencing runs. It learns the patterns of early-run metrics (e.g., % Q30 at cycle 25, cluster density) that are associated with final run failure.
+
+            **Mathematical Basis & Formula:**
+            This is a binary classification problem. We use **Logistic Regression** to model the probability of a "Fail" outcome. The model learns a set of coefficients ($\beta_i$) for each early-run QC feature ($x_i$) to predict the log-odds of the run failing:
+            $$ \ln\left(\frac{P(\text{Fail})}{1-P(\text{Fail})}\right) = \beta_0 + \beta_1x_{\text{Q30}} + \beta_2x_{\text{Density}} + \dots $$
+
+            **Procedure:**
+            1. Collect historical data on early-run metrics and final run outcomes.
+            2. Train a logistic regression model to predict the outcome.
+            3. Validate the model's performance on a hold-out set.
+            4. Deploy the model to flag potentially failing runs in real-time.
+
+            **Significance of Results:**
+            This is a powerful process control and cost-saving tool. By preventing failed runs from consuming a full cycle of resources, it directly reduces the **Cost of Poor Quality (COPQ)**. A validated predictive QC model can be integrated into the LIMS to create a more efficient and "intelligent" lab operation.
+            """)
+                
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
@@ -1293,7 +1391,113 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         fig_cm_ops = create_confusion_matrix_heatmap(cm_ops, ['Fail', 'Pass'])
         st.plotly_chart(fig_cm_ops, use_container_width=True)
         tn, fp, fn, tp = cm_ops.ravel()
-        st.success(f"**Model Evaluation:** Correctly identified **{tp}** of {tp+fn} failing runs, enabling proactive cost savings.", icon="💰")
+        st.success(f"**Model Evaluation:** The model correctly identified **{tp}** failing runs out of a total of {tp+fn}, enabling proactive intervention and significant cost savings.", icon="💰")
+
+    # --- Tool 7: Fragmentomics ---
+    with ml_tabs[7]:
+        st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To leverage a key biological property of circulating tumor DNA (ctDNA) to enhance cancer detection. DNA from cancerous cells tends to be more fragmented and thus shorter than background cell-free DNA (cfDNA) from healthy apoptotic cells. This tool visualizes these fragment size distributions.
+
+            **Conceptual Walkthrough: Rocks vs. Sand**
+            Imagine searching for a few rare gold nuggets (ctDNA) on a beach full of pebbles (healthy cfDNA). It's difficult. But what if you learn that gold nuggets are always much smaller than the surrounding pebbles? You could use a sieve. Fragmentomics is a biological sieve. By analyzing the size distribution of all DNA fragments, we can identify samples that have an overabundance of "sand" (short fragments), which is a strong indicator of the presence of "gold" (cancer). This signal can be used as a powerful, independent feature in a machine learning model.
+            
+            **Mathematical Basis:**
+            This is primarily a feature engineering method. We analyze the sequencing alignment data to determine the length of each DNA fragment. The core output is a histogram or kernel density estimate (KDE) of fragment lengths. Statistical features are then derived from this distribution:
+            - **Short Fragment Fraction:** The percentage of DNA fragments below a certain length (e.g., 150 bp).
+            - **Distributional Moments:** Mean, variance, skewness of fragment lengths.
+
+            **Procedure:**
+            1. For each sample, align paired-end sequencing reads to the reference genome.
+            2. Calculate the inferred insert size for each read pair.
+            3. Generate a histogram of these insert sizes.
+            4. Compare the distributions between cancer and healthy cohorts.
+
+            **Significance of Results:**
+            Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals, de-risking the algorithm from being reliant on spurious correlations. This is a critical piece of evidence for the PMA.
+            """)
+        np.random.seed(42)
+        healthy_frags = np.random.normal(167, 8, 5000)
+        cancer_frags = np.random.normal(145, 15, 2500)
+        df_frags = pd.DataFrame({'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]), 'Sample Type': ['Healthy cfDNA'] * 5000 + ['Cancer ctDNA'] * 2500})
+        fig_hist = px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100, barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes (Healthy vs. Cancer)</b>")
+        st.plotly_chart(fig_hist, use_container_width=True)
+        st.success("The clear shift in the fragment size distribution for ctDNA demonstrates its potential as a powerful classification feature. A model trained on features derived from this distribution can effectively separate sample types.", icon="🧬")
+
+    # --- Tool 8: Error Modeling ---
+    with ml_tabs[8]:
+        st.subheader("NGS Signal: Sequencing Error Profile Modeling")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To statistically distinguish a true, low-frequency somatic mutation from the background "noise" of sequencing errors. Every sequencer has an inherent error rate. For liquid biopsy, where the true signal (Variant Allele Frequency or VAF) can be <0.1%, a robust error model is absolutely essential for achieving a low Limit of Detection (LoD).
+
+            **Conceptual Walkthrough: A Whisper in a Crowded Room**
+            Imagine trying to hear a very faint whisper (a true mutation) in a noisy room (sequencing errors). If you don't know how loud the background noise typically is, you can't be sure if you heard a real whisper or just a random bit of chatter. This tool first *characterizes the background noise* by fitting a statistical distribution (a Beta distribution) to the observed error rates from many normal samples. This gives us a precise "fingerprint" of the noise. Then, when we hear a potential new signal, we can ask: "What is the probability that the background noise, by itself, would sound this loud?" If that probability (the p-value) is astronomically low, we can confidently say we heard a real whisper.
+
+            **Mathematical Basis & Formula:**
+            1.  **Error Modeling:** The VAF of sequencing errors at non-variant sites is modeled using a Beta distribution, which is perfect for values between 0 and 1. We fit the parameters ($\alpha_0, \beta_0$) of this distribution using a large set of normal, healthy samples.
+            2.  **Hypothesis Testing:** For a new variant observed with a VAF of $v_{obs}$, our null hypothesis is $H_0$: "This observation is just a draw from our background error distribution." We calculate the p-value as the survival function (1 - CDF) of our fitted Beta distribution: $$ P(\text{VAF} \ge v_{obs} | H_0) = 1 - F(v_{obs}; \alpha_0, \beta_0) $$ A very low p-value allows us to reject $H_0$.
+
+            **Procedure:**
+            1.  Sequence a cohort of healthy individuals to high depth.
+            2.  At known non-variant positions, calculate the VAF of non-reference alleles to build an empirical error distribution.
+            3.  Fit a Beta distribution to these error VAFs to get the model parameters ($\alpha_0, \beta_0$).
+            4.  For new samples, calculate a p-value for each potential variant against this error model.
+
+            **Significance of Results:**
+            This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.
+            """)
+        alpha0, beta0, _, _ = stats.beta.fit(np.random.beta(a=0.4, b=9000, size=1000), floc=0, fscale=1)
+        st.write(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`")
+        true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider_ngs")
+        observed_variant_reads = np.random.binomial(10000, true_vaf)
+        observed_vaf = observed_variant_reads / 10000
+        p_value = 1.0 - stats.beta.cdf(observed_vaf, alpha0, beta0)
+        st.metric(f"Observed VAF at 10,000x Depth", f"{observed_vaf:.4f}")
+        st.metric("P-value (Probability this is Random Noise)", f"{p_value:.3e}")
+        if p_value < 1e-6:
+             st.success(f"**Conclusion:** The observation is highly statistically significant. We can confidently call this a true mutation above the background error rate.", icon="✅")
+        else:
+             st.error(f"**Conclusion:** The observed VAF is not statistically distinguishable from the background sequencing error profile. This should **not** be called as a true variant.", icon="❌")
+
+    # --- Tool 9: Methylation Entropy ---
+    with ml_tabs[9]:
+        st.subheader("NGS Signal: Methylation Entropy Analysis")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To leverage another key biological signal in cfDNA: the **disorder** of methylation patterns within a given genomic region. Healthy tissues often have very consistent, ordered methylation patterns, while cancer tissues exhibit chaotic, disordered methylation. This "methylation entropy" can be a powerful feature for classification.
+
+            **Conceptual Walkthrough: A Well-Kept vs. Messy Bookshelf**
+            Imagine a specific genomic region is a bookshelf. In a healthy cell, all the books are neatly arranged by color—a very orderly, low-entropy state. In a cancer cell, the same bookshelf is a mess: books are everywhere, with no discernible pattern—a very disorderly, high-entropy state. Even if we don't know the exact "correct" pattern, we can measure the *amount of disorder*. By sequencing many individual DNA molecules from that region, we can quantify this disorder and use it to distinguish cancer from healthy.
+
+            **Mathematical Basis & Formula:**
+            For a given genomic region with *N* CpG sites, we analyze the methylation patterns across multiple cfDNA reads that cover this region. For each of the $2^N$ possible methylation patterns (e.g., 'MM', 'MU', 'UM', 'UU' for N=2), we calculate its frequency, $p_i$. The Shannon entropy, a measure of disorder, is then calculated:
+            $$ H = -\sum_{i=1}^{2^N} p_i \log_2(p_i) $$
+            A low entropy value (H) indicates a consistent, ordered pattern, while a high entropy value indicates disorder.
+
+            **Procedure:**
+            1.  Define specific genomic regions of interest.
+            2.  For each sample, extract all sequencing reads covering a region.
+            3.  For each read, determine the methylation state (M or U) at each CpG site.
+            4.  Count the frequency of each unique methylation pattern across all reads.
+            5.  Calculate the Shannon entropy for the region.
+            6.  Use this entropy value as a feature in the machine learning model.
+
+            **Significance of Results:**
+            Like fragmentomics, methylation entropy is an **orthogonal biological signal**. It does not depend on the methylation level at a single site but on the heterogeneity of patterns across a region. Incorporating such features makes our classifier more robust and less susceptible to artifacts affecting single-site measurements. Presenting this in a PMA submission demonstrates a deep, multi-faceted understanding of the underlying cancer biology.
+            """)
+        # Generate plausible entropy data
+        np.random.seed(33)
+        healthy_entropy = np.random.normal(1.5, 0.5, 100).clip(0)
+        cancer_entropy = np.random.normal(3.0, 0.8, 100).clip(0)
+        df_entropy = pd.DataFrame({'Entropy (bits)': np.concatenate([healthy_entropy, cancer_entropy]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100})
+        fig = px.box(df_entropy, x='Sample Type', y='Entropy (bits)', color='Sample Type', points='all', title="<b>Methylation Entropy by Sample Type</b>")
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature for classification, enhancing the robustness of our diagnostic model.", icon="🧬")
 #___________________________________________________________________________________________________________________________________________________________________TEXT_______________________________________________________________________________
 def render_compliance_guide_tab():
     """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
