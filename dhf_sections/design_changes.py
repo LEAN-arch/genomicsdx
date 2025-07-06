@@ -61,11 +61,10 @@ def render_design_changes(ssm: SessionStateManager) -> None:
             st.warning("No design change records have been logged yet.")
         else:
             changes_df = pd.DataFrame(changes_data)
-            # Ensure date column is properly formatted for display
             if 'approval_date' in changes_df.columns:
                  changes_df['approval_date'] = pd.to_datetime(changes_df['approval_date'], errors='coerce').dt.date
             
-            # <<< FIX: Removed the on_select="rerun" argument to prevent the pseudo-loop >>>
+            # <<< FIX: Removed the unsupported 'selection_mode' keyword argument >>>
             st.data_editor(
                 changes_df,
                 column_config={
@@ -74,28 +73,24 @@ def render_design_changes(ssm: SessionStateManager) -> None:
                     "initiator": "Initiator",
                     "approval_status": "Status",
                     "approval_date": "Approval Date",
-                    # Hide other columns from this summary view for clarity
                     "reason": None, "request_date": None, "impact_analytical": None,
                     "impact_risk": None, "vv_plan": None, "approvers": None,
                     "action_items": None, "impact_clinical": None, "impact_software": None,
                     "impact_lab_ops": None, "impact_analysis_details": None
                 },
                 column_order=['id', 'description', 'initiator', 'approval_status', 'approval_date'],
-                use_container_width=True, hide_index=True,
-                selection_mode="single-row", key="dcr_selection_table",
+                use_container_width=True, hide_index=True, key="dcr_selection_table",
             )
             
             selection = st.session_state.get("dcr_selection_table", {}).get("selection", {})
             if selection.get("rows"):
                 selected_index = selection["rows"][0]
-                # Use .iloc to safely access the row by its integer position
                 if selected_index < len(changes_df):
                     newly_selected_id = changes_df.iloc[selected_index]['id']
-                    # Only change mode if the selection is genuinely new
                     if st.session_state.selected_dcr_id != newly_selected_id:
                         st.session_state.selected_dcr_id = newly_selected_id
                         st.session_state.dcr_edit_mode = False
-                        st.rerun() # Explicitly rerun only when the selection ID changes
+                        st.rerun()
             
         # --- 3. DCR Creation/Editing ---
         st.divider()
@@ -193,7 +188,6 @@ def render_dcr_edit_form(dcr: Dict[str, Any], all_dcrs: List[Dict[str, Any]], ss
         vv_plan = st.text_area("V&V Plan", value=dcr.get("vv_plan", ""), height=150)
 
         st.markdown("**Implementation Action Items**")
-        # Ensure 'due_date' is datetime for the editor
         action_items_list = dcr.get("action_items", [])
         if action_items_list:
             action_items_df = pd.DataFrame(action_items_list)
@@ -224,7 +218,6 @@ def render_dcr_edit_form(dcr: Dict[str, Any], all_dcrs: List[Dict[str, Any]], ss
         
         submit_cols = st.columns(2)
         if submit_cols[0].form_submit_button("✅ Save & Exit Edit Mode", use_container_width=True, type="primary"):
-            # Prepare action items for saving (convert dates back to string)
             actions_to_save = edited_actions_df.copy()
             if 'due_date' in actions_to_save.columns:
                 actions_to_save['due_date'] = pd.to_datetime(actions_to_save['due_date']).dt.date.astype(str).replace({'NaT': None, 'None': None})
@@ -250,7 +243,6 @@ def render_dcr_edit_form(dcr: Dict[str, Any], all_dcrs: List[Dict[str, Any]], ss
 
         if submit_cols[1].form_submit_button("❌ Cancel", use_container_width=True):
             st.session_state.dcr_edit_mode = False
-            # If the user cancels a "new" DCR before adding a description, remove it
             if not dcr.get('description'):
                 all_dcrs.pop()
                 ssm.update_data(all_dcrs, "design_changes", "changes")
