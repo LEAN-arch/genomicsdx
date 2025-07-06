@@ -869,19 +869,24 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         X, y = ssm.get_data("ml_models", "classifier_data")
         model = ssm.get_data("ml_models", "classifier_model")
         
-        # --- SME Definitive Fix: Use the modern, robust `shap.Explainer` API ---
-        # This API automatically handles model types and prevents mismatches.
-        explainer = shap.Explainer(model, X)
-        shap_values = explainer(X)
-        
-        st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-        # For a binary classifier, shap_values for the positive class are at index 1
-        plot_buffer = create_shap_summary_plot(shap_values.values[:,:,1], X)
-        if plot_buffer:
-            st.image(plot_buffer)
-            st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
-        else:
-            st.error("Could not generate SHAP summary plot.")
+        try:
+            # --- SME Definitive Fix: Use the modern, robust `shap.Explainer` API ---
+            explainer = shap.Explainer(model, X)
+            shap_values = explainer(X)
+            
+            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+            # For a binary classifier, the shap_values object has a .values attribute.
+            # We select the values for the positive class (index 1).
+            plot_buffer = create_shap_summary_plot(shap_values, X)
+            if plot_buffer:
+                st.image(plot_buffer)
+                st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
+            else:
+                st.error("Could not generate SHAP summary plot.")
+        except Exception as e:
+            st.error(f"Could not perform SHAP analysis. Error: {e}")
+            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+
 
     # --- Tool 2: Predictive Operations ---
     with ml_tabs[1]:
