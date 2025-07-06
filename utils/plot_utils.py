@@ -1,4 +1,5 @@
-# --- SME OVERHAUL: Definitive, Compliance-Focused, and Unabridged Version ---
+# genomicsdx/utils/plot_utils.py
+#--- SME OVERHAUL: Definitive, Compliance-Focused, and Unabridged Version ---
 """
 Plotting utilities for creating standardized, publication-quality visualizations.
 
