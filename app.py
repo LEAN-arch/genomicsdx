@@ -973,6 +973,8 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.success(f"The analysis highlights **'{top_contributor}'** as the primary contributor to run failures. Focusing CAPA and process improvement initiatives on this failure mode will yield the greatest reduction in overall run failures and COPQ.", icon="🎯")
 
 
+# In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
+
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """
     Renders the tab containing machine learning and bioinformatics tools,
@@ -985,11 +987,19 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """)
     
     try:
+        # --- DEPENDENCY IMPORTS ---
         from sklearn.gaussian_process import GaussianProcessRegressor
         from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
         from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+        from sklearn.linear_model import LogisticRegression
+        # --- FIX: Added missing imports here to resolve NameError ---
+        from sklearn.metrics import precision_recall_curve, auc, confusion_matrix
+        import shap
+        from statsmodels.tsa.arima.model import ARIMA
+        
     except ImportError as e:
-        st.error(f"This function requires scikit-learn. Please install it. Error: {e}", icon="🚨")
+        st.error(f"This function requires scikit-learn, statsmodels, and shap. Please install them. Error: {e}", icon="🚨")
         return
 
     ml_tabs = st.tabs([
@@ -1037,6 +1047,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig_roc = create_roc_curve(pd.DataFrame({'score': model.predict_proba(X)[:, 1], 'truth': y}), 'score', 'truth')
             st.plotly_chart(fig_roc, use_container_width=True)
         with col2:
+            # This block now works because precision_recall_curve and auc were imported above
             precision, recall, _ = precision_recall_curve(y, model.predict_proba(X)[:, 1])
             pr_auc = auc(recall, precision)
             fig_pr = px.area(x=recall, y=precision, title=f"<b>Precision-Recall Curve (AUC = {pr_auc:.4f})</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
@@ -1197,7 +1208,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Significance of Results:**
             Accurate forecasting is key to running a lean and efficient operation. It helps prevent costly situations like reagent stock-outs (which halt production) or over-staffing (which increases operational expense). It provides the quantitative justification needed for budget requests and strategic planning.
             """)
-        from statsmodels.tsa.arima.model import ARIMA
+        
         ts_data = ssm.get_data("ml_models", "sample_volume_data")
         df_ts = pd.DataFrame(ts_data).set_index('date')
         df_ts.index = pd.to_datetime(df_ts.index)
@@ -1233,9 +1244,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Significance of Results:**
             This is a powerful process control and cost-saving tool. By preventing failed runs from consuming a full cycle of resources, it directly reduces the **Cost of Poor Quality (COPQ)**. A validated predictive QC model can be integrated into the LIMS to create a more efficient and "intelligent" lab operation.
             """)
-        from sklearn.model_selection import train_test_split
-        from sklearn.linear_model import LogisticRegression
-        
+                
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
@@ -1307,7 +1316,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             """)
         alpha0, beta0, _, _ = stats.beta.fit(np.random.beta(a=0.4, b=9000, size=1000), floc=0, fscale=1)
         st.write(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`")
-        true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider")
+        true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider_ngs")
         observed_variant_reads = np.random.binomial(10000, true_vaf)
         observed_vaf = observed_variant_reads / 10000
         p_value = 1.0 - stats.beta.cdf(observed_vaf, alpha0, beta0)
@@ -1350,7 +1359,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         healthy_entropy = np.random.normal(1.5, 0.5, 100).clip(0)
         cancer_entropy = np.random.normal(3.0, 0.8, 100).clip(0)
         df_entropy = pd.DataFrame({'Entropy (bits)': np.concatenate([healthy_entropy, cancer_entropy]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100})
-        fig = px.box(df_entropy, x='Sample Type', y='Entropy (bits)', color='Sample Type', points='all', title="<b>Methylation Entropy by Sample Type</b>", labels={'value': 'Entropy (bits)'})
+        fig = px.box(df_entropy, x='Sample Type', y='Entropy (bits)', color='Sample Type', points='all', title="<b>Methylation Entropy by Sample Type</b>")
         st.plotly_chart(fig, use_container_width=True)
         st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature for classification, enhancing the robustness of our diagnostic model.", icon="🧬")
 #___________________________________________________________________________________________________________________________________________________________________TEXT_______________________________________________________________________________
