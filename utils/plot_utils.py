@@ -382,17 +382,26 @@ def create_confusion_matrix_heatmap(cm: np.ndarray, class_names: List[str]) -> g
 
 def create_shap_summary_plot(shap_values: Any, features: pd.DataFrame) -> Optional[io.BytesIO]:
     """
-    Creates a SHAP summary plot and returns it as an in-memory PNG image buffer.
-    Accepts shap_values as either a numpy array or a SHAP Explanation object.
+    Creates a SHAP summary plot from a modern Explanation object or legacy array.
+    This function is now robust to the output of `shap.Explainer`.
     Returns None on failure.
     """
     try:
         import shap
         import matplotlib.pyplot as plt
 
+        # SME Definitive Fix: Handle both modern shap.Explanation objects and legacy numpy arrays
+        plot_values = shap_values
+        if hasattr(shap_values, 'values'):
+            # This is a modern Explanation object. For binary classification, we need
+            # the values for the positive class (index 1).
+            if len(shap_values.values.shape) == 3:
+                 plot_values = shap_values.values[:,:,1]
+            else: # It's a single-output model
+                 plot_values = shap_values.values
+
         fig, ax = plt.subplots()
-        # The modern `summary_plot` can handle both numpy arrays and Explanation objects.
-        shap.summary_plot(shap_values, features, show=False)
+        shap.summary_plot(plot_values, features, show=False)
         plt.title("SHAP Feature Importance Summary", fontsize=16)
         plt.tight_layout()
         
