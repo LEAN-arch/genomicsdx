@@ -1004,17 +1004,20 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "Time Series Forecasting (ML)"
     ])
 
-    # <<< FIX: Create a robust, cached function for all ML artifact generation >>>
+    # <<< ROBUST CACHING FIX: Pass numpy arrays to the cached function >>>
     @st.cache_data
-    def get_or_generate_ml_artifacts(_X_df, _y_series):
+    def get_or_generate_ml_artifacts(_X_numpy, _y_numpy, _feature_names):
         """
         This function trains the model and generates SHAP values, caching the result.
-        It will only run once as long as the input data doesn't change.
+        It uses numpy arrays and simple types as inputs for robust hashing.
         """
         logger.info("CACHE MISS: Running expensive model training and SHAP calculation...")
+        # Recreate DataFrame inside the cached function
+        _X_df = pd.DataFrame(_X_numpy, columns=_feature_names)
+        
         # 1. Train the model
         model = RandomForestClassifier(n_estimators=100, random_state=42)
-        model.fit(_X_df, _y_series)
+        model.fit(_X_df, _y_numpy)
         
         # 2. Generate SHAP values
         explainer = shap.Explainer(model, _X_df)
@@ -1027,7 +1030,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         logger.info("Model training and SHAP generation complete. Results are now cached.")
         
         # 4. Return all artifacts
-        return model, shap_values, plot_buffer
+        return model, plot_buffer
 
     # --- Tool 1: ROC & PR Curves ---
     with ml_tabs[0]:
@@ -1035,7 +1038,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         X, y_true = ssm.get_data("ml_models", "classifier_data")
         
         # Use the cached function to get the trained model
-        model, _, _ = get_or_generate_ml_artifacts(X, y_true)
+        model, _ = get_or_generate_ml_artifacts(X.values, y_true, X.columns.tolist())
         
         y_scores = model.predict_proba(X)[:, 1]
 
@@ -1067,14 +1070,13 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.markdown(r"""
             **Purpose:** To address the "black box" problem of complex ML models by explaining *how* our classifier makes its decisions.
             **Conceptual Walkthrough:** SHAP is like a sophisticated "MVP" calculator for our biomarkers. For every single patient, it calculates exactly how much each biomarker contributed to the final "cancer" or "no cancer" score. The summary plot shows which biomarkers are consistently the most influential across all patients.
-            **Mathematical Basis:** Based on Shapley values from cooperative game theory, it fairly distributes the "payout" (the prediction) among the features.
             """)
         
         X, y = ssm.get_data("ml_models", "classifier_data")
         st.write("Generating SHAP values (will be cached after first run)...")
         
-        # Call the cached function to get all artifacts
-        _, _, plot_buffer = get_or_generate_ml_artifacts(X, y)
+        # Call the robust cached function with numpy arrays and feature names
+        _, plot_buffer = get_or_generate_ml_artifacts(X.values, y, X.columns.tolist())
         
         if plot_buffer:
             st.image(plot_buffer)
@@ -1103,7 +1105,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         fig_cm_cso = create_confusion_matrix_heatmap(cm_cso, cso_classes)
         st.plotly_chart(fig_cm_cso, use_container_width=True)
         accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
-        st.success(f"The CSO classifier achieved an overall accuracy of **{accuracy:.1%}**. The confusion matrix highlights specific areas of strength and areas for potential improvement.")
+        st.success(f"The CSO classifier achieved an overall accuracy of **{accuracy:.1%}**.")
 
     # --- Tool 4: Predictive Operations ---
     with ml_tabs[3]:
@@ -1111,7 +1113,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         with st.expander("View Method Explanation"):
             st.markdown("""
             **Purpose:** To build a model that predicts run failure *before* committing expensive resources.
-            **Conceptual Walkthrough:** This model acts as a gatekeeper. It learns from past runs what combinations of early QC metrics predict failure. It then calculates a failure probability for new runs, allowing us to stop and investigate high-risk samples.
+            **Conceptual Walkthrough:** This model acts as a gatekeeper. It learns from past runs what combinations of early QC metrics predict failure and calculates a failure probability for new runs.
             """)
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
@@ -1140,6 +1142,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         df_ts = pd.DataFrame(ts_data).set_index('date')
         df_ts.index = pd.to_datetime(df_ts.index)
         
+        # Feature Engineering
         for lag in [1, 7, 14]:
             df_ts[f'lag_{lag}'] = df_ts['samples'].shift(lag)
         df_ts['dayofweek'] = df_ts.index.dayofweek
@@ -1149,14 +1152,20 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         X_ts = df_ts.drop('samples', axis=1)
         y_ts = df_ts['samples']
         
-        model_lgbm = lgb.LGBMRegressor(random_state=42)
+        # <<< FIX: Added verbose=-1 to suppress LightGBM warnings >>>
+        model_lgbm = lgb.LGBMRegressor(random_state=42, verbose=-1)
         model_lgbm.fit(X_ts, y_ts)
         
+        # Create future dataframe for forecasting
         future_dates = pd.date_range(start=df_ts.index.max() + pd.Timedelta(days=1), periods=30, freq='D')
         future_df = pd.DataFrame(index=future_dates)
-        future_df['lag_1'] = df_ts['samples'][-1]
-        future_df['lag_7'] = df_ts['samples'][-7]
-        future_df['lag_14'] = df_ts['samples'][-14]
+        
+        # <<< FIX: Changed to .iloc for future-proof positional indexing >>>
+        last_rows = df_ts['samples'].iloc[-14:]
+        future_df['lag_1'] = last_rows.iloc[-1]
+        future_df['lag_7'] = last_rows.iloc[-7]
+        future_df['lag_14'] = last_rows.iloc[-14]
+
         future_df['dayofweek'] = future_df.index.dayofweek
         future_df['month'] = future_df.index.month
         
