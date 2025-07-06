@@ -1173,17 +1173,10 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
                 explainer = shap.TreeExplainer(model)
                 shap_explanation_object = explainer(X_sample)
                 
-                fig, ax = plt.subplots(dpi=150)
-                shap.summary_plot(shap_explanation_object[:,:,1], show=False)
-                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
-                plt.tight_layout()
+                fig_shap = create_shap_summary_plot(shap_explanation_object[:,:,1], X_sample)
                 
-                buf = io.BytesIO()
-                fig.savefig(buf, format="png", bbox_inches="tight")
-                plt.close(fig)
-                buf.seek(0)
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            st.image(buf, use_column_width=True)
+            st.pyplot(fig_shap, clear_figure=True)
             st.success("SHAP analysis confirms model predictions are driven by known biomarkers.", icon="✅")
         except Exception as e:
             st.error(f"An error occurred during SHAP analysis: {e}")
