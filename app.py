@@ -1081,7 +1081,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"Could not perform RSM analysis. Error: {e}")
             logger.error(f"RSM analysis failed: {e}", exc_info=True)
-       #&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&   ML           &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&     
+      #   ML   ML ML ML--------------------------------------------------------------------------------------     
 def render_machine_learning_lab_tab(ssm: MockSessionStateManager):
     """Renders the tab containing machine learning and bioinformatics tools."""
     st.header("🤖 Machine Learning & Bioinformatics Lab")
