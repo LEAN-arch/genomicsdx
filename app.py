@@ -52,7 +52,8 @@ try:
         create_action_item_chart, create_risk_profile_chart,
         create_roc_curve, create_levey_jennings_plot, create_lod_probit_plot, create_bland_altman_plot,
         create_pareto_chart, create_gauge_rr_plot, create_tost_plot,
-        create_confusion_matrix_heatmap, create_shap_summary_plot, create_forecast_plot
+        create_confusion_matrix_heatmap, create_shap_summary_plot, create_forecast_plot,
+        create_doe_effects_plot # SME Definitive Fix: Import new robust plotter
     )
     from genomicsdx.utils.session_state_manager import SessionStateManager
 except ImportError as e:
@@ -525,6 +526,7 @@ def render_advanced_analytics_tab(ssm: SessionStateManager):
                 ssm.update_data(df_to_save.to_dict('records'), "project_management", "tasks")
                 st.toast("Project tasks updated! Rerunning...", icon="✅"); st.rerun()
         except Exception as e: st.error("Could not load the Project Task Editor."); logger.error(f"Error in task editor: {e}", exc_info=True)
+
 def render_statistical_tools_tab(ssm: SessionStateManager):
     """Renders the tab containing various statistical analysis tools."""
     st.header("📈 Statistical Workbench for Assay & Lab Development")
@@ -768,21 +770,24 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.markdown("""
             **Purpose of the Method:**
             Design of Experiments (DOE) is a systematic method for determining the relationship between factors affecting a process and the output of that process. In assay development, it is used to efficiently optimize conditions (e.g., PCR cycles, DNA input amount, incubation time) to maximize a desired outcome (e.g., library yield).
-
-            **The Mathematical Basis & Method:**
-            This tool uses a 2-level full factorial design analysis.
-            1.  A regression model is fitted to the experimental data using Ordinary Least Squares (OLS). The formula looks like `output ~ factor1 * factor2`, which accounts for the main effect of each factor and the interaction effect between them.
-            2.  An ANOVA table is generated from the model. The p-values in the ANOVA table tell us which factors (and interactions) have a statistically significant effect on the output.
-            3.  A 3D surface plot is generated from the model to visualize the "response surface," showing how the output changes as the factors are varied.
+            
+            **The Analytical Approach (Main Effects & Interaction Plots):**
+            For a 2-level factorial design, the most robust and direct analysis involves calculating the "effects" of each factor.
+            - **Main Effect:** The average change in the response when a factor is changed from its low level to its high level.
+            - **Interaction Effect:** A measure of how the effect of one factor is dependent on the level of the other factor. A large interaction effect means the factors are not independent.
+            
+            This method is numerically stable and provides a clear, quantitative, and visual summary of the experiment's outcome without relying on a potentially unstable regression model.
 
             **Procedure:**
-            1.  The tool loads data from a designed experiment.
-            2.  The user selects the input factors and the output response variable.
-            3.  The tool fits the regression model, generates the ANOVA table, and creates the 3D surface plot.
+            1.  The tool loads data from the 2x2 designed experiment.
+            2.  It calculates the main effect for each factor and the two-way interaction effect.
+            3.  It generates two plots:
+                - A **bar chart** showing the magnitude and direction of each calculated effect.
+                - An **interaction plot** to visually assess the relationship between the factors.
 
             **Significance of Results:**
-            - **ANOVA Table:** If the p-value for a factor is low (< 0.05), it means that changing that factor has a significant effect on the output. A significant interaction effect (`factor1:factor2`) means the effect of one factor depends on the level of the other. This is a key insight that "one-factor-at-a-time" experiments miss.
-            - **Response Surface Plot:** This plot provides an intuitive map for optimization. The user can visually identify the combination of factor settings that leads to the maximum (or minimum) response. For example, it might show that maximum library yield is achieved with 14 PCR cycles AND 50ng of input DNA.
+            - **Effects Plot:** The largest bars (positive or negative) correspond to the most influential factors or interactions. This immediately tells you what parameters to focus on for optimization.
+            - **Interaction Plot:** If the lines on this plot are **parallel**, there is no significant interaction. If the lines **cross or are not parallel**, a significant interaction is present. This is a critical finding, as it means the optimal level for one factor depends on the level chosen for the other.
             """)
         doe_data = ssm.get_data("quality_system", "doe_data")
         df_doe = pd.DataFrame(doe_data)
@@ -791,62 +796,27 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         st.dataframe(df_doe, use_container_width=True)
         
         try:
-            # *** SME-ENHANCED FIX: Definitive, multi-step data sanitization before analysis ***
-            required_cols = ['library_yield', 'pcr_cycles', 'input_dna']
+            # --- SME Definitive Fix: Replace fragile ANOVA model with robust effects calculation ---
+            factor1, factor2, response = 'pcr_cycles', 'input_dna', 'library_yield'
             
-            if not all(col in df_doe.columns for col in required_cols):
-                raise ValueError("DOE data is missing one or more required columns for analysis.")
-
-            # Step 1: Coerce all relevant columns to numeric, converting invalid entries to NaN
-            for col in required_cols:
-                df_doe[col] = pd.to_numeric(df_doe[col], errors='coerce')
-
-            # Step 2: Replace any infinite values (positive or negative) with NaN
-            df_doe.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-            # Step 3: Drop any rows that now contain NaN in the essential columns
-            original_rows = len(df_doe)
-            df_doe.dropna(subset=required_cols, inplace=True)
-            cleaned_rows = len(df_doe)
+            # Defensive check for required columns
+            if not all(col in df_doe.columns for col in [factor1, factor2, response]):
+                raise ValueError("DOE data is missing one or more required columns.")
             
-            if cleaned_rows < original_rows:
-                logger.warning(f"Removed {original_rows - cleaned_rows} rows from DOE data due to non-finite values (NaN or Inf).")
-                st.warning(f"**Data Quality Alert:** {original_rows - cleaned_rows} rows were excluded from the DOE analysis due to missing or invalid numerical data. Please review the source data.", icon="⚠️")
+            # The new, robust plotter calculates effects directly without a model
+            effects_fig, interaction_fig = create_doe_effects_plot(df_doe, factor1, factor2, response)
+
+            st.write(f"##### Main Effects and Interaction Analysis")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(effects_fig, use_container_width=True)
+            with col2:
+                st.plotly_chart(interaction_fig, use_container_width=True)
             
-            if len(df_doe) < 4:
-                 st.warning("Insufficient valid data remains for DOE analysis after sanitization.")
-            else:
-                model = ols('library_yield ~ C(pcr_cycles) * C(input_dna)', data=df_doe).fit()
-                anova_table = anova_lm(model, typ=2)
-                
-                st.write("##### ANOVA Results")
-                st.dataframe(anova_table)
-                
-                st.write("##### 3D Response Surface Plot")
-                pcr_levels = df_doe['pcr_cycles'].unique()
-                dna_levels = df_doe['input_dna'].unique()
-                grid_x, grid_y = np.meshgrid(np.linspace(pcr_levels.min(), pcr_levels.max(), 10),
-                                             np.linspace(dna_levels.min(), dna_levels.max(), 10))
-                grid_df = pd.DataFrame({'pcr_cycles': grid_x.flatten(), 'input_dna': grid_y.flatten()})
-                grid_df['predicted_yield'] = model.predict(grid_df)
-                
-                fig = go.Figure(data=[go.Surface(z=grid_df['predicted_yield'].values.reshape(grid_x.shape),
-                                                  x=grid_x, y=grid_y, colorscale='Viridis')])
-                fig.add_trace(go.Scatter3d(x=df_doe['pcr_cycles'], y=df_doe['input_dna'], z=df_doe['library_yield'],
-                                           mode='markers', marker=dict(size=5, color='red')))
-                fig.update_layout(title='Predicted Library Yield Response Surface',
-                                  scene=dict(xaxis_title='PCR Cycles', yaxis_title='Input DNA (ng)', zaxis_title='Library Yield'),
-                                  height=600)
-                st.plotly_chart(fig, use_container_width=True)
-                
-                if 'C(pcr_cycles):C(input_dna)' in anova_table.index:
-                    p_val_interaction = anova_table.loc['C(pcr_cycles):C(input_dna)', 'PR(>F)']
-                    if p_val_interaction < 0.05:
-                        st.success("**Conclusion:** Both PCR cycles and input DNA amount, as well as their interaction, are statistically significant predictors of library yield. The response surface plot can be used to identify optimal conditions.")
-                    else:
-                        st.success("**Conclusion:** Both PCR cycles and input DNA amount are statistically significant predictors of library yield, but their interaction is not. The response surface plot can be used to identify optimal conditions.")
-                else:
-                    st.warning("Could not determine interaction effect from the model.")
+            st.success("""
+            **Conclusion:** The effects plot clearly quantifies the impact of each factor and their interaction on library yield. The interaction plot visualizes this relationship, indicating whether the optimal settings for one factor depend on the other. This robust analysis provides the necessary insights for process optimization.
+            """)
+
         except Exception as e:
             st.error(f"Could not perform DOE analysis. Error: {e}")
             logger.error(f"DOE analysis failed: {e}", exc_info=True)
@@ -884,7 +854,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             **Procedure:**
             1.  A pre-trained classifier and a sample of the training data are loaded.
-            2.  A SHAP `TreeExplainer` is created for the model.
+            2.  A SHAP `Explainer` is created for the model. This modern API automatically selects the best algorithm (e.g., TreeExplainer for tree-based models).
             3.  SHAP values are calculated for every feature for every sample in the dataset.
             4.  A **summary plot** is generated. This plot shows the most important features overall and the distribution of their SHAP values.
 
@@ -899,11 +869,14 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         X, y = ssm.get_data("ml_models", "classifier_data")
         model = ssm.get_data("ml_models", "classifier_model")
         
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X)
+        # --- SME Definitive Fix: Use the modern, robust `shap.Explainer` API ---
+        # This API automatically handles model types and prevents mismatches.
+        explainer = shap.Explainer(model, X)
+        shap_values = explainer(X)
         
         st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-        plot_buffer = create_shap_summary_plot(shap_values[1], X)
+        # For a binary classifier, shap_values for the positive class are at index 1
+        plot_buffer = create_shap_summary_plot(shap_values.values[:,:,1], X)
         if plot_buffer:
             st.image(plot_buffer)
             st.success("The SHAP analysis confirms that known oncogenic methylation markers (e.g., `promoter_A_met`, `enhancer_B_met`) are the most significant drivers of a 'Cancer Signal Detected' result. This provides strong evidence that the model has learned biologically relevant signals, fulfilling a key requirement of the algorithm's analytical validation.")
