@@ -1,30 +1,3 @@
-# --- SME OVERHAUL: Definitive, Compliance-Focused Version ---
-"""
-Renders the Design Outputs section of the DHF dashboard.
-
-This module provides a structured, categorized UI for managing all tangible
-outputs of the design process, which collectively form the basis for the
-Device Master Record (DMR). It ensures each output (specifications, code,
-procedures, etc.) is version-controlled, its status is tracked, and it is
-traceably linked to a design input, as required by 21 CFR 820.30(d).
-This module includes analytics for monitoring DMR completeness.
-"""
-
-# --- Standard Library Imports ---
-import logging
-from typing import Any, Dict, List
-
-# --- Third-party Imports ---
-import pandas as pd
-import streamlit as st
-
-# --- Local Application Imports ---
-from ..utils.session_state_manager import SessionStateManager
-
-# --- Setup Logging ---
-logger = logging.getLogger(__name__)
-
-
 def render_design_outputs(ssm: SessionStateManager) -> None:
     """
     Renders the UI for managing categorized Design Outputs.
@@ -91,6 +64,7 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
 
         st.divider()
         
+        # Create mapping for human-readable selectbox options
         req_options_map = {
             f"{req.get('id', '')}: {req.get('description', '')[:70]}...": req.get('id', '')
             for req in inputs_data
@@ -110,17 +84,24 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
             st.subheader(f"{key_suffix.replace('_', ' ').title()} Specifications")
             st.caption(help_text)
             
+            # Isolate the data for the current tab
             tab_df = df[df['type'].isin(type_options)].copy()
+            if tab_df.empty:
+                tab_df = pd.DataFrame(columns=['id', 'type', 'title', 'version', 'status', 'approval_date', 'linked_input_id', 'link_to_artifact'])
+
+            # --- RERUN LOOP FIX: Prepare data consistently BEFORE comparison ---
             
-            # Create the original state for comparison AFTER potential type conversions
+            # 1. Convert date column for editor display.
             if 'approval_date' in tab_df.columns:
                 tab_df['approval_date'] = pd.to_datetime(tab_df['approval_date'], errors='coerce')
             
-            original_records = tab_df.to_dict('records')
-
-            # Map the raw ID to the descriptive text for display in the editor
+            # 2. Map the raw ID to the descriptive text for display in the editor.
             tab_df['linked_input_descriptive'] = tab_df['linked_input_id'].map(reverse_req_map)
 
+            # 3. Take a snapshot of the "before" state for a clean comparison.
+            original_df = tab_df.copy()
+
+            # 4. Render the data editor
             edited_tab_df = st.data_editor(
                 tab_df, num_rows="dynamic", use_container_width=True, key=f"output_editor_{key_suffix}",
                 column_config={
@@ -131,29 +112,30 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
                     "status": st.column_config.SelectboxColumn("Status", options=["Draft", "In Review", "Approved", "Obsolete"], required=True),
                     "approval_date": st.column_config.DateColumn("Approval Date", format="YYYY-MM-DD"),
                     "linked_input_descriptive": st.column_config.SelectboxColumn("Traces to Requirement", options=list(req_options_map.keys()), required=True),
-                    "linked_input_id": None, 
+                    "linked_input_id": None, # Hide the raw ID column
                     "link_to_artifact": st.column_config.LinkColumn("Link to Artifact")
                 }, hide_index=True
             )
 
-            # *** BUG FIX: Convert edited data back to original format BEFORE comparison ***
-            edited_records_for_comparison = edited_tab_df.copy()
-            if 'approval_date' in edited_records_for_comparison.columns:
-                 edited_records_for_comparison['approval_date'] = pd.to_datetime(edited_records_for_comparison['approval_date']).dt.date
-            
-            # Compare dicts to avoid floating point/type issues with DataFrame.equals()
-            if str(edited_records_for_comparison.to_dict('records')) != str(original_records):
+            # 5. Compare the "before" and "after" DataFrames. DataFrame.equals() is robust to type differences.
+            if not original_df.equals(edited_tab_df):
+                # If they are different, a change has occurred. Now, prepare the data for saving.
+                
                 # Map the descriptive text back to the raw ID for storage
                 edited_tab_df['linked_input_id'] = edited_tab_df['linked_input_descriptive'].map(req_options_map)
                 df_to_save = edited_tab_df.drop(columns=['linked_input_descriptive'])
                 
-                # Ensure date is string for JSON serialization
+                # Ensure date is a string for JSON serialization
                 if 'approval_date' in df_to_save.columns:
-                    df_to_save['approval_date'] = df_to_save['approval_date'].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+                    # Use .dt.date to strip time before formatting, preventing NaT issues
+                    df_to_save['approval_date'] = pd.to_datetime(df_to_save['approval_date']).dt.date.astype(str).replace({'NaT': None})
 
-                # Merge back with other types and save
+                # Merge back with other types and save to session state
                 other_outputs = df_outputs[~df_outputs['type'].isin(type_options)].to_dict('records')
-                updated_all_outputs = other_outputs + df_to_save.to_dict('records')
+                # Filter out any empty rows from the editor before saving
+                cleaned_records_to_save = [rec for rec in df_to_save.to_dict('records') if rec.get('id')]
+                updated_all_outputs = other_outputs + cleaned_records_to_save
+                
                 ssm.update_data(updated_all_outputs, "design_outputs", "documents")
                 logger.info(f"Design outputs for '{key_suffix}' updated.")
                 st.toast(f"{key_suffix.replace('_', ' ').title()} saved!", icon="✅")
@@ -164,7 +146,7 @@ def render_design_outputs(ssm: SessionStateManager) -> None:
         with tabs[1]:
             render_editor_tab(df_outputs, "software_algorithm", ["Software Spec", "Algorithm"], "List the Software Design Specifications (SDS), locked algorithm models, and source code repositories that define the bioinformatics pipeline and classifier.")
         with tabs[2]:
-            render_editor_tab(df_outputs, "hardware_kit", ["Hardware Spec"], "Define the specifications for the physical components of the service, such as the blood collection tube, packaging, and shipping materials.")
+            render_editor_tab(df_outputs, "hardware_kit", ["Hardware Spec", "Kit"], "Define the specifications for the physical components of the service, such as the blood collection tube, packaging, and shipping materials.")
         with tabs[3]:
             render_editor_tab(df_outputs, "labeling_procedures", ["Labeling", "Procedure"], "List all controlled documents that will be part of the final service, including the Instructions for Use (IFU), lab SOPs, and the Clinical Report template.")
 
