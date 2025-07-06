@@ -1,27 +1,16 @@
-# --- Core Application Framework ---
-streamlit==1.33.0
-
-# --- Data Handling and Numerical Operations ---
-pandas==2.2.1
+# Core Application & Data Handling
+streamlit==1.35.0
+pandas==2.2.2
 numpy==1.26.4
 
-# --- Visualization Engine ---
+# Plotting & Visualization
 plotly==5.22.0
 
-# --- Statistical Analysis ---
-# For advanced stats: ANOVA, hypothesis testing, power analysis, etc.
+# Statistical Analysis
 scipy==1.13.0
-statsmodels==0.14.1
+statsmodels==0.14.2
 
-# --- Machine Learning & Explainability ---
-# For predictive models and SHAP (classifier explainability)
+# Machine Learning & Explainability
 scikit-learn==1.4.2
+lightgbm==4.3.0
 shap==0.45.0
-
-# Note: matplotlib is a dependency of `shap` for plotting, 
-# but it's good practice to list it explicitly if used.
-matplotlib==3.8.4
-
-# --- Optional Pandas Dependencies ---
-# Required for the .to_markdown() functionality used in report generation.
-tabulate==0.9.0
