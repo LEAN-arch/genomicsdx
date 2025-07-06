@@ -1066,7 +1066,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """)
     
     try:
-        # --- DEPENDENCY IMPORTS ---
         from sklearn.gaussian_process import GaussianProcessRegressor
         from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
         from sklearn.ensemble import RandomForestClassifier
@@ -1079,26 +1078,26 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.error(f"This function requires scikit-learn, statsmodels, and shap. Please install them. Error: {e}", icon="🚨")
         return
 
-    # --- DEFINITIVE FIX for IndexError: Corrected list of tabs ---
+    # --- DEFINITIVE FIX: Corrected list of tab names ---
     ml_tabs = st.tabs([
-        "1. Classifier Performance",
-        "2. Classifier Explainability",
-        "3. Cancer Signal of Origin",
-        "4. Optimization Viz (3D)",
-        "5. NGS: Fragmentomics",
-        "6. NGS: Methylation Entropy",
-        "7. NGS: CNV Analysis",
-        "8. NGS: Immune Repertoire",
-        "9. Ops: Forecasting",
-        "10. Ops: Predictive QC"
+        "1. Classifier Performance (ROC & PR)",
+        "2. Classifier Explainability (SHAP)",
+        "3. Cancer Signal of Origin (CSO)",
+        "4. Optimization Visualization (3D)",
+        "5. Assay Optimization (RSM vs. ML)",
+        "6. Time Series Forecasting (Operations)",
+        "7. Predictive Run QC (On-Instrument)",
+        "8. NGS: Fragmentomics Analysis",
+        "9. NGS: Sequencing Error Modeling",
+        "10. NGS: Methylation Entropy Analysis"
     ])
 
     X, y = ssm.get_data("ml_models", "classifier_data")
     model = ssm.get_data("ml_models", "classifier_model")
     if X is None or y is None or model is None:
-        st.error("ML data or model not found. Cannot render this tab.")
+        st.warning("ML model or data not available. Some analytics may not be available.")
         return
-
+        
     # --- Tool 1: ROC & PR ---
     with ml_tabs[0]:
         st.subheader("Classifier Performance: ROC and Precision-Recall")
@@ -1117,23 +1116,63 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision.", icon="✅")
 
     # --- Tool 2: SHAP ---
+ # --- Tool 2: SHAP ---
+# --- Tool 2: Classifier Explainability (SHAP) ---
     with ml_tabs[1]:
         st.subheader("Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Content is fine
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To unlock the "black box" of complex machine learning models. For a regulated SaMD (Software as a Medical Device), it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
+    
+            **Conceptual Walkthrough: The Team of Experts**
+            Imagine your classifier is a team of medical experts deciding on a diagnosis. A positive diagnosis is made. Who was most influential? SHAP is like an audit that determines how much "credit" or "blame" each expert (feature) gets for the final decision. The SHAP summary plot lines up all the features and shows their overall impact. For a given feature, red dots mean a high value for that feature, and blue dots mean a low value. If red dots are on the right side of the center line, it means high values of that feature *push the prediction toward "Cancer Signal Detected."*
+    
+            **Mathematical Basis & Formula:**
+            SHAP is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the prediction. The formula for the Shapley value for a feature *i* is:
+            $$ \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)] $$
+            This calculates the weighted average of a feature's marginal contribution over all possible feature combinations.
+    
+            **Procedure:**
+            1. Train a classifier model.
+            2. Create a SHAP `Explainer` object based on the model.
+            3. Use the explainer to calculate SHAP values for a set of samples.
+            4. Visualize the results, typically with a summary plot.
+            
+            **Significance of Results:**
+            Model explainability is a major focus for regulatory bodies (e.g., FDA's AI/ML Action Plan). A SHAP analysis provides critical evidence for a **PMA submission** by:
+            1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
+            2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
+            3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
+            """)
+        
+    with ml_tabs[1]:
+        st.subheader("Classifier Explainability (SHAP)")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown(r"""...""") # Explanation content
         try:
             with st.spinner("Calculating SHAP values..."):
                 n_samples = min(100, len(X))
                 X_sample = X.sample(n=n_samples, random_state=42)
                 explainer = shap.TreeExplainer(model)
                 shap_explanation_object = explainer(X_sample)
-                fig_shap = create_shap_summary_plot(shap_explanation_object[:,:,1], X_sample)
+                
+                fig, ax = plt.subplots(dpi=150)
+                shap.summary_plot(shap_explanation_object[:,:,1], show=False)
+                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
+                plt.tight_layout()
+                
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", bbox_inches="tight")
+                plt.close(fig)
+                buf.seek(0)
             st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            st.pyplot(fig_shap, clear_figure=True)
+            st.image(buf, use_column_width=True)
             st.success("SHAP analysis confirms model predictions are driven by known biomarkers.", icon="✅")
         except Exception as e:
             st.error(f"An error occurred during SHAP analysis: {e}")
             logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+
         
     # --- Tool 3: CSO ---
     with ml_tabs[2]:
