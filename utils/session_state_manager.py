@@ -1,4 +1,4 @@
-#genomicsdx/utils/session_state_manager.py
+# genomicsdx/utils/session_state_manager.py
 # --- SME OVERHAUL: Definitive, Fully Populated, and Corrected Version ---
 """
 Manages the application's session state, acting as an in-memory eQMS.
@@ -31,7 +31,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
     demo_current_date = base_date + timedelta(days=450)
     gauss = random.gauss
     choice = random.choice
-    team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista"]
+    team_list = ["Elena Reyes, PhD", "Ben Carter, MD", "Sofia Chen, PhD", "Marcus Thorne, PhD", "Kenji Tanaka, PhD", "Jose Bautista", "Maria Rodriguez", "David Lee"]
 
     # --- ML Data Generation (SME Definitive Refactor) ---
     np.random.seed(42)
@@ -94,13 +94,16 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
                 {"role": "Assay Development Lead", "name": "Sofia Chen, PhD", "responsibility": "Wet-lab assay design, optimization, and analytical validation."},
                 {"role": "Bioinformatics Lead", "name": "Marcus Thorne, PhD", "responsibility": "Bioinformatics pipeline, ML classifier development, and software V&V."},
                 {"role": "Regulatory Affairs Lead", "name": "Kenji Tanaka, PhD", "responsibility": "PMA submission strategy and FDA interactions."},
-                {"role": "Quality Assurance Lead", "name": "Jose Bautista", "responsibility": "DHF owner, QMS compliance, risk management, and audit readiness."}
+                {"role": "Quality Assurance Lead", "name": "Jose Bautista", "responsibility": "DHF owner, QMS compliance, risk management, and audit readiness."},
+                # <<< FIX: Added Lab Technologist roles for use in the Training Matrix >>>
+                {"role": "Lead Lab Technologist", "name": "Maria Rodriguez", "responsibility": "Daily lab operations, staff training, and assay execution."},
+                {"role": "Lab Technologist", "name": "David Lee", "responsibility": "Sample processing and assay execution."}
             ],
             "standards": [
                 {"id": "21 CFR 820", "title": "Quality System Regulation", "category": "Regulation"},
                 {"id": "ISO 13485:2016", "title": "Medical devices — Quality management systems", "category": "ISO Standard"},
                 {"id": "ISO 14971:2019", "title": "Medical devices — Application of risk management", "category": "ISO Standard"},
-                {"id": "ISO 62304:2006", "title": "Medical device software — Software life cycle processes", "category": "ISO Standard"},
+                {"id": "IEC 62304:2006", "title": "Medical device software — Software life cycle processes", "category": "IEC Standard"},
                 {"id": "IEC 62366-1:2015", "title": "Application of usability engineering to medical devices", "category": "IEC Standard"},
                 {"id": "CLSI EP05-A3", "title": "Evaluation of Precision of Quantitative Measurement Procedures", "category": "CLSI Guideline"},
                 {"id": "CLSI EP17-A2", "title": "Evaluation of Detection Capability for Clinical Laboratory Measurement Procedures", "category": "CLSI Guideline"}
@@ -108,7 +111,7 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
             "clinical_dev_plan": "The pivotal clinical study (PATHFINDER-2) will be a prospective, multi-site, cohort study enrolling 10,000 asymptomatic individuals aged 50-79. Co-primary endpoints are sensitivity and specificity, with CSO accuracy as a key secondary endpoint. All activities are governed by the Clinical Study Protocol CSP-001.",
             "av_master_plan_ref": "AV-MP-001",
             "software_level_of_concern": "Major",
-            "sw_dev_plan": "Software will be developed under a phase-gated Agile methodology, compliant with ISO 62304 Class C. All code will be managed in a version-controlled Git repository with mandatory code reviews and unit testing. Algorithm lock criteria are defined in SW-PLAN-001.",
+            "sw_dev_plan": "Software will be developed under a phase-gated Agile methodology, compliant with IEC 62304 Class C. All code will be managed in a version-controlled Git repository with mandatory code reviews and unit testing. Algorithm lock criteria are defined in SW-PLAN-001.",
             "risk_management_plan_ref": "RMP-001",
             "human_factors_plan_ref": "HFE-PLAN-001",
             "config_management_plan_ref": "CM-PLAN-001",
@@ -122,20 +125,20 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
         "risk_management_file": {
             "plan_scope": "This plan covers all risks associated with the GenomicsDx Sentry™ service, from sample collection to result reporting, focusing on patient harm resulting from incorrect test results. The process adheres to ISO 14971:2019.",
             "hazards": [
-                {"id": "H-01", "description": "False Negative Result", "foreseeable_event": "Assay fails to detect cancer signal in a patient who has cancer.", "potential_harm": "Delayed diagnosis and treatment, leading to worse clinical outcome.", "initial_S": 5, "initial_O": 3, "final_S": 5, "final_O": 2, "risk_control_measure": "Optimize assay LoD; extensive clinical validation to characterize sensitivity.", "verification_link": "AV-LOD-01"}, // <-- MODIFIED: Linked LoD optimization to the LoD study
+                {"id": "H-01", "description": "False Negative Result", "foreseeable_event": "Assay fails to detect cancer signal in a patient who has cancer.", "potential_harm": "Delayed diagnosis and treatment, leading to worse clinical outcome.", "initial_S": 5, "initial_O": 3, "final_S": 5, "final_O": 2, "risk_control_measure": "Optimize assay LoD; extensive clinical validation to characterize sensitivity.", "verification_link": "AV-LOD-01"}, # <-- FIX: Changed comment from // to #
                 {"id": "H-02", "description": "False Positive Result", "foreseeable_event": "Assay detects a cancer signal in a patient who does not have cancer.", "potential_harm": "Patient anxiety, unnecessary and potentially invasive diagnostic follow-up procedures.", "initial_S": 4, "initial_O": 3, "final_S": 4, "final_O": 1, "risk_control_measure": "Optimize classifier for high specificity; clear labeling of test limitations.", "verification_link": "CV-STUDY-001"},
                 {"id": "H-03", "description": "Sample Mix-up", "foreseeable_event": "Patient A's sample is processed under Patient B's identity.", "potential_harm": "Incorrect result delivered to two patients.", "initial_S": 5, "initial_O": 2, "final_S": 5, "final_O": 1, "risk_control_measure": "Implement 2D barcode system and LIMS integration for positive sample tracking.", "verification_link": "LIMS-VAL-01"},
                 {"id": "H-04", "description": "Incorrect Cancer Signal Origin", "foreseeable_event": "A true cancer signal is detected, but the predicted origin is incorrect (e.g., predicted lung, actual colon).", "potential_harm": "Misdirected diagnostic workup, delaying correct diagnosis.", "initial_S": 3, "initial_O": 3, "final_S": 3, "final_O": 2, "risk_control_measure": "Train CSO classifier on diverse cancer types; validate CSO accuracy in clinical trial.", "verification_link": "CV-STUDY-001"}
             ],
             "assay_fmea": [
-                {"id": "AFM-01", "process_step": "Bisulfite Conversion", "failure_mode": "Incomplete DNA conversion", "potential_effect": "Incorrect methylation measurement, potential false result.", "S": 4, "O": 3, "D": 2, "mitigation": "Include unmethylated lambda DNA control in every run; set QC metric for conversion efficiency.", "verification_link": "AV-PREC-01"}, // <-- MODIFIED: Linked QC metric to the precision study where it's used
-                {"id": "AFM-02", "process_step": "Library Amplification", "failure_mode": "PCR contamination", "potential_effect": "False positive signal due to foreign DNA.", "S": 5, "O": 2, "D": 3, "mitigation": "Use physically separated pre/post-PCR areas; negative controls in each batch.", "verification_link": "PPQ-01"}, // <-- MODIFIED: Linked contamination control to the PPQ runs
-                {"id": "AFM-03", "process_step": "Reagent Handling", "failure_mode": "Use of expired/improperly stored reagent", "potential_effect": "Systematic assay failure; inaccurate results for entire batch.", "S": 4, "O": 2, "D": 1, "mitigation": "LIMS-based reagent inventory tracking with automated expiry alerts.", "verification_link": ""} // <-- NOTE: Intentionally left blank to demonstrate the "Untraced" feature
+                {"id": "AFM-01", "process_step": "Bisulfite Conversion", "failure_mode": "Incomplete DNA conversion", "potential_effect": "Incorrect methylation measurement, potential false result.", "S": 4, "O": 3, "D": 2, "mitigation": "Include unmethylated lambda DNA control in every run; set QC metric for conversion efficiency.", "verification_link": "AV-PREC-01"}, # <-- FIX: Changed comment from // to #
+                {"id": "AFM-02", "process_step": "Library Amplification", "failure_mode": "PCR contamination", "potential_effect": "False positive signal due to foreign DNA.", "S": 5, "O": 2, "D": 3, "mitigation": "Use physically separated pre/post-PCR areas; negative controls in each batch.", "verification_link": "PPQ-01"}, # <-- FIX: Changed comment from // to #
+                {"id": "AFM-03", "process_step": "Reagent Handling", "failure_mode": "Use of expired/improperly stored reagent", "potential_effect": "Systematic assay failure; inaccurate results for entire batch.", "S": 4, "O": 2, "D": 1, "mitigation": "LIMS-based reagent inventory tracking with automated expiry alerts.", "verification_link": ""} # <-- FIX: Changed comment from // to #
             ],
             "service_fmea": [
-                {"id": "SFM-01", "process_step": "Classifier Algorithm", "failure_mode": "Model overfitting to training data", "potential_effect": "Poor generalization, reduced accuracy on new patients.", "S": 5, "O": 3, "D": 3, "mitigation": "Use independent hold-out test set; cross-validation; L2 regularization.", "verification_link": "SW-VAL-01"}, // <-- MODIFIED: Linked model validation to the SW validation report
-                {"id": "SFM-02", "process_step": "Data Transfer", "failure_mode": "Corruption of FASTQ file during upload from sequencer", "potential_effect": "Run failure; potential for incorrect data analysis if corruption is subtle.", "S": 4, "O": 2, "D": 1, "mitigation": "Implement MD5 checksum verification for all file transfers.", "verification_link": "SW-VER-02"}, // <-- MODIFIED: Linked to the specific checksum verification test
-                {"id": "SFM-03", "process_step": "Report Generation", "failure_mode": "Patient demographic data mismatched with result data", "potential_effect": "Correct result delivered on a report with wrong patient name.", "S": 5, "O": 1, "D": 2, "mitigation": "Automated data merge using unique sample ID as primary key; manual QC check of report before release.", "verification_link": "HF-VAL-02"} // <-- MODIFIED: Linked to the usability study of the report
+                {"id": "SFM-01", "process_step": "Classifier Algorithm", "failure_mode": "Model overfitting to training data", "potential_effect": "Poor generalization, reduced accuracy on new patients.", "S": 5, "O": 3, "D": 3, "mitigation": "Use independent hold-out test set; cross-validation; L2 regularization.", "verification_link": "SW-VAL-01"}, # <-- FIX: Changed comment from // to #
+                {"id": "SFM-02", "process_step": "Data Transfer", "failure_mode": "Corruption of FASTQ file during upload from sequencer", "potential_effect": "Run failure; potential for incorrect data analysis if corruption is subtle.", "S": 4, "O": 2, "D": 1, "mitigation": "Implement MD5 checksum verification for all file transfers.", "verification_link": "SW-VER-02"}, # <-- FIX: Changed comment from // to #
+                {"id": "SFM-03", "process_step": "Report Generation", "failure_mode": "Patient demographic data mismatched with result data", "potential_effect": "Correct result delivered on a report with wrong patient name.", "S": 5, "O": 1, "D": 2, "mitigation": "Automated data merge using unique sample ID as primary key; manual QC check of report before release.", "verification_link": "HF-VAL-02"} # <-- FIX: Changed comment from // to #
             ],
             "overall_risk_benefit_analysis": "The overall residual risk of the GenomicsDx Sentry™ Test, considering the implemented controls for false positive, false negative, and other identified hazards, is judged to be acceptable. The extensive analytical and clinical validation demonstrates that these risks have been mitigated to the lowest practicable level. The substantial clinical benefit of non-invasively detecting multiple cancers at an earlier, more treatable stage, outweighs the residual risks."
         },
@@ -185,6 +188,9 @@ def _create_mced_diagnostic_dhf_model(version: int) -> Dict[str, Any]:
                 {"id": "SW-VER-01", "test_type": "SW Verification", "test_name": "Unit Test Suite for Alignment Module", "input_verified_id": "SW-001", "output_verified_id": "SPEC-SW-01", "status": "Completed", "result": "Pass", "report_link": "/reports/SW-VER-01.pdf"},
                 {"id": "SW-VER-02", "test_type": "SW Verification", "test_name": "Verification of MD5 Checksum Implementation", "input_verified_id": "SW-002", "output_verified_id": "SPEC-SW-01", "status": "Completed", "result": "Pass", "report_link": "/reports/SW-VER-02.pdf"},
                 {"id": "AV-STAB-01", "test_type": "Sample Stability", "test_name": "cfDNA stability in collection tube at ambient temp", "input_verified_id": "KIT-001", "output_verified_id": "LBL-001", "status": "Completed", "result": "Pass", "report_link": "/reports/AV-STAB-01.pdf"},
+                 # Added to provide links from FMEA
+                {"id": "SW-VAL-01", "test_type": "SW Validation", "test_name": "Validation of Classifier v3.0 on Independent Cohort", "input_verified_id": "SYS-001", "output_verified_id": "MODEL-01", "status": "Completed", "result": "Pass", "report_link": "/reports/SW-VAL-01.pdf"},
+                {"id": "LIMS-VAL-01", "test_type": "SW Validation", "test_name": "LIMS Sample Traceability Validation", "input_verified_id": "SYS-001", "output_verified_id": "PROC-LAB-01", "status": "Completed", "result": "Pass", "report_link": "/reports/LIMS-VAL-01.pdf"}
             ]},
         "design_validation": {}, # Populated under clinical_study for this model
         "design_changes": {"changes": [
