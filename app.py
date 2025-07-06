@@ -236,7 +236,7 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
                     st.markdown(f"**Associated Control Metric:** `{param.get('control_metric', 'N/A')}`")
                     st.markdown(f"**Acceptance Criteria:** `{param.get('acceptance_criteria', 'N/A')}`")
                     st.divider()
-            st.info("💡 A well-understood relationship between CAPs and the final test result is the foundation of a robust assay, as required by 21 CFR 820.30 and ISO 13485.", icon="💡")
+            st.info("A well-understood relationship between CAPs and the final test result is the foundation of a robust assay, as required by 21 CFR 820.30 and ISO 13485.", icon="💡")
         except Exception as e: st.error("Could not render Analytical Performance panel."); logger.error(f"Error in render_assay_and_ops_readiness_panel (Assay): {e}", exc_info=True)
     with qbd_tabs[1]:
         st.markdown("**Tracking Key Lab Operations & Validation Status**")
@@ -265,7 +265,7 @@ def render_assay_and_ops_readiness_panel(ssm: SessionStateManager) -> None:
                 stability_df = get_cached_df(lab_ops_data.get('sample_stability_studies', []))
                 if not stability_df.empty: st.dataframe(stability_df, use_container_width=True, hide_index=True)
                 else: st.caption("No sample stability study data.")
-            st.info("💡 Successful Assay Transfer (21 CFR 820.170) is contingent on robust lab processes, qualified reagents, and validated sample handling as per ISO 15189.", icon="💡")
+            st.info("Successful Assay Transfer (21 CFR 820.170) is contingent on robust lab processes, qualified reagents, and validated sample handling as per ISO 15189.", icon="💡")
         except Exception as e: st.error("Could not render CLIA Lab readiness panel."); logger.error(f"Error in render_assay_and_ops_readiness_panel (Lab Ops): {e}", exc_info=True)
 
 def render_audit_and_improvement_dashboard(ssm: SessionStateManager) -> None:
