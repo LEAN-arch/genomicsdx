@@ -28,6 +28,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
+import matplotlib.pyplot as plt
+import shap
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import precision_recall_curve, auc, confusion_matrix
 
 # --- Robust Path Correction Block ---
 try:
@@ -692,6 +700,53 @@ def render_dhf_explorer_tab(ssm: SessionStateManager):
     st.divider()
     page_function = DHF_EXPLORER_PAGES[dhf_selection]
     page_function(ssm)
+# In genomicsdx/app.py, within the plotting helpers section
+
+def create_doe_effects_plot(df, factors, response):
+    """Creates main effects and interaction plots for a DOE."""
+    fig = px.line(title=f"<b>Interaction Plot for {response}</b>")
+    # Simplified for demonstration: just showing one interaction
+    interaction_df = df.groupby([factors[0], factors[2]])[response].mean().reset_index()
+    for factor_val in interaction_df[factors[2]].unique():
+        plot_df = interaction_df[interaction_df[factors[2]] == factor_val]
+        fig.add_trace(go.Scatter(x=plot_df[factors[0]], y=plot_df[response], mode='lines+markers', name=f'{factors[2]} = {factor_val}'))
+    fig.update_layout(xaxis_title=factors[0], yaxis_title=f'Mean of {response}', template="plotly_white")
+    return fig
+
+def create_stability_plot(df, time_col, value_col, threshold):
+    """Creates a stability plot with linear regression and 95% CI for shelf-life."""
+    X = sm.add_constant(df[time_col])
+    y = df[value_col]
+    model = sm.OLS(y, X).fit()
+    
+    x_pred = np.linspace(df[time_col].min(), df[time_col].max() * 1.5, 100)
+    pred_frame = model.get_prediction(sm.add_constant(x_pred)).summary_frame(alpha=0.05)
+    
+    # Solve for shelf life: y = mx + c  =>  x = (y - c) / m
+    intercept, slope = model.params
+    shelf_life = (threshold - intercept) / slope if slope < 0 else np.inf
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df[time_col], y=df[value_col], mode='markers', name='Observed Data'))
+    fig.add_trace(go.Scatter(x=x_pred, y=pred_frame['mean'], mode='lines', name='Regression Line', line=dict(color='red')))
+    fig.add_trace(go.Scatter(x=x_pred, y=pred_frame['mean_ci_upper'], fill='tonexty', mode='lines', line_color='rgba(255,0,0,0.2)', name='95% CI'))
+    fig.add_trace(go.Scatter(x=x_pred, y=pred_frame['mean_ci_lower'], fill='tonexty', mode='lines', line_color='rgba(255,0,0,0.2)', showlegend=False))
+    
+    fig.add_hline(y=threshold, line_dash="dash", line_color="black", annotation_text="Failure Threshold")
+    if np.isfinite(shelf_life):
+        fig.add_vline(x=shelf_life, line_dash="dash", line_color="purple", annotation_text=f"Predicted Shelf-Life: {shelf_life:.1f} Months")
+
+    fig.update_layout(title="<b>Stability Analysis for Shelf-Life Determination</b>", xaxis_title="Time (Months)", yaxis_title="Assay Activity (%)", template="plotly_white")
+    return fig
+
+def create_shap_summary_plot(shap_values, X_sample):
+    """Creates a SHAP summary plot figure object."""
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+    shap.summary_plot(shap_values, X_sample, show=False, plot_type="dot")
+    fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
+    plt.tight_layout()
+    return fig
+# In genomicsdx/app.py, replace the existing function
 
 def render_statistical_tools_tab(ssm: SessionStateManager):
     """
@@ -720,53 +775,28 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     with tool_tabs[0]:
         st.subheader("Statistical Process Control (SPC) for Daily Assay Monitoring")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:** To monitor the stability and precision of an assay over time using quality control (QC) materials. It serves as an early warning system to detect process drift or shifts *before* they impact patient results. This is a foundational requirement for operating in a CLIA-certified environment and demonstrating a state of control under ISO 13485.
-            
-            **Conceptual Walkthrough: The Assay as a Highway**
-            Imagine your assay's performance is a car driving down a highway. The **mean (μ)** is the center of the lane. The **standard deviation (σ)** defines the width of the lane and the rumble strips on the side. The Levey-Jennings chart draws control limits at ±1σ (lane lines), ±2σ (rumble strips), and ±3σ (the guard rails). Each QC run is a snapshot of where your car is. A single point outside the ±3σ guard rails is an obvious crash (a **1_3s** violation). The **Westgard Rules** are more subtle; they detect a driver who is consistently hugging one side of the lane (**4_1s** violation) or weaving back and forth in a predictable pattern, both of which indicate a problem that needs correction.
-            
-            **Significance of Results:** A well-maintained Levey-Jennings chart is direct, auditable evidence of a state of statistical control, as required by **CLIA '88 Subpart K** and **ISO 15189**. Rule violations must trigger a documented investigation and Corrective and Preventive Action (CAPA), demonstrating robust quality management.
-            """)
+            st.markdown("""**Purpose:** To monitor assay stability and precision over time using QC materials. This is a foundational requirement for CLIA and ISO 13485.""")
         spc_data = ssm.get_data("quality_system", "spc_data")
         fig = create_levey_jennings_plot(spc_data)
         st.plotly_chart(fig, use_container_width=True)
-        st.success("The selected control data appears stable and in-control. No Westgard rule violations were detected, indicating a robust and predictable process.", icon="✅")
+        st.success("The selected control data appears stable and in-control.", icon="✅")
 
     # --- Tool 2: Bland-Altman ---
     with tool_tabs[1]:
         st.subheader("Method Agreement Analysis (Bland-Altman)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:** To assess the **agreement** between two quantitative measurement methods. Unlike correlation, a Bland-Altman plot quantifies the actual differences and checks for systematic bias. It is essential for method comparison studies, such as comparing a new assay to a reference method.
-            
-            **Conceptual Walkthrough: Comparing Two Rulers**
-            A Bland-Altman plot plots the *difference* between two measurements against their average. We look for:
-            1.  **Bias:** Is the average difference near zero?
-            2.  **Limits of Agreement (LoA):** How wide is the spread of differences?
-            3.  **Proportional Bias:** Do differences change as measurements get larger?
-            
-            **Significance of Results:** A critical component of a PMA submission. If the LoA are within a pre-defined, clinically acceptable range, it provides strong evidence that the two methods can be used interchangeably.
-            """)
+            st.markdown("""**Purpose:** To assess the agreement and bias between two quantitative measurement methods, essential for method comparison studies.""")
         np.random.seed(42)
-        data = {'Method_A': np.random.normal(50, 10, 100), 'Method_B': np.random.normal(50, 10, 100) + np.random.normal(1, 2, 100)}
-        df_methods = pd.DataFrame(data)
+        df_methods = pd.DataFrame({'Method_A': np.random.normal(50, 10, 100), 'Method_B': np.random.normal(50, 10, 100) + np.random.normal(1, 2, 100)})
         fig = create_bland_altman_plot(df_methods, 'Method_A', 'Method_B', title="Bland-Altman: New vs. Old Assay Version")
         st.plotly_chart(fig, use_container_width=True)
-        st.success("Analysis shows a small positive bias, but the narrow limits of agreement suggest strong overall agreement between the methods.", icon="✅")
+        st.success("Analysis shows a small positive bias, but the narrow limits of agreement suggest strong overall agreement.", icon="✅")
 
     # --- Tool 3: TOST ---
     with tool_tabs[2]:
         st.subheader("Equivalence Testing (TOST) for Change Control")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of the Method:** To statistically demonstrate that two groups are "practically the same," the correct method for validating a change where you expect no difference (e.g., qualifying a new reagent lot).
-            
-            **Conceptual Walkthrough: The Goalposts of Irrelevance**
-            Define "equivalence bounds" ($-\Delta$ and $+\Delta$). If the 90% Confidence Interval of the difference between two groups falls entirely *within* these bounds, you have proven equivalence.
-            
-            **Significance of Results:** TOST is the gold standard for change control validation under **21 CFR 820.70 (Production and Process Controls)**. It provides objective evidence that a change did not adversely affect assay performance.
-            """)
+            st.markdown(r"""**Purpose:** To statistically demonstrate that two groups are "practically the same." This is the correct method for validating a change where you expect no difference (e.g., qualifying a new reagent lot) and is key for **21 CFR 820.70**.""")
         eq_data = ssm.get_data("quality_system", "equivalence_data")
         margin_pct = st.slider("Select Equivalence Margin (Δ) as % of Mean", 5, 25, 10, key="tost_slider")
         lot_a = np.array(eq_data.get('reagent_lot_a', []))
@@ -779,132 +809,72 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                 st.success(f"**Conclusion:** Equivalence Demonstrated (p = {p_value:.4f}). The new reagent lot is validated.", icon="✅")
             else:
                 st.error(f"**Conclusion:** Equivalence Not Demonstrated (p = {p_value:.4f}). The new lot cannot be approved.", icon="❌")
-
+    
     # --- Tool 4: Gauge R&R ---
     with tool_tabs[3]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of the Method:** To determine how much measurement variation comes from the measurement system versus the actual parts being measured.
-            
-            **Conceptual Walkthrough: Measuring Blocks of Wood**
-            Variation comes from:
-            1.  **Part-to-Part:** True differences (good).
-            2.  **Repeatability:** One person, same part, multiple times (equipment variation).
-            3.  **Reproducibility:** Different people, same part (operator variation).
-            
-            **Significance of Results:** AIAG guidelines: **< 10% GR&R** is acceptable; **> 30%** is unacceptable. A successful Gauge R&R is critical for **Process Validation (PV)** under FDA's QSR.
-            """)
-        np.random.seed(1)
-        parts = np.repeat(np.arange(1, 11), 9); operators = np.tile(np.repeat(['A', 'B', 'C'], 3), 10)
-        true_values = np.repeat(np.random.normal(100, 10, 10), 9); operator_effect = np.tile(np.repeat([0, 0.5, -0.5], 3), 10)
-        measurements = true_values + operator_effect + np.random.normal(0, 1, 90)
-        df_msa = pd.DataFrame({'part': parts, 'operator': operators, 'measurement': measurements})
+            st.markdown("""**Purpose:** To determine how much measurement variation comes from the measurement system versus the parts being measured. A low %GR&R (<10%) is critical for **Process Validation (PV)**.""")
+        df_msa = pd.DataFrame(ssm.get_data("quality_system", "msa_data"))
         if not df_msa.empty:
             fig, results_df = create_gauge_rr_plot(df_msa, part_col='part', operator_col='operator', value_col='measurement')
             st.write("##### ANOVA Variance Components Analysis")
-            st.dataframe(results_df.style.format("{:.2f}%", subset=['% Contribution']), use_container_width=True)
+            st.dataframe(results_df.style.format("{:.2f}", subset=['Variance']).format("{:.2f}%", subset=['% Contribution']), use_container_width=True)
             st.plotly_chart(fig, use_container_width=True)
-            if not results_df.empty:
+            if not results_df.empty and 'Total Gauge R&R' in results_df.index:
                 total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
-                if total_grr < 10:
-                    st.success(f"**Conclusion:** Measurement System is Acceptable (Total GR&R = {total_grr:.2f}%).", icon="✅")
-                else:
-                    st.error(f"**Conclusion:** Measurement System is Unacceptable (Total GR&R = {total_grr:.2f}%).", icon="❌")
+                if total_grr < 10: st.success(f"**Conclusion:** Measurement System is Acceptable (Total GR&R = {total_grr:.2f}%).", icon="✅")
+                else: st.error(f"**Conclusion:** Measurement System is Unacceptable (Total GR&R = {total_grr:.2f}%).", icon="❌")
 
     # --- Tool 5: LoD/Probit ---
     with tool_tabs[4]:
         st.subheader("Limit of Detection (LoD) by Probit Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of the Method:** To determine the lowest analyte concentration that can be reliably detected with 95% probability. This is a mandatory part of the Analytical Validation report for a PMA and is guided by **CLSI EP17-A2**.
-            
-            **Conceptual Walkthrough: Finding a Whisper in a Quiet Room**
-            The LoD is the exact concentration where you have a 95% "hit rate." Probit analysis fits a statistically rigorous curve to experimental hit rate data to find that precise point.
-            
-            **Significance of Results:** The LoD is a key performance claim in our regulatory submission and Instructions for Use (IFU). It defines the analytical sensitivity of the assay.
-            """)
-        concentrations = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]; hit_rates = [0.15, 0.30, 0.75, 0.90, 0.98, 1.0]
-        df_lod = pd.DataFrame({'concentration': concentrations, 'hit_rate': hit_rates})
-        fig = create_lod_probit_plot(df_lod, 'concentration', 'hit_rate', title="LoD for Key Biomarker Using Contrived Samples")
+            st.markdown("""**Purpose:** To determine the lowest analyte concentration that can be reliably detected with 95% probability. This is a mandatory part of the Analytical Validation report guided by **CLSI EP17-A2**.""")
+        df_lod = pd.DataFrame({'concentration': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5], 'hit_rate': [0.15, 0.30, 0.75, 0.90, 0.98, 1.0]})
+        fig = create_lod_probit_plot(df_lod, 'concentration', 'hit_rate', title="LoD for Key Biomarker")
         st.plotly_chart(fig, use_container_width=True)
-        st.success("The Probit analysis yields a highly precise LoD estimate with a tight confidence interval, demonstrating robust assay performance at low concentrations.", icon="✅")
+        st.success("The Probit analysis yields a highly precise LoD estimate with a tight confidence interval.", icon="✅")
 
     # --- Tool 6: Pareto Analysis ---
     with tool_tabs[5]:
         st.subheader("Pareto Analysis of Process Deviations")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""
-            **Purpose of the Method:** To apply the **Pareto Principle (80/20 rule)** to identify the "vital few" causes responsible for the majority of problems (e.g., lab run failures).
-            
-            **Conceptual Walkthrough: Firefighting Triage**
-            A Pareto chart sorts your problems from most to least frequent, immediately identifying the biggest "fires" and telling you where to focus resources for the greatest impact.
-            
-            **Significance of Results:** The Pareto chart is often the first step in a **CAPA** investigation, as required by **21 CFR 820.100**. It provides a clear justification for focusing process improvement efforts.
-            """)
-        failure_data = ssm.get_data("lab_operations", "run_failures")
-        df_failures = pd.DataFrame(failure_data)
+            st.markdown("""**Purpose:** To apply the **Pareto Principle (80/20 rule)** to identify the "vital few" causes responsible for the majority of problems. This is a cornerstone of **CAPA** investigations under **21 CFR 820.100**.""")
+        df_failures = pd.DataFrame(ssm.get_data("lab_operations", "run_failures"))
         if not df_failures.empty:
             fig = create_pareto_chart(df_failures, category_col='failure_mode', title='Pareto Analysis of Assay Run Failures')
             st.plotly_chart(fig, use_container_width=True)
             top_contributor = df_failures['failure_mode'].value_counts().index[0]
-            st.success(f"The analysis highlights **'{top_contributor}'** as the primary contributor to run failures. Focusing CAPA initiatives on this failure mode will yield the greatest reduction in overall run failures and COPQ.", icon="🎯")
-
+            st.success(f"Analysis highlights **'{top_contributor}'** as the primary contributor to run failures.", icon="🎯")
+            
     # --- Tool 7: DOE (New) ---
     with tool_tabs[6]:
         st.subheader("Design of Experiments (DOE) Factorial Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""
-            **Purpose:** To efficiently screen multiple process parameters to identify which ones have a statistically significant effect on the outcome. This is a foundational QbD activity that precedes process optimization.
-            
-            **Conceptual Walkthrough: The Smart Experiment**
-            Instead of testing one factor at a time (OFAT), a factorial DOE tests all combinations of factors at high and low levels. This is far more efficient and, crucially, it allows us to detect **interactions**—when the effect of one factor depends on the level of another.
-            
-            **Significance:** Results from a DOE study provide the rationale for which parameters are deemed **Critical Process Parameters (CPPs)** and must be tightly controlled, and which are not. This evidence is key for justifying the process control strategy in a regulatory submission.
-            """)
+            st.markdown("""**Purpose:** To efficiently screen multiple process parameters to identify which ones have a statistically significant effect on the outcome. This is a foundational QbD activity that precedes process optimization.""")
         np.random.seed(10)
         doe_data = {'Temp': [60, 65, 60, 65] * 2, 'Time': [30, 30, 45, 45] * 2, 'Enzyme': ['A', 'A', 'A', 'A', 'B', 'B', 'B', 'B'], 'Yield': [75, 85, 70, 82, 78, 92, 74, 90] + np.random.normal(0, 2, 8)}
         df_doe = pd.DataFrame(doe_data)
         st.write("##### Main Effects & Interaction Plots")
         fig_doe = create_doe_effects_plot(df_doe, factors=['Temp', 'Time', 'Enzyme'], response='Yield')
         st.plotly_chart(fig_doe, use_container_width=True)
-        st.success("**Conclusion:** The analysis indicates strong main effects for 'Enzyme' and 'Time', and a significant interaction between 'Temp' and 'Enzyme'. These should be considered Critical Process Parameters (CPPs) for further optimization via RSM.", icon="🔬")
+        st.success("**Conclusion:** 'Enzyme' and 'Time' are identified as Critical Process Parameters (CPPs) for further optimization via RSM.", icon="🔬")
 
     # --- Tool 8: Stability Analysis (New) ---
     with tool_tabs[7]:
         st.subheader("Stability & Shelf-Life Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""
-            **Purpose:** To determine the shelf-life of a reagent or the stability of a sample under specific storage conditions. This is done by modeling the degradation of a critical quality attribute over time and finding the point where the 95% confidence interval of the degradation curve crosses a pre-defined failure threshold.
-            
-            **Significance:** Shelf-life dating is a mandatory requirement for reagents under **21 CFR 820** and **ISO 13485**. A well-supported stability claim ensures product efficacy and safety throughout its intended use period.
-            """)
+            st.markdown("""**Purpose:** To determine the shelf-life of a reagent by modeling its degradation over time. Shelf-life dating is a mandatory requirement under **21 CFR 820**.""")
         np.random.seed(42)
         time_points = np.array([0, 1, 3, 6, 9, 12, 18, 24]) # Months
         degradation_data = []
-        for t in time_points:
-            degradation_data.extend(100 - 0.5 * t - np.abs(np.random.normal(0, 1.5, 3)))
+        for t in time_points: degradation_data.extend(100 - 0.5 * t - np.abs(np.random.normal(0, 1.5, 3)))
         df_stability = pd.DataFrame({'Months': np.repeat(time_points, 3), 'Activity_Pct': degradation_data})
-        
         failure_threshold = 90.0
         fig = create_stability_plot(df_stability, 'Months', 'Activity_Pct', failure_threshold)
         st.plotly_chart(fig, use_container_width=True)
-        st.success("**Conclusion:** The linear regression model predicts the reagent's activity will cross the 90% failure threshold at approximately 20.5 months. Based on the 95% confidence interval, a conservative shelf-life of **18 months** is supported by this data.", icon="⏳")
-
-# ... The `render_machine_learning_lab_tab` and `render_compliance_guide_tab` functions would follow ...
-
-if __name__ == "__main__":
-    st.title("GenomicsDx Dashboard Module Test")
-    # To test one of the tabs:
-    # First, generate the necessary data
-    generate_mock_data(ssm)
-    
-    # Then render the tab you want to inspect
-    # render_statistical_tools_tab(ssm)
-    # render_machine_learning_lab_tab(ssm)
-    render_advanced_analytics_tab(ssm)
-
-# In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
+        st.success("Based on the 95% confidence interval of degradation, a conservative shelf-life of **18 months** is supported by this data.", icon="⏳")
 
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """
@@ -917,37 +887,28 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     Explainability, scientific plausibility, and rigorous performance evaluation are paramount for **Software as a Medical Device (SaMD)** regulatory submissions.
     """)
     
-    try:
-        from sklearn.gaussian_process import GaussianProcessRegressor
-        from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.model_selection import train_test_split
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.metrics import precision_recall_curve, auc, confusion_matrix
-        import shap
-        from statsmodels.tsa.arima.model import ARIMA
-    except ImportError as e:
-        st.error(f"This function requires advanced libraries. Please run: pip install scikit-learn statsmodels shap. Error: {e}", icon="🚨")
-        return
+    # Dependencies are already handled at the top of the file
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import precision_recall_curve, auc, confusion_matrix
+    import shap
 
-    # ADDED TWO NEW CASES: CNV Analysis and Immune Repertoire Profiling
+    # ADDED TWO NEW CASES
     ml_tabs = st.tabs([
         "1. Classifier Performance (ROC & PR)",
         "2. Classifier Explainability (SHAP)",
-        "3. Cancer Signal of Origin (CSO) Analysis",
-        "4. Assay Optimization (RSM vs. ML)",
-        "5. Operations Forecasting (ARIMA)",
-        "6. Predictive Run QC (On-Instrument)",
-        "7. NGS: Fragmentomics Analysis",
-        "8. NGS: Sequencing Error Modeling",
-        "9. NGS: Methylation Entropy",
-        "10. NGS: Copy Number Variation (CNV)",
-        "11. NGS: Immune Repertoire Profiling"
+        "3. Cancer Signal of Origin (CSO)",
+        "4. NGS: Fragmentomics",
+        "5. NGS: Methylation Entropy",
+        "6. NGS: Copy Number Variation (CNV)", # NEW
+        "7. NGS: Immune Repertoire", # NEW
+        "8. Ops: Time Series Forecasting",
+        "9. Ops: Predictive Run QC",
     ])
 
     X, y = ssm.get_data("ml_models", "classifier_data")
     model = ssm.get_data("ml_models", "classifier_model")
-
     # --- Tool 1: ROC & PR ---
     with ml_tabs[0]:
         st.subheader("Classifier Performance: ROC and Precision-Recall")
@@ -1070,44 +1031,42 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
     # --- Tool 6: Predictive Run QC ---
     with ml_tabs[5]:
-        st.subheader("Predictive Run QC from Early On-Instrument Metrics")
-        with st.expander("View Method Explanation & Operational Context", expanded=False):
-            st.markdown(r"""
-            **Purpose:** To predict the final quality of a sequencing run using metrics generated *within the first few hours*. This allows the lab to terminate runs destined to fail, saving reagents and instrument time.
-            **Conceptual Walkthrough: The Pre-Flight Check**
-            This is a machine learning pre-flight check for sequencing runs. It learns the patterns of early-run metrics that are associated with final run failure and flags them for early termination.
-            **Significance:** This tool directly reduces the **Cost of Poor Quality (COPQ)** and can be integrated into the LIMS to create a more efficient "intelligent" lab operation.
-            """)
-        run_qc_data = ssm.get_data("ml_models", "run_qc_data")
-        df_run_qc = pd.DataFrame(run_qc_data)
-        X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
-        y_ops = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
-        X_train, X_test, y_train, y_test = train_test_split(X_ops, y_ops, test_size=0.3, random_state=42, stratify=y_ops)
-        model_ops = LogisticRegression(random_state=42, class_weight='balanced').fit(X_train, y_train)
-        cm_ops = confusion_matrix(y_test, model_ops.predict(X_test), labels=[1, 0])
-        fig_cm_ops = create_confusion_matrix_heatmap(cm_ops, ['Fail', 'Pass'])
-        st.plotly_chart(fig_cm_ops, use_container_width=True)
-        tn, fp, fn, tp = cm_ops.ravel()
-        st.success(f"**Model Evaluation:** The model correctly identified **{tp}** of {tp+fn} failing runs, enabling proactive intervention.", icon="💰")
-
-    # --- Tool 7: Fragmentomics ---
-    with ml_tabs[6]:
-        st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
+        st.subheader("NGS Signal: Copy Number Variation (CNV) Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
-            **Purpose:** To leverage the key biological property that ctDNA is more fragmented (shorter) than healthy cfDNA.
-            **Conceptual Walkthrough: Rocks vs. Sand**
-            Fragmentomics is a biological sieve. By analyzing the size distribution of all DNA fragments, we can identify samples with an overabundance of short fragments, a strong indicator of cancer.
-            **Significance:** This provides powerful evidence for **analytical validity**. It shows the classifier is keyed into scientifically relevant signals, not spurious correlations.
+            **Purpose:** To detect large-scale genomic amplifications and deletions, which are classic hallmarks of cancer. This analysis uses read depth as a proxy for copy number.
+            **Conceptual Walkthrough: Paving a Road**
+            Imagine the genome is a long road. In a healthy sample, we expect an even layer of "asphalt" (sequencing reads). In a cancer sample, some sections might have a mound of asphalt (an amplification, e.g., ERBB2) or a deep pothole (a deletion, e.g., TP53).
+            **Significance:** CNV analysis provides another layer of orthogonal biological evidence, strengthening the scientific foundation of the classifier.
             """)
         np.random.seed(42)
-        healthy_frags = np.random.normal(167, 8, 5000)
-        cancer_frags = np.random.normal(145, 15, 2500)
-        df_frags = pd.DataFrame({'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]), 'Sample Type': ['Healthy cfDNA'] * 5000 + ['Cancer ctDNA'] * 2500})
-        fig_hist = px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100, barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes (Healthy vs. Cancer)</b>")
-        st.plotly_chart(fig_hist, use_container_width=True)
-        st.success("The clear shift in fragment size for ctDNA demonstrates its potential as a powerful classification feature.", icon="🧬")
+        genome_pos = np.arange(1, 1001)
+        healthy_depth = np.random.poisson(100, 1000)
+        cancer_depth = np.random.poisson(100, 1000)
+        cancer_depth[300:400] = np.random.poisson(150, 100) # Amplification
+        cancer_depth[700:750] = np.random.poisson(50, 50)   # Deletion
+        df_cnv = pd.DataFrame({'Genomic Position': np.concatenate([genome_pos, genome_pos]), 'Normalized Read Depth': np.concatenate([healthy_depth, cancer_depth]), 'Sample Type': ['Healthy Control'] * 1000 + ['Cancer Sample'] * 1000})
+        fig = px.line(df_cnv, x='Genomic Position', y='Normalized Read Depth', color='Sample Type', title="<b>Copy Number Profile Across a Chromosome Arm</b>")
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The cancer sample clearly shows a regional amplification and deletion not present in the healthy control, providing a strong signal for the classifier.", icon="🧬")
 
+    # --- Tool 7: Immune Repertoire (New) ---
+    with ml_tabs[6]:
+        st.subheader("NGS Signal: Immune Repertoire Profiling")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""
+            **Purpose:** To analyze the diversity and composition of T-cell receptors (TCRs) captured in cfDNA. The immune system's response to a tumor can leave a detectable "fingerprint" in the blood.
+            **Conceptual Walkthrough: The Army's Special Forces**
+            Your immune system is an army. When it detects a tumor, it deploys huge numbers of identical "special forces" T-cells with the same weapon (TCR). This is **clonal expansion**. In a healthy person, the army is diverse. In a cancer patient, a few T-cell clones dominate.
+            **Significance:** Measuring TCR diversity is a signal of the *host response* to cancer, which is completely orthogonal to signals from the tumor itself, adding incredible robustness to the ML model.
+            """)
+        np.random.seed(1)
+        healthy_clones = np.random.lognormal(0.5, 1, 100); healthy_clones /= healthy_clones.sum()
+        cancer_clones = np.random.lognormal(0.5, 1, 100); cancer_clones[0:3] = [50, 35, 20]; cancer_clones /= cancer_clones.sum()
+        df_tcr = pd.DataFrame({'TCR Clonotype Frequency': np.concatenate([np.sort(healthy_clones)[::-1], np.sort(cancer_clones)[::-1]]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100, 'Rank': list(range(1, 101)) * 2})
+        fig = px.line(df_tcr, x='Rank', y='TCR Clonotype Frequency', color='Sample Type', log_y=True, title="<b>TCR Repertoire Clonality (Lorenz Curve)</b>")
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The cancer sample exhibits significant clonal expansion (a few dominant clones), a strong indicator of a specific immune response.", icon="🧬")
     # --- Tool 8: Error Modeling ---
     with ml_tabs[7]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
