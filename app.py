@@ -138,7 +138,6 @@ class SessionStateManager:
 
 @st.cache_data
 def preprocess_task_data(tasks_data: List[Dict[str, Any]]) -> pd.DataFrame:
-    """Processes raw project task data into a DataFrame for Gantt chart plotting."""
     if not tasks_data: return pd.DataFrame()
     tasks_df = pd.DataFrame(tasks_data)
     tasks_df['start_date'] = pd.to_datetime(tasks_df['start_date'], errors='coerce')
@@ -159,9 +158,7 @@ def preprocess_task_data(tasks_data: List[Dict[str, Any]]) -> pd.DataFrame:
 
 @st.cache_data
 def get_cached_df(data: List[Dict[str, Any]]) -> pd.DataFrame:
-    """Generic, cached function to create DataFrames from list of dicts."""
-    if not data or not isinstance(data, list):
-        return pd.DataFrame()
+    if not data or not isinstance(data, list): return pd.DataFrame()
     return pd.DataFrame(data)
 
 # ==============================================================================
@@ -620,8 +617,18 @@ def render_advanced_analytics_tab(ssm: SessionStateManager) -> None:
     with analytics_tabs[2]:
         st.subheader("Project Timeline and Task Editor")
         tasks_data = ssm.get_data("project_management", "tasks")
-        edited_df = st.data_editor(pd.DataFrame(tasks_data), key="task_editor", num_rows="dynamic", use_container_width=True, column_config={"start_date": st.column_config.DateColumn("Start Date", format="YYYY-MM-DD"), "end_date": st.column_config.DateColumn("End Date", format="YYYY-MM-DD")})
+        
+        # FIX: Convert string dates to datetime objects BEFORE passing to data_editor
+        df_to_edit = pd.DataFrame(tasks_data)
+        df_to_edit['start_date'] = pd.to_datetime(df_to_edit['start_date'])
+        df_to_edit['end_date'] = pd.to_datetime(df_to_edit['end_date'])
+
+        edited_df = st.data_editor(df_to_edit, key="task_editor", num_rows="dynamic", use_container_width=True, column_config={"start_date": st.column_config.DateColumn("Start Date", format="YYYY-MM-DD"), "end_date": st.column_config.DateColumn("End Date", format="YYYY-MM-DD")})
+        
         if st.button("Commit Task Changes & Rerun"):
+            # Convert back to string for storage if needed, or keep as datetime
+            edited_df['start_date'] = edited_df['start_date'].dt.strftime('%Y-%m-%d')
+            edited_df['end_date'] = edited_df['end_date'].dt.strftime('%Y-%m-%d')
             ssm.update_data(edited_df.to_dict('records'), "project_management", "tasks")
             st.rerun()
 
