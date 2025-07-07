@@ -29,7 +29,12 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
 import matplotlib.pyplot as plt # <--- ADD THIS LINE
+from sklearn.preprocessing import StandardScaler
 import shap
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+import lightgbm as lgb
+import itertools
 
 # --- Robust Path Correction Block ---
 try:
