@@ -1716,12 +1716,18 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("#### Method 1: Response Surface Methodology (RSM)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
+            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""**Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
+                **Mathematical Basis:** It uses a second-order polynomial model fit via least squares. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
+                $$ Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2 $$
+                **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.""")
             _, contour_fig_rsm, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
             st.plotly_chart(contour_fig_rsm, use_container_width=True)
         with col2:
             st.markdown("#### Method 2: Machine Learning (Gaussian Process)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
+            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""**Purpose:** To find the optimal settings using a more flexible, non-parametric machine learning model that can capture complex relationships that a simple quadratic model might miss.
+                **Mathematical Basis:** A **Gaussian Process (GP)** is a Bayesian approach that models a distribution over functions. Instead of learning specific coefficients, it learns a kernel function that describes the similarity between data points. This allows it to model very complex, non-linear surfaces and also provides a natural measure of uncertainty for its predictions.
+                **Significance:** GP models are more powerful for complex, real-world processes that may not follow a simple quadratic shape. While more computationally intensive, they can find optima that RSM might miss. However, their "black box" nature may require additional explainability evidence (like SHAP) for regulatory submissions.
+""")
             # --- FIX: Use .values and wider bounds to fix all warnings ---
             scaler_rsm = StandardScaler()
             X_rsm_scaled = scaler_rsm.fit_transform(X_rsm.values)
