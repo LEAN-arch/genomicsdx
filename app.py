@@ -1312,7 +1312,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             glm_predictor = sm.add_constant(df_lod['log10_conc'])
             
             # Fit the Probit model
-            probit_model = GLM(glm_response[['n_hits', 'n_failures']], glm_predictor, family=families.Binomial(link=families.links.probit()))
+            probit_model = GLM(glm_response[['n_hits', 'n_failures']], glm_predictor, family=families.Binomial(link=families.links.Probit()))
             probit_results = probit_model.fit()
             
             # --- 3. Calculate LoD and Confidence Interval ---
@@ -1373,6 +1373,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"An error occurred during Probit analysis: {e}")
             logger.error(f"Probit analysis failed: {e}", exc_info=True)
+   
     # --- Tool 6: Pareto Analysis ---
     with tool_tabs[5]:
         st.subheader("Pareto Analysis of Process Deviations")
@@ -1544,7 +1545,29 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[0]:
         st.subheader("Classifier Performance: ROC and Precision-Recall")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Explanation content
+            st.markdown(r""" **Purpose of the Method:**
+            To unlock the "black box" of complex machine learning models. For a regulated SaMD (Software as a Medical Device), it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
+    
+            **Conceptual Walkthrough: The Team of Experts**
+            Imagine your classifier is a team of medical experts deciding on a diagnosis. A positive diagnosis is made. Who was most influential? SHAP is like an audit that determines how much "credit" or "blame" each expert (feature) gets for the final decision. The SHAP summary plot lines up all the features and shows their overall impact. For a given feature, red dots mean a high value for that feature, and blue dots mean a low value. If red dots are on the right side of the center line, it means high values of that feature *push the prediction toward "Cancer Signal Detected."*
+    
+            **Mathematical Basis & Formula:**
+            SHAP is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the prediction. The formula for the Shapley value for a feature *i* is:
+            $$ \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)] $$
+            This calculates the weighted average of a feature's marginal contribution over all possible feature combinations.
+    
+            **Procedure:**
+            1. Train a classifier model.
+            2. Create a SHAP `Explainer` object based on the model.
+            3. Use the explainer to calculate SHAP values for a set of samples.
+            4. Visualize the results, typically with a summary plot.
+            
+            **Significance of Results:**
+            Model explainability is a major focus for regulatory bodies (e.g., FDA's AI/ML Action Plan). A SHAP analysis provides critical evidence for a **PMA submission** by:
+            1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
+            2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
+            3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
+ """) # Explanation content
         col1, col2 = st.columns(2)
         with col1:
             fig_roc = create_roc_curve(pd.DataFrame({'score': model.predict_proba(X)[:, 1], 'truth': y}), 'score', 'truth')
@@ -1561,7 +1584,29 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[1]:
         st.subheader("Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Explanation content
+            st.markdown(r"""**Purpose of the Method:**
+            To unlock the "black box" of complex machine learning models. For a regulated SaMD (Software as a Medical Device), it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
+    
+            **Conceptual Walkthrough: The Team of Experts**
+            Imagine your classifier is a team of medical experts deciding on a diagnosis. A positive diagnosis is made. Who was most influential? SHAP is like an audit that determines how much "credit" or "blame" each expert (feature) gets for the final decision. The SHAP summary plot lines up all the features and shows their overall impact. For a given feature, red dots mean a high value for that feature, and blue dots mean a low value. If red dots are on the right side of the center line, it means high values of that feature *push the prediction toward "Cancer Signal Detected."*
+    
+            **Mathematical Basis & Formula:**
+            SHAP is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the prediction. The formula for the Shapley value for a feature *i* is:
+            $$ \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)] $$
+            This calculates the weighted average of a feature's marginal contribution over all possible feature combinations.
+    
+            **Procedure:**
+            1. Train a classifier model.
+            2. Create a SHAP `Explainer` object based on the model.
+            3. Use the explainer to calculate SHAP values for a set of samples.
+            4. Visualize the results, typically with a summary plot.
+            
+            **Significance of Results:**
+            Model explainability is a major focus for regulatory bodies (e.g., FDA's AI/ML Action Plan). A SHAP analysis provides critical evidence for a **PMA submission** by:
+            1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
+            2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
+            3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
+""") # Explanation content
         try:
             with st.spinner("Calculating SHAP values..."):
                 n_samples = min(100, len(X))
@@ -1587,7 +1632,26 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""...""")
+            st.markdown("""  **Purpose of the Method:**
+            For an MCED test, a key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**. This tool analyzes the performance of the CSO multi-class prediction model, which is critical for guiding the subsequent clinical workup.
+
+            **Conceptual Walkthrough: The Return Address**
+            If the primary cancer classifier finds a "letter" that says "I am cancer," the CSO model's job is to read the "return address" on the envelope. Different cancers shed DNA with subtly different methylation patterns, like different regional accents. The CSO model is trained to recognize these "accents" and predict where the signal is coming from. A **confusion matrix** is the perfect report card for this model: the diagonal shows how often it got the address right, and the off-diagonals show which addresses it tends to mix up.
+            
+            **Mathematical Basis & Formula:**
+            This is a multi-class classification problem. The primary evaluation metric is the **confusion matrix**, C, where $C_{ij}$ is the number of observations known to be in group *i* but predicted to be in group *j*. From this, we derive key metrics like:
+            - **Accuracy:** $$ \frac{\sum_{i} C_{ii}}{\sum_{i,j} C_{ij}} $$
+            - **Precision (for class *i*):** $$ \frac{C_{ii}}{\sum_{j} C_{ji}} $$
+            - **Recall (for class *i*):** $$ \frac{C_{ii}}{\sum_{j} C_{ij}} $$
+
+            **Procedure:**
+            1. Isolate samples with a "Cancer Signal Detected" result from the primary classifier.
+            2. Train a separate multi-class classifier (e.g., Random Forest) on these samples using their known tissue-of-origin labels.
+            3. Evaluate the model's performance on a hold-out set using a confusion matrix.
+
+            **Significance of Results:**
+            The performance of the CSO classifier is a key component of the assay's **clinical validation** and a major part of a **PMA submission**. The confusion matrix directly informs the Instructions for Use (IFU) and physician education materials, highlighting the model's strengths and weaknesses so that clinicians can interpret a CSO prediction with the appropriate context.
+  """)
         try:
             cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
             cancer_samples_X = X[y == 1]
@@ -1640,7 +1704,11 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     # --- Tool 4: Assay Optimization (RSM vs. ML) ---
     with ml_tabs[3]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
-        st.info("This advanced tool compares two approaches to process optimization...")
+        st.info(" **Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
+                **Mathematical Basis:** It uses a second-order polynomial model fit via least squares. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
+                $$ Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2 $$
+                **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.
+ ")
         rsm_data = ssm.get_data("quality_system", "rsm_data")
         df_rsm = pd.DataFrame(rsm_data)
         X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
@@ -1677,7 +1745,35 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting for Lab Operations")
         with st.expander("View Method Explanation & Business Context", expanded=False):
-            st.markdown(r"""...""")
+            st.markdown(r""" **Purpose of the Method:**
+            To forecast future operational demand (e.g., incoming sample volume) based on historical trends and seasonality. This is a critical business intelligence tool for proactive lab management, enabling data-driven decisions on reagent inventory, staffing levels, and capital expenditure.
+
+            ---
+            
+            ### Methodologies Compared
+            
+            #### 1. ARIMA (Statistical Approach)
+
+            **Conceptual Walkthrough: The Signal Analyst**
+            This classical method acts like a signal analyst, looking only at the time series' own past behavior to predict its future. It's excellent at capturing linear trends and consistent patterns. It learns three things from the data's history:
+            1.  **A**uto**R**egression (AR - term `p`): Is today's volume related to yesterday's? (Momentum)
+            2.  **I**ntegrated (I - term `d`): Does the data have an overall upward or downward trend that needs to be stabilized?
+            3.  **M**oving **A**verage (MA - term `q`): Are random shocks or errors from the past still affecting today's value?
+            
+            **Mathematical Basis & Formula:**
+            An ARIMA(p,d,q) model is a combination of simpler time series models:
+            - **AR(p):** $ Y_t = c + \sum_{i=1}^{p} \phi_i Y_{t-i} + \epsilon_t $ (Regression on past values)
+            - **MA(q):** $ Y_t = \mu + \epsilon_t + \sum_{i=1}^{q} \theta_i \epsilon_{t-i} $ (Regression on past errors)
+            
+            #### 2. Machine Learning (Gradient Boosting Approach)
+
+            **Conceptual Walkthrough: The Contextual Learner**
+            This modern method converts the forecasting problem into a standard regression problem. Instead of just looking at the signal, it learns from a rich set of **features** we engineer from the timeline. It's like a detective using multiple clues (not just one) to make a prediction. We create features such as:
+            - **Lags:** What was the volume exactly 7 days ago?
+            - **Rolling Averages:** What was the average volume over the last week?
+            - **Date Components:** Was it a Monday? Is it December?
+            
+            This allows the model to learn complex, non-linear relationships (e.g., "volume is always 20% higher on Mondays after a holiday weekend") that ARIMA might miss.  """)
         try:
             ts_data = ssm.get_data("ml_models", "sample_volume_data")
             df_ts_raw = pd.DataFrame(ts_data).set_index('date')
@@ -1760,7 +1856,25 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[5]:
         st.subheader("Predictive Run QC from Early On-Instrument Metrics")
         with st.expander("View Method Explanation & Operational Context", expanded=False):
-            st.markdown(r"""...""")
+            st.markdown(r""" **Purpose of the Method:**
+            To predict the final quality of a sequencing run using metrics generated by the sequencer *within the first few hours* of the run. This allows the lab to terminate runs that are destined to fail, saving thousands of dollars in reagents and valuable instrument time.
+
+            **Conceptual Walkthrough: The Pre-Flight Check**
+            Think of a long-haul flight. Before takeoff, pilots run a series of checks. If the engine pressure is low on the tarmac, they don't take off and "hope for the best"; they abort the flight. This tool is a machine learning-based pre-flight check for sequencing runs. It learns the patterns of early-run metrics (e.g., % Q30 at cycle 25, cluster density) that are associated with final run failure.
+
+            **Mathematical Basis & Formula:**
+            This is a binary classification problem. We use **Logistic Regression** to model the probability of a "Fail" outcome. The model learns a set of coefficients ($\beta_i$) for each early-run QC feature ($x_i$) to predict the log-odds of the run failing:
+            $$ \ln\left(\frac{P(\text{Fail})}{1-P(\text{Fail})}\right) = \beta_0 + \beta_1x_{\text{Q30}} + \beta_2x_{\text{Density}} + \dots $$
+
+            **Procedure:**
+            1. Collect historical data on early-run metrics and final run outcomes.
+            2. Train a logistic regression model to predict the outcome.
+            3. Validate the model's performance on a hold-out set.
+            4. Deploy the model to flag potentially failing runs in real-time.
+
+            **Significance of Results:**
+            This is a powerful process control and cost-saving tool. By preventing failed runs from consuming a full cycle of resources, it directly reduces the **Cost of Poor Quality (COPQ)**. A validated predictive QC model can be integrated into the LIMS to create a more efficient and "intelligent" lab operation.
+  """)
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
@@ -1802,7 +1916,26 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[6]:
         st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""")
+            st.markdown(r""" **Purpose of the Method:**
+            To leverage a key biological property of circulating tumor DNA (ctDNA) to enhance cancer detection. DNA from cancerous cells tends to be more fragmented and thus shorter than background cell-free DNA (cfDNA) from healthy apoptotic cells. This tool visualizes these fragment size distributions.
+
+            **Conceptual Walkthrough: Rocks vs. Sand**
+            Imagine searching for a few rare gold nuggets (ctDNA) on a beach full of pebbles (healthy cfDNA). It's difficult. But what if you learn that gold nuggets are always much smaller than the surrounding pebbles? You could use a sieve. Fragmentomics is a biological sieve. By analyzing the size distribution of all DNA fragments, we can identify samples that have an overabundance of "sand" (short fragments), which is a strong indicator of the presence of "gold" (cancer). This signal can be used as a powerful, independent feature in a machine learning model.
+            
+            **Mathematical Basis:**
+            This is primarily a feature engineering method. We analyze the sequencing alignment data to determine the length of each DNA fragment. The core output is a histogram or kernel density estimate (KDE) of fragment lengths. Statistical features are then derived from this distribution:
+            - **Short Fragment Fraction:** The percentage of DNA fragments below a certain length (e.g., 150 bp).
+            - **Distributional Moments:** Mean, variance, skewness of fragment lengths.
+
+            **Procedure:**
+            1. For each sample, align paired-end sequencing reads to the reference genome.
+            2. Calculate the inferred insert size for each read pair.
+            3. Generate a histogram of these insert sizes.
+            4. Compare the distributions between cancer and healthy cohorts.
+
+            **Significance of Results:**
+            Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals, de-risking the algorithm from being reliant on spurious correlations. This is a critical piece of evidence for the PMA.
+  """)
         try:
             np.random.seed(42)
             samples, n_healthy, n_cancer = [], 50, 30
@@ -1855,7 +1988,24 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[7]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""")
+            st.markdown(r""" **Purpose of the Method:**
+            To statistically distinguish a true, low-frequency somatic mutation from the background "noise" of sequencing errors. Every sequencer has an inherent error rate. For liquid biopsy, where the true signal (Variant Allele Frequency or VAF) can be <0.1%, a robust error model is absolutely essential for achieving a low Limit of Detection (LoD).
+
+            **Conceptual Walkthrough: A Whisper in a Crowded Room**
+            Imagine trying to hear a very faint whisper (a true mutation) in a noisy room (sequencing errors). If you don't know how loud the background noise typically is, you can't be sure if you heard a real whisper or just a random bit of chatter. This tool first *characterizes the background noise* by fitting a statistical distribution (a Beta distribution) to the observed error rates from many normal samples. This gives us a precise "fingerprint" of the noise. Then, when we hear a potential new signal, we can ask: "What is the probability that the background noise, by itself, would sound this loud?" If that probability (the p-value) is astronomically low, we can confidently say we heard a real whisper.
+
+            **Mathematical Basis & Formula:**
+            1.  **Error Modeling:** The VAF of sequencing errors at non-variant sites is modeled using a Beta distribution, which is perfect for values between 0 and 1. We fit the parameters ($\alpha_0, \beta_0$) of this distribution using a large set of normal, healthy samples.
+            2.  **Hypothesis Testing:** For a new variant observed with a VAF of $v_{obs}$, our null hypothesis is $H_0$: "This observation is just a draw from our background error distribution." We calculate the p-value as the survival function (1 - CDF) of our fitted Beta distribution: $$ P(\text{VAF} \ge v_{obs} | H_0) = 1 - F(v_{obs}; \alpha_0, \beta_0) $$ A very low p-value allows us to reject $H_0$.
+
+            **Procedure:**
+            1.  Sequence a cohort of healthy individuals to high depth.
+            2.  At known non-variant positions, calculate the VAF of non-reference alleles to build an empirical error distribution.
+            3.  Fit a Beta distribution to these error VAFs to get the model parameters ($\alpha_0, \beta_0$).
+            4.  For new samples, calculate a p-value for each potential variant against this error model.
+
+            **Significance of Results:**
+            This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.  """)
         background_errors = np.random.beta(a=0.4, b=9000, size=1000)
         alpha0, beta0, _, _ = stats.beta.fit(background_errors, floc=0, fscale=1)
         st.info(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`...", icon="🔬")
@@ -1891,7 +2041,28 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[8]:
         st.subheader("NGS Signal: Methylation Entropy Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""")
+            st.markdown(r""" **Purpose of the Method:**
+            To leverage another key biological signal in cfDNA: the **disorder** of methylation patterns within a given genomic region. Healthy tissues often have very consistent, ordered methylation patterns, while cancer tissues exhibit chaotic, disordered methylation. This "methylation entropy" can be a powerful feature for classification.
+
+            **Conceptual Walkthrough: A Well-Kept vs. Messy Bookshelf**
+            Imagine a specific genomic region is a bookshelf. In a healthy cell, all the books are neatly arranged by color—a very orderly, low-entropy state. In a cancer cell, the same bookshelf is a mess: books are everywhere, with no discernible pattern—a very disorderly, high-entropy state. Even if we don't know the exact "correct" pattern, we can measure the *amount of disorder*. By sequencing many individual DNA molecules from that region, we can quantify this disorder and use it to distinguish cancer from healthy.
+
+            **Mathematical Basis & Formula:**
+            For a given genomic region with *N* CpG sites, we analyze the methylation patterns across multiple cfDNA reads that cover this region. For each of the $2^N$ possible methylation patterns (e.g., 'MM', 'MU', 'UM', 'UU' for N=2), we calculate its frequency, $p_i$. The Shannon entropy, a measure of disorder, is then calculated:
+            $$ H = -\sum_{i=1}^{2^N} p_i \log_2(p_i) $$
+            A low entropy value (H) indicates a consistent, ordered pattern, while a high entropy value indicates disorder.
+
+            **Procedure:**
+            1.  Define specific genomic regions of interest.
+            2.  For each sample, extract all sequencing reads covering a region.
+            3.  For each read, determine the methylation state (M or U) at each CpG site.
+            4.  Count the frequency of each unique methylation pattern across all reads.
+            5.  Calculate the Shannon entropy for the region.
+            6.  Use this entropy value as a feature in the machine learning model.
+
+            **Significance of Results:**
+            Like fragmentomics, methylation entropy is an **orthogonal biological signal**. It does not depend on the methylation level at a single site but on the heterogeneity of patterns across a region. Incorporating such features makes our classifier more robust and less susceptible to artifacts affecting single-site measurements. Presenting this in a PMA submission demonstrates a deep, multi-faceted understanding of the underlying cancer biology.
+   """)
         try:
             def calculate_shannon_entropy(patterns):
                 if not patterns: return 0
@@ -1951,7 +2122,29 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[9]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""")
+            st.markdown(r""" **Purpose of the Method:**
+            To provide an intuitive, three-dimensional visualization of an optimization problem. This powerful tool allows us to literally *see* the landscape our algorithms are trying to navigate, whether it's an assay's response surface or a machine learning model's loss function. It builds confidence that our optimization strategies are finding true, global optima rather than getting stuck in local minima.
+
+            **Conceptual Walkthrough: Mapping and Hiking a Valley**
+            Imagine an unknown valley where we want to find the highest peak (to maximize yield). This visualization shows our strategy:
+            1.  **DOE Points (Surveyor Readings):** The black diamonds are the **Design of Experiments (DOE)** points—like a surveyor taking elevation readings at a few strategic locations. Their 'shadows' are projected onto the floor to clearly show their X-Y coordinates.
+            2.  **Response Surface (The Topographic Map):** The smooth, colored surface is our predictive model (a Gaussian Process), which acts as our "topographic map" of the entire valley, interpolated from the surveyor's data. The contour lines on the surface and on the floor make the terrain even easier to read.
+            3.  **Gradient Ascent (The High-Tech Hike):** The vibrant path shows the route taken by an algorithm starting at a non-optimal point (green circle). At each step, it senses the steepest upward slope (the **gradient**) and moves in that direction, eventually converging at the red 'x'.
+
+            **Mathematical Basis & Formula:**
+            - **Response Surface:** A predictive model, often a Gaussian Process (GP), is fit to the DOE data to create a continuous function: $$ \text{Yield} = f(\text{PCR Cycles}, \text{Input DNA}) $$
+            - **Gradient Ascent:** An iterative optimization algorithm that updates parameters ($\theta$) by moving in the direction of the gradient of the function to be maximized, $f(\theta)$. The update rule is:
+            $$ \theta_{\text{new}} = \theta_{\text{old}} + \eta \nabla f(\theta) $$
+            Where $\eta$ is the learning rate and $\nabla f(\theta)$ is the gradient.
+
+            **Procedure:**
+            1. Generate a 3D surface plot from the predictive model (GP) fit on the experimental data.
+            2. Overlay the original DOE data points and their 2D projections.
+            3. Simulate a gradient ascent optimization, starting from a non-optimal point.
+            4. Plot the path of the algorithm, highlighting the start and end, as it converges towards the maximum on the surface.
+
+            **Significance of Results:**
+            This visualization provides compelling, intuitive evidence that our process characterization and optimization methods are sound. It demonstrates that the statistically-derived optimum from the response surface aligns with the optimum found by an iterative machine learning optimizer. For a PMA, this visual evidence powerfully communicates a deep understanding and control over our core manufacturing processes.   """)
         try:
             rsm_data = ssm.get_data("quality_system", "rsm_data")
             if not rsm_data:
