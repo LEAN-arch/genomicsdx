@@ -1370,6 +1370,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             st.error(f"An error occurred during Probit analysis: {e}")
             logger.error(f"Probit analysis failed: {e}", exc_info=True)
     # --- Tool 6: Pareto Analysis ---
+    # --- Tool 6: Pareto Analysis ---
     with tool_tabs[5]:
         st.subheader("Pareto Analysis of Process Deviations")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -1396,14 +1397,89 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             **Significance of Results:**
             The Pareto chart is a cornerstone of data-driven decision-making in a quality system. It is often the first step in a **Corrective and Preventive Action (CAPA)** investigation, as required by **21 CFR 820.100**. It provides a clear justification for why a project team is focusing on a specific failure mode, ensuring resources are used effectively to improve quality and reduce the **Cost of Poor Quality (COPQ)**.
             """)
+        
         failure_data = ssm.get_data("lab_operations", "run_failures")
         df_failures = pd.DataFrame(failure_data)
-        if not df_failures.empty:
-            fig = create_pareto_chart(df_failures, category_col='failure_mode', title='Pareto Analysis of Assay Run Failures')
-            st.plotly_chart(fig, use_container_width=True)
-            top_contributor = df_failures['failure_mode'].value_counts().index[0]
-            st.success(f"The analysis highlights **'{top_contributor}'** as the primary contributor to run failures. Focusing CAPA and process improvement initiatives on this failure mode will yield the greatest reduction in overall run failures and COPQ.", icon="🎯")
 
+        if df_failures.empty:
+            st.warning("No failure data available for Pareto analysis.")
+        else:
+            df_failures['date'] = pd.to_datetime(df_failures['date'])
+
+            # --- 1. Interactive Controls ---
+            st.markdown("#### Analysis Controls")
+            control_cols = st.columns([1, 1, 2])
+            analysis_mode = control_cols[0].radio("Analyze By:", ["Frequency", "Cost"], horizontal=True, key="pareto_mode")
+            
+            today = pd.Timestamp.now()
+            start_date = control_cols[1].date_input("Start Date", today - timedelta(days=90))
+            end_date = control_cols[2].date_input("End Date", today)
+            
+            # --- 2. Data Filtering and Processing ---
+            df_filtered = df_failures[(df_failures['date'].dt.date >= start_date) & (df_failures['date'].dt.date <= end_date)]
+
+            if df_filtered.empty:
+                st.warning(f"No failure data found in the selected date range ({start_date} to {end_date}).")
+            else:
+                if analysis_mode == "Frequency":
+                    pareto_df = df_filtered['failure_mode'].value_counts().reset_index()
+                    pareto_df.columns = ['Category', 'Value']
+                    value_col_name, y_axis_title = 'Value', 'Number of Failures'
+                else: # Analysis by Cost
+                    pareto_df = df_filtered.groupby('failure_mode')['cost'].sum().sort_values(ascending=False).reset_index()
+                    pareto_df.columns = ['Category', 'Value']
+                    value_col_name, y_axis_title = 'Value', 'Total Cost of Failures ($)'
+
+                pareto_df['Cumulative Sum'] = pareto_df['Value'].cumsum()
+                pareto_df['Cumulative Pct'] = (pareto_df['Cumulative Sum'] / pareto_df['Value'].sum()) * 100
+                
+                # Identify the "vital few"
+                vital_few_mask = pareto_df['Cumulative Pct'] <= 80
+                pareto_df['Color'] = np.where(vital_few_mask, 'royalblue', 'lightgrey')
+                vital_few_count = vital_few_mask.sum()
+
+                # --- 3. KPIs and Visualization ---
+                st.divider()
+                kpi_cols = st.columns(3)
+                kpi_cols[0].metric(f"Total {analysis_mode}", f"${pareto_df['Value'].sum():,.0f}" if analysis_mode == "Cost" else f"{pareto_df['Value'].sum():,}")
+                kpi_cols[1].metric("Total Failure Categories", f"{len(pareto_df)}")
+                kpi_cols[2].metric("Vital Few Categories (80% impact)", f"{vital_few_count}", help=f"These {vital_few_count} categories account for 80% of the total {analysis_mode.lower()}.")
+
+                # Enhanced Pareto Plot
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=pareto_df['Category'], y=pareto_df['Value'],
+                                     marker_color=pareto_df['Color'], name=y_axis_title))
+                fig.add_trace(go.Scatter(x=pareto_df['Category'], y=pareto_df['Cumulative Pct'],
+                                         mode='lines+markers', yaxis='y2', name='Cumulative %',
+                                         line=dict(color='crimson')))
+                fig.add_hline(y=80, line_dash="dot", line_color="crimson", yref="y2",
+                              annotation_text="80% Threshold", annotation_position="bottom right")
+
+                fig.update_layout(
+                    title=f"<b>Pareto Analysis of Run Failures by {analysis_mode}</b>",
+                    xaxis_title="Failure Mode",
+                    yaxis=dict(title=y_axis_title),
+                    yaxis2=dict(title="Cumulative Percentage", overlaying='y', side='right', range=[0, 105], showgrid=False, ticksuffix="%"),
+                    legend=dict(x=0.01, y=0.99, bgcolor='rgba(255,255,255,0.7)'),
+                    template='plotly_white'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                # --- 4. Detailed Table and Dynamic Conclusion ---
+                with st.expander("View Detailed Pareto Data Table"):
+                    display_df = pareto_df[['Category', 'Value', 'Cumulative Pct']].copy()
+                    display_df.rename(columns={'Value': analysis_mode, 'Cumulative Pct': 'Cumulative %'}, inplace=True)
+                    format_dict = {'Cumulative %': '{:.1f}%'}
+                    if analysis_mode == 'Cost':
+                        format_dict['Cost'] = '${:,.2f}'
+                    st.dataframe(display_df.style.format(format_dict), use_container_width=True)
+
+                top_contributor = pareto_df['Category'].iloc[0]
+                st.success(f"""
+                **Conclusion:** The analysis by **{analysis_mode}** clearly identifies **'{top_contributor}'** as the primary contributor to process deviations. 
+                The "vital few" **{vital_few_count} categories** account for 80% of the total impact. 
+                Focusing CAPA and process improvement initiatives on these categories will yield the greatest return on investment.
+                """, icon="🎯")
 
 # In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
 
