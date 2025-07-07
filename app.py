@@ -2224,7 +2224,27 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[7]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""")
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To statistically distinguish a true, low-frequency somatic mutation from the background "noise" of sequencing errors. Every sequencer has an inherent error rate. For liquid biopsy, where the true signal (Variant Allele Frequency or VAF) can be <0.1%, a robust error model is absolutely essential for achieving a low Limit of Detection (LoD).
+
+            **Conceptual Walkthrough: A Whisper in a Crowded Room**
+            Imagine trying to hear a very faint whisper (a true mutation) in a noisy room (sequencing errors). If you don't know how loud the background noise typically is, you can't be sure if you heard a real whisper or just a random bit of chatter. This tool first *characterizes the background noise* by fitting a statistical distribution (a Beta distribution) to the observed error rates from many normal samples. This gives us a precise "fingerprint" of the noise. Then, when we hear a potential new signal, we can ask: "What is the probability that the background noise, by itself, would sound this loud?" If that probability (the p-value) is astronomically low, we can confidently say we heard a real whisper.
+
+            **Mathematical Basis & Formula:**
+            1.  **Error Modeling:** The VAF of sequencing errors at non-variant sites is modeled using a Beta distribution, which is perfect for values between 0 and 1. We fit the parameters ($\alpha_0, \beta_0$) of this distribution using a large set of normal, healthy samples.
+            2.  **Hypothesis Testing:** For a new variant observed with a VAF of $v_{obs}$, our null hypothesis is $H_0$: "This observation is just a draw from our background error distribution." We calculate the p-value as the survival function (1 - CDF) of our fitted Beta distribution: $$ P(\text{VAF} \ge v_{obs} | H_0) = 1 - F(v_{obs}; \alpha_0, \beta_0) $$ A very low p-value allows us to reject $H_0$.
+
+            **Procedure:**
+            1.  Sequence a cohort of healthy individuals to high depth.
+            2.  At known non-variant positions, calculate the VAF of non-reference alleles to build an empirical error distribution.
+            3.  Fit a Beta distribution to these error VAFs to get the model parameters ($\alpha_0, \beta_0$).
+            4.  For new samples, calculate a p-value for each potential variant against this error model.
+
+            **Significance of Results:**
+            This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.
+            """)
+
         alpha0, beta0, _, _ = stats.beta.fit(np.random.beta(a=0.4, b=9000, size=1000), floc=0, fscale=1)
         st.write(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`")
         true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider_ngs")
