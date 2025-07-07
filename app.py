@@ -1830,6 +1830,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The ARIMA forecast projects a continued upward trend in sample volume, suggesting a need to review reagent inventory and staffing levels for the upcoming month.", icon="📈")
 
     # --- Tool 6: Predictive Run QC ---
+    # --- Tool 6: Predictive Run QC ---
     with ml_tabs[5]:
         st.subheader("Predictive Run QC from Early On-Instrument Metrics")
         with st.expander("View Method Explanation & Operational Context", expanded=False):
@@ -1853,18 +1854,78 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Significance of Results:**
             This is a powerful process control and cost-saving tool. By preventing failed runs from consuming a full cycle of resources, it directly reduces the **Cost of Poor Quality (COPQ)**. A validated predictive QC model can be integrated into the LIMS to create a more efficient and "intelligent" lab operation.
             """)
-                
+        
+        # --- 1. Data Preparation and Model Training ---
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
         y_ops = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
+        
         X_train, X_test, y_train, y_test = train_test_split(X_ops, y_ops, test_size=0.3, random_state=42, stratify=y_ops)
         model_ops = LogisticRegression(random_state=42, class_weight='balanced').fit(X_train, y_train)
-        cm_ops = confusion_matrix(y_test, model_ops.predict(X_test), labels=[1, 0])
-        fig_cm_ops = create_confusion_matrix_heatmap(cm_ops, ['Fail', 'Pass'])
-        st.plotly_chart(fig_cm_ops, use_container_width=True)
-        tn, fp, fn, tp = cm_ops.ravel()
-        st.success(f"**Model Evaluation:** The model correctly identified **{tp}** failing runs out of a total of {tp+fn}, enabling proactive intervention and significant cost savings.", icon="💰")
+        
+        # Get predicted probabilities for the test set
+        y_pred_probs = model_ops.predict_proba(X_test)[:, 1]
+
+        # --- 2. Interactive Controls & Business Logic ---
+        st.info("""**Use the slider to set the model's sensitivity.** A lower threshold will catch more potential failures but may also flag more good runs for review. Find the optimal balance for our lab's risk and cost profile.""", icon="💡")
+        
+        decision_threshold = st.slider("Flag run as 'Predicted Fail' if P(Fail) >", 0.0, 1.0, 0.5, 0.05, key="qc_threshold")
+
+        # Assume cost values for business impact analysis
+        COST_OF_FAILED_RUN = 5000  # Cost of reagents, labor, instrument time for a full failed run
+        COST_OF_REVIEW = 500  # Cost of labor to investigate a falsely flagged run
+
+        # --- 3. Dynamic Calculation based on Threshold ---
+        y_pred_decision = (y_pred_probs >= decision_threshold).astype(int)
+        cm = confusion_matrix(y_test, y_pred_decision, labels=[1, 0])
+        tn, fp, fn, tp = cm.ravel()
+
+        total_failed_runs = tp + fn
+        total_good_runs = tn + fp
+        
+        runs_saved = tp
+        runs_wrongly_flagged = fp
+        
+        money_saved = runs_saved * COST_OF_FAILED_RUN
+        money_lost = runs_wrongly_flagged * COST_OF_REVIEW
+        net_savings = money_saved - money_lost
+
+        # --- 4. Build the Informative Dashboard ---
+        kpi_cols = st.columns(3)
+        kpi_cols[0].metric("Failing Runs Caught (TP)", f"{runs_saved} / {total_failed_runs}", f"{(runs_saved / total_failed_runs if total_failed_runs > 0 else 0):.1%}")
+        kpi_cols[1].metric("Good Runs Flagged (FP)", f"{runs_wrongly_flagged} / {total_good_runs}", f"{(runs_wrongly_flagged / total_good_runs if total_good_runs > 0 else 0):.1%}")
+        kpi_cols[2].metric("Estimated Net Savings", f"${net_savings:,.0f}", help=f"Savings: ${money_saved:,.0f} | Review Cost: ${money_lost:,.0f}")
+
+        st.divider()
+        plot_cols = st.columns([2, 1])
+
+        with plot_cols[0]:
+            st.markdown("##### Model Probability Distributions")
+            df_plot = pd.DataFrame({'probability': y_pred_probs, 'outcome': y_test.map({1: 'Actual Fail', 0: 'Actual Pass'})})
+            fig_dist = px.histogram(df_plot, x='probability', color='outcome',
+                                    barmode='overlay', nbins=30,
+                                    title="<b>Predicted Failure Probability by Actual Outcome</b>",
+                                    labels={'probability': 'Predicted Probability of Failure'})
+            fig_dist.add_vline(x=decision_threshold, line_dash="dash", line_color="black", annotation_text="Decision Threshold")
+            st.plotly_chart(fig_dist, use_container_width=True)
+
+        with plot_cols[1]:
+            st.markdown("##### Key Predictive Features")
+            feature_importance = pd.DataFrame({'feature': X_ops.columns, 'coefficient': model_ops.coef_[0]})
+            feature_importance = feature_importance.sort_values('coefficient', ascending=False)
+            fig_importance = px.bar(feature_importance, x='coefficient', y='feature', orientation='h',
+                                     title="<b>What drives a 'Fail' prediction?</b>")
+            st.plotly_chart(fig_importance, use_container_width=True)
+
+        st.divider()
+        # --- 5. Dynamic Conclusion ---
+        st.success(f"""
+        **Operational Summary at {decision_threshold:.0%} Threshold:**
+        - This setting correctly identifies **{runs_saved} of the {total_failed_runs} true failures**, preventing **${money_saved:,.0f}** in wasted resources.
+        - It incorrectly flags **{runs_wrongly_flagged} good runs** for review, costing an estimated **${money_lost:,.0f}**.
+        - The resulting estimated **net savings is ${net_savings:,.0f}**.
+        """, icon="💰")
 
     # --- Tool 7: Fragmentomics ---
     with ml_tabs[6]:
@@ -1974,7 +2035,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
     # --- Tool 10: 3D Optimization Visualization ---
 
-    # --- Tool 10: 3D Optimization Visualization ---
     with ml_tabs[9]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
