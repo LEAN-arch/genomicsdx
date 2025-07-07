@@ -1500,6 +1500,8 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
 
 # In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
 
+# In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
+
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """
     Renders the tab containing machine learning and bioinformatics tools,
@@ -1545,29 +1547,28 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[0]:
         st.subheader("Classifier Performance: ROC and Precision-Recall")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r""" **Purpose of the Method:**
-            To unlock the "black box" of complex machine learning models. For a regulated SaMD (Software as a Medical Device), it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
-    
-            **Conceptual Walkthrough: The Team of Experts**
-            Imagine your classifier is a team of medical experts deciding on a diagnosis. A positive diagnosis is made. Who was most influential? SHAP is like an audit that determines how much "credit" or "blame" each expert (feature) gets for the final decision. The SHAP summary plot lines up all the features and shows their overall impact. For a given feature, red dots mean a high value for that feature, and blue dots mean a low value. If red dots are on the right side of the center line, it means high values of that feature *push the prediction toward "Cancer Signal Detected."*
-    
-            **Mathematical Basis & Formula:**
-            SHAP is based on **Shapley values**, a concept from cooperative game theory. It calculates the marginal contribution of each feature to the prediction. The formula for the Shapley value for a feature *i* is:
-            $$ \phi_i(v) = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|! (|F| - |S| - 1)!}{|F|!} [v(S \cup \{i\}) - v(S)] $$
-            This calculates the weighted average of a feature's marginal contribution over all possible feature combinations.
-    
-            **Procedure:**
-            1. Train a classifier model.
-            2. Create a SHAP `Explainer` object based on the model.
-            3. Use the explainer to calculate SHAP values for a set of samples.
-            4. Visualize the results, typically with a summary plot.
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To comprehensively evaluate the performance of our binary classifier. The ROC curve assesses the fundamental trade-off between sensitivity and specificity, while the Precision-Recall (PR) curve is essential for evaluating performance on imbalanced datasets, which is typical for cancer screening.
+
+            **Conceptual Walkthrough:**
+            - **ROC Curve:** Imagine slowly lowering the bar for what we call a "cancer signal." As we lower it, we catch more true cancers (increasing True Positive Rate, good!) but also misclassify more healthy people (increasing False Positive Rate, bad!). The ROC curve plots this entire trade-off. The Area Under the Curve (AUC) summarizes this: 1.0 is perfect, 0.5 is a random guess.
+            - **PR Curve:** This answers a more practical clinical question: "Of all the patients we flagged as positive, what fraction actually had cancer?" This is **Precision**. The curve shows how precision changes as we try to find more and more of the true cancers (increase **Recall**). In a screening test, maintaining high precision is vital to avoid unnecessary follow-up procedures for healthy individuals.
+
+            **Mathematical Basis & Formulas:**
+            - **ROC:** Plots True Positive Rate (Sensitivity) vs. False Positive Rate. $$ TPR = \frac{TP}{TP+FN} \quad \text{vs.} \quad FPR = \frac{FP}{FP+TN} $$
+            - **PR:** Plots Precision vs. Recall (which is the same as TPR). $$ \text{Precision} = \frac{TP}{TP+FP} \quad \text{vs.} \quad \text{Recall} = TPR $$
             
+            **Procedure:**
+            1. Use the trained classifier to predict probabilities on a hold-out test set.
+            2. Vary the classification threshold from 0 to 1.
+            3. At each threshold, calculate the TPR/FPR for the ROC curve and Precision/Recall for the PR curve.
+            4. Plot the resulting curves and calculate the area under each.
+
             **Significance of Results:**
-            Model explainability is a major focus for regulatory bodies (e.g., FDA's AI/ML Action Plan). A SHAP analysis provides critical evidence for a **PMA submission** by:
-            1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
-            2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
-            3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
- """) # Explanation content
+            These curves are central to the **Clinical Validation** section of the PMA. The AUC-ROC demonstrates the overall discriminatory power of the underlying biomarkers and model. The PR curve and the associated AUC-PR provide direct evidence of the test's positive predictive value (PPV) and its clinical utility in a screening population, where the prevalence of disease is low.
+            """)
         col1, col2 = st.columns(2)
         with col1:
             fig_roc = create_roc_curve(pd.DataFrame({'score': model.predict_proba(X)[:, 1], 'truth': y}), 'score', 'truth')
@@ -1584,7 +1585,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[1]:
         st.subheader("Classifier Explainability (SHAP)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""**Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             To unlock the "black box" of complex machine learning models. For a regulated SaMD (Software as a Medical Device), it's not enough to show *that* a model works (performance); we must also provide evidence for *how* it works (explainability). SHAP (SHapley Additive exPlanations) values provide this crucial insight by quantifying the contribution of each feature to each individual prediction.
     
             **Conceptual Walkthrough: The Team of Experts**
@@ -1606,7 +1609,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             1.  **Confirming Scientific Plausibility:** It should confirm that the model relies on biologically relevant features, not spurious correlations.
             2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
-""") # Explanation content
+            """)
         try:
             with st.spinner("Calculating SHAP values..."):
                 n_samples = min(100, len(X))
@@ -1632,7 +1635,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""**Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             For an MCED test, a key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**. This tool analyzes the performance of the CSO multi-class prediction model, which is critical for guiding the subsequent clinical workup.
 
             **Conceptual Walkthrough: The Return Address**
@@ -1651,7 +1656,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             **Significance of Results:**
             The performance of the CSO classifier is a key component of the assay's **clinical validation** and a major part of a **PMA submission**. The confusion matrix directly informs the Instructions for Use (IFU) and physician education materials, highlighting the model's strengths and weaknesses so that clinicians can interpret a CSO prediction with the appropriate context.
-  """)
+            """)
         try:
             cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
             cancer_samples_X = X[y == 1]
@@ -1704,11 +1709,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     # --- Tool 4: Assay Optimization (RSM vs. ML) ---
     with ml_tabs[3]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
-        st.info(r"""**Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
-                **Mathematical Basis:** It uses a second-order polynomial model fit via least squares. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
-                $$ Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2 $$
-                **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.
- """)
+        # --- FIX: Moved single info box to the top ---
+        st.info("This advanced tool compares two approaches to process optimization. Traditional Response Surface Methodology (RSM) fits a simple quadratic equation, while a Machine Learning model like a Gaussian Process (GP) can learn more complex, non-linear relationships.")
         rsm_data = ssm.get_data("quality_system", "rsm_data")
         df_rsm = pd.DataFrame(rsm_data)
         X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
@@ -1716,19 +1718,29 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("#### Method 1: Response Surface Methodology (RSM)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""**Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
+            with st.expander("View Method Explanation", expanded=False): 
+                # --- FIX: Standardized markdown formatting ---
+                st.markdown(r"""
+                **Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
+                
                 **Mathematical Basis:** It uses a second-order polynomial model fit via least squares. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
                 $$ Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2 $$
-                **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.""")
+                
+                **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.
+                """)
             _, contour_fig_rsm, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
             st.plotly_chart(contour_fig_rsm, use_container_width=True)
         with col2:
             st.markdown("#### Method 2: Machine Learning (Gaussian Process)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""**Purpose:** To find the optimal settings using a more flexible, non-parametric machine learning model that can capture complex relationships that a simple quadratic model might miss.
+            with st.expander("View Method Explanation", expanded=False): 
+                # --- FIX: Standardized markdown formatting ---
+                st.markdown(r"""
+                **Purpose:** To find the optimal settings using a more flexible, non-parametric machine learning model that can capture complex relationships that a simple quadratic model might miss.
+                
                 **Mathematical Basis:** A **Gaussian Process (GP)** is a Bayesian approach that models a distribution over functions. Instead of learning specific coefficients, it learns a kernel function that describes the similarity between data points. This allows it to model very complex, non-linear surfaces and also provides a natural measure of uncertainty for its predictions.
+                
                 **Significance:** GP models are more powerful for complex, real-world processes that may not follow a simple quadratic shape. While more computationally intensive, they can find optima that RSM might miss. However, their "black box" nature may require additional explainability evidence (like SHAP) for regulatory submissions.
-""")
-            # --- FIX: Use .values and wider bounds to fix all warnings ---
+                """)
             scaler_rsm = StandardScaler()
             X_rsm_scaled = scaler_rsm.fit_transform(X_rsm.values)
             kernel = C(1.0, (1e-5, 1e5)) * RBF(length_scale=[1.0] * X_rsm_scaled.shape[1], length_scale_bounds=(1e-5, 1e5))
@@ -1751,7 +1763,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting for Lab Operations")
         with st.expander("View Method Explanation & Business Context", expanded=False):
-            st.markdown(r""" **Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             To forecast future operational demand (e.g., incoming sample volume) based on historical trends and seasonality. This is a critical business intelligence tool for proactive lab management, enabling data-driven decisions on reagent inventory, staffing levels, and capital expenditure.
 
             ---
@@ -1779,7 +1793,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             - **Rolling Averages:** What was the average volume over the last week?
             - **Date Components:** Was it a Monday? Is it December?
             
-            This allows the model to learn complex, non-linear relationships (e.g., "volume is always 20% higher on Mondays after a holiday weekend") that ARIMA might miss.  """)
+            This allows the model to learn complex, non-linear relationships (e.g., "volume is always 20% higher on Mondays after a holiday weekend") that ARIMA might miss.
+            """)
         try:
             ts_data = ssm.get_data("ml_models", "sample_volume_data")
             df_ts_raw = pd.DataFrame(ts_data).set_index('date')
@@ -1862,7 +1877,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[5]:
         st.subheader("Predictive Run QC from Early On-Instrument Metrics")
         with st.expander("View Method Explanation & Operational Context", expanded=False):
-            st.markdown(r""" **Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             To predict the final quality of a sequencing run using metrics generated by the sequencer *within the first few hours* of the run. This allows the lab to terminate runs that are destined to fail, saving thousands of dollars in reagents and valuable instrument time.
 
             **Conceptual Walkthrough: The Pre-Flight Check**
@@ -1880,7 +1897,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             **Significance of Results:**
             This is a powerful process control and cost-saving tool. By preventing failed runs from consuming a full cycle of resources, it directly reduces the **Cost of Poor Quality (COPQ)**. A validated predictive QC model can be integrated into the LIMS to create a more efficient and "intelligent" lab operation.
-  """)
+            """)
         run_qc_data = ssm.get_data("ml_models", "run_qc_data")
         df_run_qc = pd.DataFrame(run_qc_data)
         X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
@@ -1922,7 +1939,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[6]:
         st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r""" **Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             To leverage a key biological property of circulating tumor DNA (ctDNA) to enhance cancer detection. DNA from cancerous cells tends to be more fragmented and thus shorter than background cell-free DNA (cfDNA) from healthy apoptotic cells. This tool visualizes these fragment size distributions.
 
             **Conceptual Walkthrough: Rocks vs. Sand**
@@ -1941,7 +1960,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             **Significance of Results:**
             Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals, de-risking the algorithm from being reliant on spurious correlations. This is a critical piece of evidence for the PMA.
-  """)
+            """)
         try:
             np.random.seed(42)
             samples, n_healthy, n_cancer = [], 50, 30
@@ -1994,7 +2013,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[7]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""**Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             To statistically distinguish a true, low-frequency somatic mutation from the background "noise" of sequencing errors. Every sequencer has an inherent error rate. For liquid biopsy, where the true signal (Variant Allele Frequency or VAF) can be <0.1%, a robust error model is absolutely essential for achieving a low Limit of Detection (LoD).
 
             **Conceptual Walkthrough: A Whisper in a Crowded Room**
@@ -2011,7 +2032,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             4.  For new samples, calculate a p-value for each potential variant against this error model.
 
             **Significance of Results:**
-            This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.  """)
+            This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.
+            """)
         background_errors = np.random.beta(a=0.4, b=9000, size=1000)
         alpha0, beta0, _, _ = stats.beta.fit(background_errors, floc=0, fscale=1)
         st.info(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`...", icon="🔬")
@@ -2047,7 +2069,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[8]:
         st.subheader("NGS Signal: Methylation Entropy Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r""" **Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             To leverage another key biological signal in cfDNA: the **disorder** of methylation patterns within a given genomic region. Healthy tissues often have very consistent, ordered methylation patterns, while cancer tissues exhibit chaotic, disordered methylation. This "methylation entropy" can be a powerful feature for classification.
 
             **Conceptual Walkthrough: A Well-Kept vs. Messy Bookshelf**
@@ -2068,7 +2092,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
             **Significance of Results:**
             Like fragmentomics, methylation entropy is an **orthogonal biological signal**. It does not depend on the methylation level at a single site but on the heterogeneity of patterns across a region. Incorporating such features makes our classifier more robust and less susceptible to artifacts affecting single-site measurements. Presenting this in a PMA submission demonstrates a deep, multi-faceted understanding of the underlying cancer biology.
-   """)
+            """)
         try:
             def calculate_shannon_entropy(patterns):
                 if not patterns: return 0
@@ -2128,7 +2152,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[9]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r""" **Purpose of the Method:**
+            # --- FIX: Standardized markdown formatting ---
+            st.markdown(r"""
+            **Purpose of the Method:**
             To provide an intuitive, three-dimensional visualization of an optimization problem. This powerful tool allows us to literally *see* the landscape our algorithms are trying to navigate, whether it's an assay's response surface or a machine learning model's loss function. It builds confidence that our optimization strategies are finding true, global optima rather than getting stuck in local minima.
 
             **Conceptual Walkthrough: Mapping and Hiking a Valley**
@@ -2150,7 +2176,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             4. Plot the path of the algorithm, highlighting the start and end, as it converges towards the maximum on the surface.
 
             **Significance of Results:**
-            This visualization provides compelling, intuitive evidence that our process characterization and optimization methods are sound. It demonstrates that the statistically-derived optimum from the response surface aligns with the optimum found by an iterative machine learning optimizer. For a PMA, this visual evidence powerfully communicates a deep understanding and control over our core manufacturing processes.   """)
+            This visualization provides compelling, intuitive evidence that our process characterization and optimization methods are sound. It demonstrates that the statistically-derived optimum from the response surface aligns with the optimum found by an iterative machine learning optimizer. For a PMA, this visual evidence powerfully communicates a deep understanding and control over our core manufacturing processes.
+            """)
         try:
             rsm_data = ssm.get_data("quality_system", "rsm_data")
             if not rsm_data:
