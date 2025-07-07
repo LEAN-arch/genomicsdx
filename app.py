@@ -1933,7 +1933,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig_importance = px.bar(feature_importance, x='coefficient', y='feature', orientation='h', title="<b>What drives a 'Fail' prediction?</b>")
             st.plotly_chart(fig_importance, use_container_width=True)
         st.divider()
-        st.success(f"""**Operational Summary at {decision_threshold:.0%} Threshold:**
+        st.success(f"""
+        **Operational Summary at {decision_threshold:.0%} Threshold:**
         - This setting correctly identifies **{runs_saved} of the {total_failed_runs} true failures**, preventing **${money_saved:,.0f}** in wasted resources.
         - It incorrectly flags **{runs_wrongly_flagged} good runs** for review, costing an estimated **${money_lost:,.0f}**.
         - The resulting estimated **net savings is ${net_savings:,.0f}**.
