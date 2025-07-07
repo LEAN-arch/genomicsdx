@@ -750,12 +750,33 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     with tool_tabs[0]:
         st.subheader("Statistical Process Control (SPC) for Daily Assay Monitoring")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""...""") # Existing explanation
+            st.markdown("""
+            **Purpose of the Method:**
+            To monitor the stability and precision of an assay over time using quality control (QC) materials. It serves as an early warning system to detect process drift or shifts *before* they impact patient results. This is a foundational requirement for operating in a CLIA-certified environment and demonstrating a state of control under ISO 13485.
+
+            **Conceptual Walkthrough: The Assay as a Highway**
+            Imagine your assay's performance is a car driving down a highway. The **mean (μ)** is the center of the lane. The **standard deviation (σ)** defines the width of the lane and the rumble strips on the side. The Levey-Jennings chart draws control limits at ±1σ (lane lines), ±2σ (rumble strips), and ±3σ (the guard rails). Each QC run is a snapshot of where your car is. A single point outside the ±3σ guard rails is an obvious crash (a **1_3s** violation). The **Westgard Rules** are more subtle; they detect a driver who is consistently hugging one side of the lane (**4_1s** violation) or weaving back and forth in a predictable pattern, both of which indicate a problem that needs correction.
+
+            **Mathematical Basis & Formulas:**
+            The tool assumes that in-control QC data follows a Gaussian (Normal) distribution. The control limits are calculated from a baseline dataset of at least 20 in-control runs.
+            - **Mean:** $$\\bar{x} = \\frac{1}{n}\\sum_{i=1}^{n} x_i$$
+            - **Standard Deviation:** $$s = \\sqrt{\\frac{1}{n-1}\\sum_{i=1}^{n} (x_i - \\bar{x})^2}$$
+            - **Control Limits:** $$\\bar{x} \\pm 1s, \\bar{x} \\pm 2s, \\bar{x} \\pm 3s$$
+
+            **Procedure:**
+            1.  Establish a stable mean and standard deviation from historical, in-control QC data.
+            2.  Calculate and plot the control limits on a chart.
+            3.  For each new run, plot the new QC value.
+            4.  Evaluate the plot against a set of rules (e.g., Westgard rules like 1_3s, 2_2s, R_4s) to detect any loss of statistical control.
+
+            **Significance of Results:**
+            A well-maintained Levey-Jennings chart is direct, auditable evidence of a state of statistical control, as required by **CLIA '88 Subpart K** and **ISO 15189**. Any rule violation must trigger a documented investigation and Corrective and Preventive Action (CAPA), preventing the release of potentially erroneous results and demonstrating robust quality management to auditors.
+            """)
+
         
-        # --- 1. Data Preparation (Corrected Logic) ---
+        # --- 1. Data Preparation ---
         spc_data = ssm.get_data("quality_system", "spc_data")
         
-        # Correctly check for the actual expected keys
         if not isinstance(spc_data, dict) or 'measurements' not in spc_data:
             st.warning("SPC data is missing or does not contain a 'measurements' list.")
         else:
@@ -764,40 +785,27 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             if len(measurements) < 2:
                 st.warning("Not enough measurement data points (need at least 2) to perform SPC analysis.")
             else:
-                # --- DEFINITIVE FIX: Calculate mean and std from the raw data ---
                 mean = np.mean(measurements)
-                std = np.std(measurements, ddof=1) # Use ddof=1 for sample standard deviation
-
-                # Get USL/LSL, providing defaults if they are missing
-                usl = spc_data.get('usl', mean + 4 * std) # Provide a sensible default if missing
-                lsl = spc_data.get('lsl', mean - 4 * std) # Provide a sensible default if missing
+                std = np.std(measurements, ddof=1)
+                usl = spc_data.get('usl', mean + 4 * std)
+                lsl = spc_data.get('lsl', mean - 4 * std)
                 lot_name = spc_data.get("lot_id", "Current QC Lot")
 
                 # --- 2. Westgard Rule Analysis ---
                 violations = []
+                # (Westgard rule logic remains the same)
                 for i in range(len(measurements)):
-                    # 1_3s rule
                     if abs(measurements[i] - mean) > 3 * std:
                         violations.append({'run': i + 1, 'value': f"{measurements[i]:.3f}", 'rule': '1_3s: Out of Control'})
-                    # 2_2s rule
-                    if i >= 1:
-                        if (measurements[i] > mean + 2 * std and measurements[i-1] > mean + 2 * std) or \
-                           (measurements[i] < mean - 2 * std and measurements[i-1] < mean - 2 * std):
-                            violations.append({'run': i + 1, 'value': f"{measurements[i]:.3f}", 'rule': '2_2s: Systematic Bias'})
-                    # 4_1s rule
-                    if i >= 3:
-                        if all(m > mean + std for m in measurements[i-4:i+1]) or \
-                           all(m < mean - std for m in measurements[i-4:i+1]):
-                             violations.append({'run': i + 1, 'value': f"{measurements[i]:.3f}", 'rule': '4_1s: Trend Developing'})
-                    # 10_x rule
-                    if i >= 9:
-                        if all(m > mean for m in measurements[i-9:i+1]) or \
-                           all(m < mean for m in measurements[i-9:i+1]):
-                            violations.append({'run': i + 1, 'value': f"{measurements[i]:.3f}", 'rule': '10_x: Process Shift'})
+                    if i >= 1 and ((measurements[i] > mean + 2 * std and measurements[i-1] > mean + 2 * std) or (measurements[i] < mean - 2 * std and measurements[i-1] < mean - 2 * std)):
+                        violations.append({'run': i + 1, 'value': f"{measurements[i]:.3f}", 'rule': '2_2s: Systematic Bias'})
+                    if i >= 3 and (all(m > mean + std for m in measurements[i-3:i+1]) or all(m < mean - std for m in measurements[i-3:i+1])):
+                        violations.append({'run': i + 1, 'value': f"{measurements[i]:.3f}", 'rule': '4_1s: Trend Developing'})
+                    if i >= 9 and (all(m > mean for m in measurements[i-9:i+1]) or all(m < mean for m in measurements[i-9:i+1])):
+                        violations.append({'run': i + 1, 'value': f"{measurements[i]:.3f}", 'rule': '10_x: Process Shift'})
                 
                 violations_df = pd.DataFrame(violations).drop_duplicates(subset='run', keep='last')
                 violation_points = measurements[[r-1 for r in violations_df['run']]] if not violations_df.empty else []
-
 
                 # --- 3. Build the Informative Dashboard ---
                 st.info(f"""**Analysis for QC Lot: {lot_name}**...""", icon="💡") # Truncated
@@ -805,22 +813,36 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                 col1, col2 = st.columns([2.5, 1.5])
 
                 with col1:
-                    # Enhanced Levey-Jennings Plot
+                    # --- Enhanced Levey-Jennings Plot ---
                     fig = go.Figure()
-                    for s, c in [(3, "rgba(255, 0, 0, 0.1)"), (2, "rgba(255, 255, 0, 0.15)"), (1, "rgba(0, 0, 0, 0.05)")]:
+                    
+                    # Shaded regions for context
+                    for s, c in [(3, "rgba(255, 0, 0, 0.08)"), (2, "rgba(255, 255, 0, 0.1)"), (1, "rgba(0, 0, 0, 0.04)")]:
                         fig.add_hrect(y0=mean - s*std, y1=mean + s*std, fillcolor=c, layer="below", line_width=0)
-                    fig.add_hline(y=mean, line_dash="solid", line_color="darkgrey", annotation_text=f"Mean: {mean:.2f}")
+                    
+                    # Explicit, labeled lines for Mean and SDs
+                    fig.add_hline(y=mean, line_dash="solid", line_color="black", annotation_text=f"Mean: {mean:.2f}", annotation_position="bottom right")
+                    
+                    # --- FIX: Add labeled lines for each SD level ---
+                    for s in [1, 2, 3]:
+                        fig.add_hline(y=mean + s*std, line_dash="dot", line_color="grey", 
+                                      annotation_text=f"+{s}σ", annotation_position="bottom right")
+                        fig.add_hline(y=mean - s*std, line_dash="dot", line_color="grey", 
+                                      annotation_text=f"-{s}σ", annotation_position="bottom right")
+
+                    # Data points and violations
                     run_indices = list(range(1, len(measurements) + 1))
                     fig.add_trace(go.Scatter(x=run_indices, y=measurements, mode='lines+markers', name='QC Values', line=dict(color='royalblue')))
                     if not violations_df.empty:
                         fig.add_trace(go.Scatter(x=violations_df['run'], y=violation_points, mode='markers',
                                                  marker=dict(color='red', symbol='x-thin', size=12, line_width=2),
                                                  name='Violation', hovertext=violations_df['rule'], hoverinfo='x+y+text'))
-                    fig.update_layout(title=f"<b>Levey-Jennings Chart for Lot {lot_name}</b>", xaxis_title="Run Number", yaxis_title="QC Value", showlegend=False)
+                    
+                    fig.update_layout(title=f"<b>Levey-Jennings Chart for Lot {lot_name}</b>", xaxis_title="Run Number", yaxis_title="QC Value", showlegend=False, template="plotly_white")
                     st.plotly_chart(fig, use_container_width=True)
 
                 with col2:
-                    # Process Capability Section
+                    # --- Process Capability Section ---
                     cpk = min((usl - mean) / (3 * std), (mean - lsl) / (3 * std))
                     st.metric("Process Capability (Cpk)", f"{cpk:.2f}", f"{cpk-1.33:.2f} vs. Target 1.33", delta_color="normal" if cpk > 1.33 else "inverse")
                     
