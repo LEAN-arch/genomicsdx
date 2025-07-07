@@ -1960,7 +1960,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "1. Classifier Performance (ROC & PR)", "2. Classifier Explainability (SHAP)", "3. Cancer Signal of Origin (CSO) Analysis",
         "4. Assay Optimization (RSM vs. ML)", "5. Time Series Forecasting (Operations)", "6. Predictive Run QC (On-Instrument)",
         "7. NGS: Fragmentomics Analysis", "8. NGS: Sequencing Error Modeling", "9. NGS: Methylation Entropy Analysis",
-        "10. 3D Optimization Visualization","11. 3D Optimization_Alpha"
+        "10. 3D Optimization Visualization"
     ])
 
     X, y = ssm.get_data("ml_models", "classifier_data")
