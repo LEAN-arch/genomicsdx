@@ -2109,40 +2109,13 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting for Lab Operations")
         with st.expander("View Method Explanation & Business Context", expanded=False):
-            # This is the detailed explanation you provided, now contextually updated.
             st.markdown(r"""
             **Purpose of the Method:**
             To forecast future operational demand (e.g., incoming sample volume) based on historical trends and seasonality. This is a critical business intelligence tool for proactive lab management, enabling data-driven decisions on reagent inventory, staffing levels, and capital expenditure.
-
-            ---
             
-            ### Methodologies Compared
-            
-            #### 1. ARIMA (Statistical Approach)
-
-            **Conceptual Walkthrough: The Signal Analyst**
-            This classical method acts like a signal analyst, looking only at the time series' own past behavior to predict its future. It's excellent at capturing linear trends and consistent patterns. It learns three things from the data's history:
-            1.  **A**uto**R**egression (AR - term `p`): Is today's volume related to yesterday's? (Momentum)
-            2.  **I**ntegrated (I - term `d`): Does the data have an overall upward or downward trend that needs to be stabilized?
-            3.  **M**oving **A**verage (MA - term `q`): Are random shocks or errors from the past still affecting today's value?
-            
-            **Mathematical Basis & Formula:**
-            An ARIMA(p,d,q) model is a combination of simpler time series models:
-            - **AR(p):** $ Y_t = c + \sum_{i=1}^{p} \phi_i Y_{t-i} + \epsilon_t $ (Regression on past values)
-            - **MA(q):** $ Y_t = \mu + \epsilon_t + \sum_{i=1}^{q} \theta_i \epsilon_{t-i} $ (Regression on past errors)
-            
-            #### 2. Machine Learning (Gradient Boosting Approach)
-
-            **Conceptual Walkthrough: The Contextual Learner**
-            This modern method converts the forecasting problem into a standard regression problem. Instead of just looking at the signal, it learns from a rich set of **features** we engineer from the timeline. It's like a detective using multiple clues (not just one) to make a prediction. We create features such as:
-            - **Lags:** What was the volume exactly 7 days ago?
-            - **Rolling Averages:** What was the average volume over the last week?
-            - **Date Components:** Was it a Monday? Is it December?
-            
-            This allows the model to learn complex, non-linear relationships (e.g., "volume is always 20% higher on Mondays after a holiday weekend") that ARIMA might miss.
-
-            **Significance of Results:**
-            Accurate forecasting is key to running a lean and efficient operation. By comparing both methods, we can choose the model that best captures the dynamics of our lab's workload, helping prevent costly situations like reagent stock-outs or over-staffing.
+            **Methodologies Compared:**
+            - **ARIMA (Statistical):** A classical time series model that captures trends and relationships based on the series' own past values and errors. It excels at capturing linear trends and well-defined seasonality.
+            - **Machine Learning (Gradient Boosting):** A modern approach that converts the time series problem into a regression problem. We engineer features like time lags, rolling averages, and date components, allowing the model to capture complex, non-linear relationships that ARIMA might miss.
             """)
         
         try:
@@ -2150,30 +2123,30 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             import lightgbm as lgb
 
             ts_data = ssm.get_data("ml_models", "sample_volume_data")
-            df_ts = pd.DataFrame(ts_data).set_index('date')
-            df_ts.index = pd.to_datetime(df_ts.index).asfreq('D')
+            df_ts_raw = pd.DataFrame(ts_data).set_index('date')
+            
+            # --- DEFINITIVE FIX: Correctly set and use DatetimeIndex ---
+            df_ts_raw.index = pd.to_datetime(df_ts_raw.index)
+            # 1. Ensure a daily frequency, creating NaN rows for missing days
+            df_ts = df_ts_raw.asfreq('D') 
+            # 2. Fill any created gaps with a reasonable value (e.g., linear interpolation)
+            df_ts['samples'] = df_ts['samples'].interpolate(method='time')
 
             if df_ts.empty:
                 st.warning("No time series data available.")
             else:
-                # --- 1. Top-Level Model Selection ---
-                analysis_method = st.radio(
-                    "Select Forecasting Methodology",
-                    ["ARIMA (Statistical)", "Machine Learning (Gradient Boosting)"],
-                    horizontal=True, key="ts_method_select"
-                )
+                analysis_method = st.radio("Select Forecasting Methodology", ["ARIMA (Statistical)", "Machine Learning (Gradient Boosting)"], horizontal=True, key="ts_method_select")
                 st.markdown("---")
 
                 if analysis_method == "ARIMA (Statistical)":
                     st.markdown("##### ARIMA Model Controls")
                     control_cols = st.columns(4)
-                    p = control_cols[0].slider("AR Order (p)", 0, 10, 5)
-                    d = control_cols[1].slider("Differencing (d)", 0, 3, 1)
-                    q = control_cols[2].slider("MA Order (q)", 0, 10, 0)
+                    p = control_cols[0].slider("AR Order (p)", 0, 10, 5, key="arima_p")
+                    d = control_cols[1].slider("Differencing (d)", 0, 3, 1, key="arima_d")
+                    q = control_cols[2].slider("MA Order (q)", 0, 10, 0, key="arima_q")
                     forecast_horizon = control_cols[3].number_input("Forecast Horizon (Days)", 7, 180, 30, key="arima_horizon")
                     
                     with st.expander("View ARIMA Diagnostic Plots (ACF/PACF)"):
-                        st.info("Use these plots to guide your (p,d,q) selection...") # Truncated
                         fig_diag, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), tight_layout=True)
                         plot_acf(df_ts['samples'].dropna(), ax=ax1, lags=30)
                         ax1.set_title("Autocorrelation (ACF) - Helps choose 'q'")
@@ -2185,7 +2158,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
                         try:
                             model = ARIMA(df_ts['samples'], order=(p, d, q)).fit()
                             forecast_obj = model.get_forecast(steps=forecast_horizon)
-                            forecast_df = forecast_obj.summary_frame(alpha=0.05) # 95% CI
+                            forecast_df = forecast_obj.summary_frame(alpha=0.05)
                             
                             fig = go.Figure()
                             fig.add_trace(go.Scatter(x=forecast_df.index.append(forecast_df.index[::-1]), y=forecast_df['mean_ci_upper'].append(forecast_df['mean_ci_lower'][::-1]), fill='toself', fillcolor='rgba(0,100,80,0.2)', line=dict(color='rgba(255,255,255,0)'), hoverinfo="skip", name='95% CI'))
@@ -2198,8 +2171,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
                 elif analysis_method == "Machine Learning (Gradient Boosting)":
                     st.markdown("##### ML Feature Engineering Controls")
                     control_cols = st.columns(3)
-                    lags = control_cols[0].slider("Lag Features (Past Days)", 1, 30, 7)
-                    window = control_cols[1].slider("Rolling Window Size (Days)", 3, 30, 7)
+                    lags = control_cols[0].slider("Lag Features (Past Days)", 1, 30, 7, key="ml_lags")
+                    window = control_cols[1].slider("Rolling Window Size (Days)", 3, 30, 7, key="ml_window")
                     forecast_horizon = control_cols[2].number_input("Forecast Horizon (Days)", 7, 180, 30, key="ml_horizon")
 
                     def create_ts_features(df, lags, window):
@@ -2219,11 +2192,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
                         future_preds, history = [], df_ts.copy()
                         for _ in range(forecast_horizon):
                             last_date = history.index[-1]
-                            # Create features for the next step based on current history
                             next_step_features = create_ts_features(history, lags, window).iloc[-1:].drop(columns='samples')
                             pred = model.predict(next_step_features)[0]
                             future_preds.append(pred)
-                            # Update history with the prediction to use for the next step's features
                             history.loc[last_date + pd.Timedelta(days=1)] = {'samples': pred}
 
                         forecast_df = pd.DataFrame({'mean': future_preds}, index=pd.date_range(start=df_ts.index[-1] + pd.Timedelta(days=1), periods=forecast_horizon))
