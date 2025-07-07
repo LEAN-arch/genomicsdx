@@ -2326,97 +2326,90 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             For a given genomic region with *N* CpG sites, we analyze the methylation patterns across multiple cfDNA reads that cover this region. For each of the $2^N$ possible methylation patterns (e.g., 'MM', 'MU', 'UM', 'UU' for N=2), we calculate its frequency, $p_i$. The Shannon entropy, a measure of disorder, is then calculated:
             $$ H = -\sum_{i=1}^{2^N} p_i \log_2(p_i) $$
             A low entropy value (H) indicates a consistent, ordered pattern, while a high entropy value indicates disorder.
-
-            **Procedure:**
-            1.  Define specific genomic regions of interest.
-            2.  For each sample, extract all sequencing reads covering a region.
-            3.  For each read, determine the methylation state (M or U) at each CpG site.
-            4.  Count the frequency of each unique methylation pattern across all reads.
-            5.  Calculate the Shannon entropy for the region.
-            6.  Use this entropy value as a feature in the machine learning model.
-
-            **Significance of Results:**
-            Like fragmentomics, methylation entropy is an **orthogonal biological signal**. It does not depend on the methylation level at a single site but on the heterogeneity of patterns across a region. Incorporating such features makes our classifier more robust and less susceptible to artifacts affecting single-site measurements. Presenting this in a PMA submission demonstrates a deep, multi-faceted understanding of the underlying cancer biology.
             """)
         
-        # --- 1. More Realistic Data Generation & Entropy Calculation ---
-        def calculate_shannon_entropy(patterns):
-            counts = pd.Series(patterns).value_counts()
-            probabilities = counts / len(patterns)
-            entropy = -np.sum(probabilities * np.log2(probabilities))
-            return entropy
+        try:
+            # --- DEFINITIVE FIX: Import itertools for product function ---
+            import itertools
 
-        np.random.seed(33)
-        num_cpgs = 6
-        all_patterns = [''.join(p) for p in np.product(['M', 'U'], repeat=num_cpgs)]
-        sample_data = {}
+            # --- 1. Data Generation & Entropy Calculation ---
+            def calculate_shannon_entropy(patterns):
+                if not patterns: return 0
+                counts = pd.Series(patterns).value_counts()
+                probabilities = counts / len(patterns)
+                entropy = -np.sum(probabilities * np.log2(probabilities))
+                return entropy
 
-        # Healthy samples: one pattern is dominant
-        for i in range(50):
-            sample_id = f'Healthy_{i+1}'
-            dominant_pattern = np.random.choice(all_patterns)
-            patterns = np.random.choice([dominant_pattern, np.random.choice(all_patterns)], size=50, p=[0.9, 0.1])
-            sample_data[sample_id] = {'type': 'Healthy', 'patterns': patterns}
+            np.random.seed(33)
+            num_cpgs = 6
+            # --- FIX: Use itertools.product ---
+            all_patterns = [''.join(p) for p in itertools.product('MU', repeat=num_cpgs)]
+            sample_data = {}
 
-        # Cancer samples: patterns are random
-        for i in range(30):
-            sample_id = f'Cancer_{i+1}'
-            patterns = np.random.choice(all_patterns, size=50)
-            sample_data[sample_id] = {'type': 'Cancer', 'patterns': patterns}
-        
-        # Calculate entropy for all samples
-        entropy_scores = {sid: {'type': sdat['type'], 'entropy': calculate_shannon_entropy(sdat['patterns'])} for sid, sdat in sample_data.items()}
-        scores_df = pd.DataFrame.from_dict(entropy_scores, orient='index').reset_index().rename(columns={'index': 'sample_id'})
-        scores_df['is_cancer'] = (scores_df['type'] == 'Cancer').astype(int)
+            # Healthy samples: one pattern is dominant
+            for i in range(50):
+                sample_id = f'Healthy_{i+1}'
+                dominant_pattern = np.random.choice(all_patterns)
+                patterns = list(np.random.choice([dominant_pattern, np.random.choice(all_patterns)], size=50, p=[0.9, 0.1]))
+                sample_data[sample_id] = {'type': 'Healthy', 'patterns': patterns}
 
-        # --- 2. Interactive Controls & Dashboard Layout ---
-        st.info("""**Select a sample to inspect its methylation patterns.** Notice how "Healthy" samples have uniform patterns (low entropy), while "Cancer" samples are chaotic (high entropy). The plots on the right show how well this entropy score separates the two groups.""", icon="💡")
-        
-        col1, col2 = st.columns([1, 1.5])
-        with col1:
-            selected_sample = st.selectbox("Select a Sample to Inspect", scores_df['sample_id'])
-            selected_sample_data = sample_data[selected_sample]
-            selected_entropy = scores_df[scores_df['sample_id'] == selected_sample]['entropy'].iloc[0]
-            st.metric(f"Entropy for {selected_sample}", f"{selected_entropy:.3f} bits")
-        
-        # --- 3. Visualizations ---
-        plot_col1, plot_col2 = st.columns([1, 1.5])
-        with plot_col1:
-            st.markdown("##### Methylation Patterns")
-            patterns_list = selected_sample_data['patterns']
-            pattern_matrix = np.array([[1 if char == 'M' else 0 for char in p] for p in patterns_list])
-            fig_heatmap = px.imshow(pattern_matrix, color_continuous_scale='bluered',
-                                    labels=dict(x="CpG Site", y="DNA Molecule", color="Methylation"))
-            fig_heatmap.update_layout(coloraxis_showscale=False, title_text=f"Sample: {selected_sample}")
-            st.plotly_chart(fig_heatmap, use_container_width=True)
-
-        with plot_col2:
-            st.markdown("##### Feature Performance Analysis")
-            fig_combined = make_subplots(rows=2, cols=1, row_heights=[0.3, 0.7], subplot_titles=("Distribution of Entropy Scores", "ROC Curve"))
-
-            # Strip plot of all scores
-            fig_combined.add_trace(px.strip(scores_df, x='entropy', color='type', color_discrete_map={'Healthy': 'blue', 'Cancer': 'red'}).data[0], row=1, col=1)
-            fig_combined.add_trace(px.strip(scores_df, x='entropy', color='type', color_discrete_map={'Healthy': 'blue', 'Cancer': 'red'}).data[1], row=1, col=1)
-            # Highlight selected sample
-            fig_combined.add_trace(go.Scatter(x=[selected_entropy], y=[selected_sample_data['type']], mode='markers',
-                                              marker=dict(size=12, color='lime', line=dict(width=2, color='black')), name='Selected'), row=1, col=1)
-
-            # ROC Curve
-            fpr, tpr, _ = roc_curve(scores_df['is_cancer'], scores_df['entropy'])
-            auc_score = auc(fpr, tpr)
-            fig_combined.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f'AUC = {auc_score:.3f}', line=dict(color='darkblue')), row=2, col=1)
-            fig_combined.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random', line=dict(dash='dot', color='grey')), row=2, col=1)
+            # Cancer samples: patterns are random
+            for i in range(30):
+                sample_id = f'Cancer_{i+1}'
+                patterns = list(np.random.choice(all_patterns, size=50))
+                sample_data[sample_id] = {'type': 'Cancer', 'patterns': patterns}
             
-            fig_combined.update_layout(height=500, showlegend=False, title_text="Overall Feature Performance", margin=dict(t=60))
-            fig_combined.update_xaxes(title_text="Shannon Entropy (bits)", row=1, col=1)
-            fig_combined.update_xaxes(title_text="False Positive Rate", row=2, col=1)
-            fig_combined.update_yaxes(title_text="True Positive Rate", row=2, col=1)
-            st.plotly_chart(fig_combined, use_container_width=True)
-            
-        st.divider()
-        # --- 4. Dynamic Conclusion ---
-        st.success(f"**Conclusion:** Methylation entropy is a **strong predictive feature**, achieving a high degree of separation between cancer and healthy samples with an overall AUC of **{auc_score:.3f}**. The visualization confirms that this is driven by the increased disorder of methylation patterns in cancer-derived DNA.", icon="🧬")
+            entropy_scores = {sid: {'type': sdat['type'], 'entropy': calculate_shannon_entropy(sdat['patterns'])} for sid, sdat in sample_data.items()}
+            scores_df = pd.DataFrame.from_dict(entropy_scores, orient='index').reset_index().rename(columns={'index': 'sample_id'})
+            scores_df['is_cancer'] = (scores_df['type'] == 'Cancer').astype(int)
 
+            # --- 2. Interactive Controls & Dashboard Layout ---
+            st.info("""**Select a sample to inspect its methylation patterns...**""", icon="💡")
+            
+            col1, col2 = st.columns([1, 1.5])
+            with col1:
+                selected_sample = st.selectbox("Select a Sample to Inspect", scores_df['sample_id'])
+                selected_sample_data = sample_data[selected_sample]
+                selected_entropy = scores_df.loc[scores_df['sample_id'] == selected_sample, 'entropy'].iloc[0]
+                st.metric(f"Entropy for {selected_sample}", f"{selected_entropy:.3f} bits")
+            
+            # --- 3. Visualizations ---
+            plot_col1, plot_col2 = st.columns([1, 1.5])
+            with plot_col1:
+                st.markdown("##### Methylation Patterns")
+                patterns_list = selected_sample_data['patterns']
+                pattern_matrix = np.array([[1 if char == 'M' else 0 for char in p] for p in patterns_list])
+                fig_heatmap = px.imshow(pattern_matrix, color_continuous_scale=[[0, 'cornflowerblue'], [1, 'crimson']],
+                                        labels=dict(x="CpG Site", y="DNA Molecule", color="Methylation"))
+                fig_heatmap.update_layout(coloraxis_showscale=False, title_text=f"Sample: {selected_sample}")
+                st.plotly_chart(fig_heatmap, use_container_width=True)
+
+            with plot_col2:
+                st.markdown("##### Feature Performance Analysis")
+                fig_combined = make_subplots(rows=2, cols=1, row_heights=[0.3, 0.7], subplot_titles=("Distribution of Entropy Scores", "ROC Curve"))
+
+                fig_combined.add_trace(px.strip(scores_df, x='entropy', color='type', color_discrete_map={'Healthy': 'blue', 'Cancer': 'red'}).data[0], row=1, col=1)
+                fig_combined.add_trace(px.strip(scores_df, x='entropy', color='type', color_discrete_map={'Healthy': 'blue', 'Cancer': 'red'}).data[1], row=1, col=1)
+                fig_combined.add_trace(go.Scatter(x=[selected_entropy], y=[selected_sample_data['type']], mode='markers',
+                                                  marker=dict(size=12, color='lime', line=dict(width=2, color='black')), name='Selected'), row=1, col=1)
+
+                fpr, tpr, _ = roc_curve(scores_df['is_cancer'], scores_df['entropy'])
+                auc_score = auc(fpr, tpr)
+                fig_combined.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f'AUC = {auc_score:.3f}', line=dict(color='darkblue')), row=2, col=1)
+                fig_combined.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random', line=dict(dash='dot', color='grey')), row=2, col=1)
+                
+                fig_combined.update_layout(height=500, showlegend=False, title_text="Overall Feature Performance", margin=dict(t=60))
+                fig_combined.update_xaxes(title_text="Shannon Entropy (bits)", row=1, col=1)
+                fig_combined.update_xaxes(title_text="False Positive Rate", row=2, col=1)
+                fig_combined.update_yaxes(title_text="True Positive Rate", row=2, col=1)
+                st.plotly_chart(fig_combined, use_container_width=True)
+                
+            st.divider()
+            st.success(f"**Conclusion:** Methylation entropy is a **strong predictive feature**...", icon="🧬")
+
+        except Exception as e:
+            st.error(f"An error occurred during Methylation Entropy analysis: {e}")
+            logger.error(f"Methylation Entropy analysis failed: {e}", exc_info=True)
     # --- Tool 10: 3D Optimization Visualization ---
 
     with ml_tabs[9]:
