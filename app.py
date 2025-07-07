@@ -1373,7 +1373,29 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     with tool_tabs[5]:
         st.subheader("Pareto Analysis of Process Deviations")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""...""") # Existing explanation
+            st.markdown("""
+            **Purpose of the Method:**
+            To apply the **Pareto Principle (the 80/20 rule)** to identify the "vital few" causes that are responsible for the majority of problems (e.g., lab run failures, non-conformances). This enables focused, high-impact process improvement efforts.
+
+            **Conceptual Walkthrough: Firefighting Triage**
+            Imagine you are a firefighter arriving at a burning building with multiple fires. You have limited water and time. You don't start with the smallest fire in the trash can; you attack the biggest blaze that threatens the building's structure. A Pareto chart is a data-driven tool for this kind of triage. It sorts all your problems from most frequent to least frequent and plots them. The chart immediately and visually identifies the biggest fires, telling you where to focus your resources to make the greatest impact.
+
+            **Mathematical Basis & Formula:**
+            This is a descriptive statistical tool. It involves:
+            1.  Counting the frequency of each category of a problem.
+            2.  Sorting the categories in descending order of frequency.
+            3.  Calculating the cumulative percentage: $$ \text{Cumulative %} = \frac{\sum \text{Counts of current and all previous categories}}{\text{Total Count}} \times 100\% $$
+            4.  Plotting frequencies as bars and the cumulative percentage as a line.
+
+            **Procedure:**
+            1.  Collect categorical data on the causes of a problem from a source like Non-Conformance Reports (NCRs) or batch records.
+            2.  Tally the counts for each category and sort them.
+            3.  Calculate the cumulative percentage.
+            4.  Plot the chart and identify the categories contributing to the first 80% of the total.
+
+            **Significance of Results:**
+            The Pareto chart is a cornerstone of data-driven decision-making in a quality system. It is often the first step in a **Corrective and Preventive Action (CAPA)** investigation, as required by **21 CFR 820.100**. It provides a clear justification for why a project team is focusing on a specific failure mode, ensuring resources are used effectively to improve quality and reduce the **Cost of Poor Quality (COPQ)**.
+            """)
 
         failure_data = ssm.get_data("lab_operations", "run_failures")
         df_failures = pd.DataFrame(failure_data)
