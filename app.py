@@ -1830,7 +1830,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The ARIMA forecast projects a continued upward trend in sample volume, suggesting a need to review reagent inventory and staffing levels for the upcoming month.", icon="📈")
 
     # --- Tool 6: Predictive Run QC ---
-    # --- Tool 6: Predictive Run QC ---
     with ml_tabs[5]:
         st.subheader("Predictive Run QC from Early On-Instrument Metrics")
         with st.expander("View Method Explanation & Operational Context", expanded=False):
@@ -1928,6 +1927,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         """, icon="💰")
 
     # --- Tool 7: Fragmentomics ---
+    # --- Tool 7: Fragmentomics Analysis ---
     with ml_tabs[6]:
         st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
@@ -1952,14 +1952,88 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Significance of Results:**
             Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals, de-risking the algorithm from being reliant on spurious correlations. This is a critical piece of evidence for the PMA.
             """)
+        
+        # --- 1. More Realistic, Per-Sample Data Generation ---
         np.random.seed(42)
-        healthy_frags = np.random.normal(167, 8, 5000)
-        cancer_frags = np.random.normal(145, 15, 2500)
-        df_frags = pd.DataFrame({'Fragment Size (bp)': np.concatenate([healthy_frags, cancer_frags]), 'Sample Type': ['Healthy cfDNA'] * 5000 + ['Cancer ctDNA'] * 2500})
-        fig_hist = px.histogram(df_frags, x='Fragment Size (bp)', color='Sample Type', nbins=100, barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes (Healthy vs. Cancer)</b>")
-        st.plotly_chart(fig_hist, use_container_width=True)
-        st.success("The clear shift in the fragment size distribution for ctDNA demonstrates its potential as a powerful classification feature. A model trained on features derived from this distribution can effectively separate sample types.", icon="🧬")
+        samples = []
+        # 50 healthy samples
+        for i in range(50):
+            frags = np.random.normal(167, 8, 1000)
+            samples.extend([{'sample_id': f'Healthy_{i+1}', 'sample_type': 'Healthy', 'fragment_size': f} for f in frags])
+        # 30 cancer samples
+        for i in range(30):
+            frags = np.random.normal(145, 15, 1000)
+            samples.extend([{'sample_id': f'Cancer_{i+1}', 'sample_type': 'Cancer', 'fragment_size': f} for f in frags])
+        df_frags = pd.DataFrame(samples)
 
+        # --- 2. Interactive Controls ---
+        st.info("""**Use the slider to define the 'short fragment' cutoff.** Observe how the distributions and the ROC curve change. The goal is to find a cutoff that maximizes the separation (AUC) between Cancer and Healthy samples.""", icon="💡")
+        cutoff = st.slider("Short Fragment Cutoff (bp)", 100, 200, 150)
+
+        # --- 3. Live Feature Engineering ---
+        # Calculate score for each sample based on the cutoff
+        short_frags = df_frags[df_frags['fragment_size'] < cutoff]
+        scores = short_frags.groupby('sample_id').size() / df_frags.groupby('sample_id').size()
+        scores = scores.reset_index(name='short_fragment_score')
+        
+        sample_types = df_frags[['sample_id', 'sample_type']].drop_duplicates()
+        scores_df = pd.merge(scores, sample_types, on='sample_id')
+        scores_df['is_cancer'] = (scores_df['sample_type'] == 'Cancer').astype(int)
+
+        # --- 4. Build the Informative Dashboard ---
+        # Calculate ROC AUC for the KPI
+        fpr, tpr, _ = roc_curve(scores_df['is_cancer'], scores_df['short_fragment_score'])
+        auc_score = auc(fpr, tpr)
+        
+        kpi_col1, kpi_col2 = st.columns(2)
+        kpi_col1.metric("Feature Discriminatory Power (AUC)", f"{auc_score:.4f}", help="Area Under the ROC Curve. 1.0 is a perfect separator; 0.5 is random.")
+        
+        avg_scores = scores_df.groupby('sample_type')['short_fragment_score'].mean()
+        kpi_col2.metric("Avg. Short Fragment Score", f"{avg_scores.get('Cancer', 0):.1%} (Cancer) vs. {avg_scores.get('Healthy', 0):.1%} (Healthy)")
+
+        st.divider()
+        plot_col1, plot_col2 = st.columns(2)
+
+        with plot_col1:
+            st.markdown("##### Interactive Fragment Distribution")
+            fig_hist = px.histogram(df_frags, x='fragment_size', color='sample_type', 
+                                    barmode='overlay', histnorm='probability density',
+                                    title="<b>Distribution of DNA Fragment Sizes</b>",
+                                    labels={'fragment_size': 'Fragment Size (bp)'})
+            fig_hist.add_vrect(x0=0, x1=cutoff, fillcolor="grey", opacity=0.2, layer="below", line_width=0,
+                              annotation_text="Short Fragment Zone", annotation_position="top left")
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+        with plot_col2:
+            st.markdown("##### Feature Separation & ROC Curve")
+            # Create a subplot figure
+            fig_combined = make_subplots(rows=2, cols=1, row_heights=[0.4, 0.6],
+                                         subplot_titles=("Distribution of Scores", "ROC Curve"))
+
+            # Violin plot for score distribution
+            for stype, color in [('Healthy', 'blue'), ('Cancer', 'red')]:
+                df_sub = scores_df[scores_df['sample_type'] == stype]
+                fig_combined.add_trace(go.Violin(x=df_sub['short_fragment_score'], name=stype, line_color=color, side='positive'), row=1, col=1)
+
+            # ROC Curve
+            fig_combined.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f'AUC = {auc_score:.3f}'), row=2, col=1)
+            fig_combined.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random', line=dict(dash='dot')), row=2, col=1)
+            
+            fig_combined.update_layout(height=500, showlegend=False)
+            fig_combined.update_xaxes(title_text="Short Fragment Score", row=1, col=1)
+            fig_combined.update_yaxes(showticklabels=False, row=1, col=1)
+            fig_combined.update_xaxes(title_text="False Positive Rate", range=[0,1], row=2, col=1)
+            fig_combined.update_yaxes(title_text="True Positive Rate", range=[0,1], row=2, col=1)
+            st.plotly_chart(fig_combined, use_container_width=True)
+            
+        st.divider()
+        # --- 5. Dynamic Conclusion ---
+        if auc_score > 0.85:
+            st.success(f"**Conclusion:** Fragment size is a **strong predictive feature**. At a cutoff of {cutoff} bp, the resulting Short Fragment Score achieves an AUC of **{auc_score:.3f}**, indicating excellent separation between cancer and healthy samples.", icon="✅")
+        elif auc_score > 0.7:
+            st.warning(f"**Conclusion:** Fragment size is a **moderately useful feature**. At a cutoff of {cutoff} bp, the AUC of **{auc_score:.3f}** shows a clear but imperfect separation. This feature will likely be valuable in combination with other biomarkers.", icon="⚠️")
+        else:
+            st.error(f"**Conclusion:** Fragment size is a **weak feature** at this cutoff ({cutoff} bp), with an AUC of **{auc_score:.3f}**. The distributions overlap significantly. Consider exploring other cutoffs or feature engineering approaches.", icon="❌")
     # --- Tool 8: Error Modeling ---
     with ml_tabs[7]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
