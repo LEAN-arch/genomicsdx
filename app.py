@@ -862,6 +862,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
 
     # --- Tool 4: Gauge R&R ---
     # --- Tool 4: Gauge R&R ---
+    # --- Tool 4: Gauge R&R ---
     with tool_tabs[3]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -908,121 +909,124 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                 
                 if n_parts < 2 or n_operators < 2:
                     st.error(f"**Data Insufficient for Analysis:** Gauge R&R requires at least 2 parts and 2 operators. Your data has {n_parts} part(s) and {n_operators} operator(s).", icon="📉")
-                    st.stop() # Halt execution for this tab
-
-                n_replicates = len(df_msa) / (n_parts * n_operators)
-                if n_replicates < 2:
-                    st.warning(f"**Warning:** The analysis is being run with only {int(n_replicates)} replicate(s). At least 2 are recommended for a robust study.", icon="⚠️")
-
-                # Fit ANOVA model
-                model = ols(f'`{value_col}` ~ C(`{part_col}`) + C(`{operator_col}`) + C(`{part_col}`):C(`{operator_col}`)', data=df_msa).fit()
-                anova_table = anova_lm(model, typ=2)
-
-                # --- FIX: Use 'MS' instead of 'mean_sq' for modern statsmodels versions ---
-                ms_part = anova_table.loc[f'C(`{part_col}`)', 'MS']
-                ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'MS']
-                ms_interaction = anova_table.loc[f'C(`{part_col}`):C(`{operator_col}`)', 'MS']
-                ms_error = anova_table.loc['Residual', 'MS'] # Repeatability
-
-                # Calculate Variance Components
-                var_repeat = ms_error
-                var_repro_op = max(0, (ms_operator - ms_interaction) / (n_parts * n_replicates))
-                var_repro_int = max(0, (ms_interaction - ms_error) / n_replicates)
-                var_repro = var_repro_op + var_repro_int
-                var_part = max(0, (ms_part - ms_interaction) / (n_operators * n_replicates))
-                
-                var_grr = var_repeat + var_repro
-                var_total = var_grr + var_part
-                
-                # Create results DataFrame
-                results = {
-                    'Source': ['Total Gauge R&R', 'Repeatability', 'Reproducibility', 'Part-to-Part', 'Total Variation'],
-                    'Variance': [var_grr, var_repeat, var_repro, var_part, var_total]
-                }
-                results_df = pd.DataFrame(results)
-                
-                # Robustness Fix: Handle division by zero if total variation is zero
-                if var_total > 0:
-                    results_df['% Contribution'] = (results_df['Variance'] / var_total) * 100
                 else:
-                    results_df['% Contribution'] = 0.0
-                
-                results_df = results_df.set_index('Source')
-                total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
+                    n_replicates = len(df_msa) / (n_parts * n_operators)
+                    if n_replicates < 2:
+                        st.warning(f"**Warning:** The analysis is being run with only {int(n_replicates)} replicate(s). At least 2 are recommended for a robust study.", icon="⚠️")
 
-                # --- Build the Informative Dashboard ---
-                st.info("""**How to Read the Plots:**
+                    # --- FIX: Use backticks directly in the formula for safety with special characters ---
+                    formula = f"`{value_col}` ~ C(`{part_col}`) + C(`{operator_col}`) + C(`{part_col}`):C(`{operator_col}`)"
+                    model = ols(formula, data=df_msa).fit()
+                    anova_table = anova_lm(model, typ=2)
+
+                    # --- FIX: Use 'MS' instead of 'mean_sq' for modern statsmodels versions ---
+                    ms_part = anova_table.loc[f'C(`{part_col}`)', 'MS']
+                    ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'MS']
+                    ms_interaction = anova_table.loc[f'C(`{part_col}`):C(`{operator_col}`)', 'MS']
+                    ms_error = anova_table.loc['Residual', 'MS'] # Repeatability
+
+                    # Calculate Variance Components
+                    var_repeat = ms_error
+                    var_repro_op = max(0, (ms_operator - ms_interaction) / (n_parts * n_replicates))
+                    var_repro_int = max(0, (ms_interaction - ms_error) / n_replicates)
+                    var_repro = var_repro_op + var_repro_int
+                    var_part = max(0, (ms_part - ms_interaction) / (n_operators * n_replicates))
+                    
+                    var_grr = var_repeat + var_repro
+                    var_total = var_grr + var_part
+                    
+                    # Create results DataFrame
+                    results = {
+                        'Source': ['Total Gauge R&R', 'Repeatability', 'Reproducibility', 'Part-to-Part', 'Total Variation'],
+                        'Variance': [var_grr, var_repeat, var_repro, var_part, var_total]
+                    }
+                    results_df = pd.DataFrame(results)
+                    
+                    # Robustness Fix: Handle division by zero if total variation is zero
+                    if var_total > 0:
+                        results_df['% Contribution'] = (results_df['Variance'] / var_total) * 100
+                    else:
+                        results_df['% Contribution'] = 0.0
+                    
+                    results_df = results_df.set_index('Source')
+                    total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
+
+                    # --- Build the Informative Dashboard ---
+                    st.info("""**How to Read the Plots:**
 - **Main Plot (Left):** Shows every measurement. Look for two things: (1) The groups of points for each part should be clearly distinct from each other (good Part-to-Part variation). (2) Within each part's group, all the colored points (Operators) should be tightly clustered together (low measurement error).
 - **Variance Chart (Right):** Shows the final result. A good measurement system will be dominated by the blue "Part-to-Part" bar.
-                """, icon="💡")
-                
-                col1, col2 = st.columns([2, 1.2])
-
-                with col1:
-                    # Main Interaction Plot
-                    st.markdown("##### Measurement Distribution by Part and Operator")
-                    fig_main = px.box(
-                        df_msa, x=part_col, y=value_col, color=operator_col,
-                        points='all',
-                        title="<b>Gauge R&R Interaction Plot</b>",
-                        labels={part_col: "Part ID", value_col: "Measurement Value", operator_col: "Operator"},
-                        category_orders={part_col: sorted(df_msa[part_col].unique())}
-                    )
-                    fig_main.update_traces(quartilemethod="exclusive")
-                    fig_main.update_layout(
-                        legend_title_text='Operator',
-                        title_x=0.5,
-                        template='plotly_white'
-                    )
-                    st.plotly_chart(fig_main, use_container_width=True)
-
-                with col2:
-                    # KPIs and Variance Components Chart
-                    st.markdown("##### Key Performance Indicators")
-                    delta_color = "normal" if total_grr < 10 else "inverse"
-                    st.metric("Total Gauge R&R", f"{total_grr:.2f}%", f"Target: < 10%", delta_color=delta_color)
+                    """, icon="💡")
                     
-                    st.markdown("##### Variance Contribution (%)")
-                    var_data = results_df.loc[['Part-to-Part', 'Repeatability', 'Reproducibility'], '% Contribution']
-                    
-                    fig_bar = go.Figure()
-                    fig_bar.add_trace(go.Bar(
-                        y=['% Contribution'], x=[var_data['Part-to-Part']], name='Part-to-Part', orientation='h',
-                        text=f"{var_data['Part-to-Part']:.1f}%", textposition='inside', marker_color='#1f77b4'
-                    ))
-                    fig_bar.add_trace(go.Bar(
-                        y=['% Contribution'], x=[var_data['Repeatability']], name='Repeatability', orientation='h',
-                        text=f"{var_data['Repeatability']:.1f}%", textposition='inside', marker_color='#ff7f0e'
-                    ))
-                    fig_bar.add_trace(go.Bar(
-                        y=['% Contribution'], x=[var_data['Reproducibility']], name='Reproducibility', orientation='h',
-                        text=f"{var_data['Reproducibility']:.1f}%", textposition='inside', marker_color='#d62728'
-                    ))
-                    fig_bar.update_layout(
-                        barmode='stack', height=150, margin=dict(l=10, r=10, t=30, b=10),
-                        title_text="Sources of Variation", title_x=0.5,
-                        yaxis_visible=False, xaxis_visible=False,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
-                    st.plotly_chart(fig_bar, use_container_width=True)
+                    col1, col2 = st.columns([2, 1.2])
 
-                st.divider()
-                st.markdown("##### ANOVA Variance Components Analysis")
-                st.dataframe(results_df.style.format({'Variance': '{:.4f}', '% Contribution': '{:.2f}%'}), use_container_width=True)
+                    with col1:
+                        # Main Interaction Plot
+                        st.markdown("##### Measurement Distribution by Part and Operator")
+                        fig_main = px.box(
+                            df_msa, x=part_col, y=value_col, color=operator_col,
+                            points='all',
+                            title="<b>Gauge R&R Interaction Plot</b>",
+                            labels={part_col: "Part ID", value_col: "Measurement Value", operator_col: "Operator"},
+                            category_orders={part_col: sorted(df_msa[part_col].unique())}
+                        )
+                        fig_main.update_traces(quartilemethod="exclusive")
+                        fig_main.update_layout(
+                            legend_title_text='Operator',
+                            title_x=0.5,
+                            template='plotly_white'
+                        )
+                        st.plotly_chart(fig_main, use_container_width=True)
 
-                # Final Conclusion
-                if total_grr < 10:
-                    st.success(f"**Conclusion:** Measurement System is Acceptable (Total GR&R = {total_grr:.2f}%). The majority of observed variation ({results_df.loc['Part-to-Part', '% Contribution']:.1f}%) is due to true differences between parts.", icon="✅")
-                elif total_grr < 30:
-                    st.warning(f"**Conclusion:** Measurement System is Marginal (Total GR&R = {total_grr:.2f}%). Measurement error is a significant source of variation. Consider improvements to the measurement procedure or operator training.", icon="⚠️")
-                else:
-                    st.error(f"**Conclusion:** Measurement System is Unacceptable (Total GR&R = {total_grr:.2f}%). The measurement error is overwhelming the true process variation. The system must be improved before it can be used for process control or product acceptance.", icon="❌")
+                    with col2:
+                        # KPIs and Variance Components Chart
+                        st.markdown("##### Key Performance Indicators")
+                        delta_color = "normal" if total_grr < 10 else "inverse"
+                        st.metric("Total Gauge R&R", f"{total_grr:.2f}%", f"Target: < 10%", delta_color=delta_color)
+                        
+                        st.markdown("##### Variance Contribution (%)")
+                        var_data = results_df.loc[['Part-to-Part', 'Repeatability', 'Reproducibility'], '% Contribution']
+                        
+                        fig_bar = go.Figure()
+                        fig_bar.add_trace(go.Bar(
+                            y=['% Contribution'], x=[var_data['Part-to-Part']], name='Part-to-Part', orientation='h',
+                            text=f"{var_data['Part-to-Part']:.1f}%", textposition='inside', marker_color='#1f77b4'
+                        ))
+                        fig_bar.add_trace(go.Bar(
+                            y=['% Contribution'], x=[var_data['Repeatability']], name='Repeatability', orientation='h',
+                            text=f"{var_data['Repeatability']:.1f}%", textposition='inside', marker_color='#ff7f0e'
+                        ))
+                        fig_bar.add_trace(go.Bar(
+                            y=['% Contribution'], x=[var_data['Reproducibility']], name='Reproducibility', orientation='h',
+                            text=f"{var_data['Reproducibility']:.1f}%", textposition='inside', marker_color='#d62728'
+                        ))
+                        fig_bar.update_layout(
+                            barmode='stack', height=150, margin=dict(l=10, r=10, t=30, b=10),
+                            title_text="Sources of Variation", title_x=0.5,
+                            yaxis_visible=False, xaxis_visible=False,
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        )
+                        st.plotly_chart(fig_bar, use_container_width=True)
+
+                    st.divider()
+                    st.markdown("##### ANOVA Variance Components Analysis")
+                    st.dataframe(results_df.style.format({'Variance': '{:.4f}', '% Contribution': '{:.2f}%'}), use_container_width=True)
+
+                    # Final Conclusion
+                    if total_grr < 10:
+                        st.success(f"**Conclusion:** Measurement System is Acceptable (Total GR&R = {total_grr:.2f}%). The majority of observed variation ({results_df.loc['Part-to-Part', '% Contribution']:.1f}%) is due to true differences between parts.", icon="✅")
+                    elif total_grr < 30:
+                        st.warning(f"**Conclusion:** Measurement System is Marginal (Total GR&R = {total_grr:.2f}%). Measurement error is a significant source of variation. Consider improvements to the measurement procedure or operator training.", icon="⚠️")
+                    else:
+                        st.error(f"**Conclusion:** Measurement System is Unacceptable (Total GR&R = {total_grr:.2f}%). The measurement error is overwhelming the true process variation. The system must be improved before it can be used for process control or product acceptance.", icon="❌")
         
         except ImportError:
             st.error("This tool requires `statsmodels`. Please install it (`pip install statsmodels`).")
         except Exception as e:
             st.error(f"An error occurred during Gauge R&R analysis: {e}")
             logger.error(f"Gauge R&R analysis failed: {e}", exc_info=True)
+
+
+    
     # --- Tool 5: LoD/Probit ---
     with tool_tabs[4]:
         st.subheader("Limit of Detection (LoD) by Probit Analysis")
