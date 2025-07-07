@@ -847,20 +847,106 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             **Significance of Results:**
             TOST is the gold standard for change control validation under **21 CFR 820.70 (Production and Process Controls)** and **ISO 13485**. It provides objective, defensible evidence to an auditor or regulatory body that a process change did not adversely affect assay performance, ensuring consistency and safety.
             """)
+        
         eq_data = ssm.get_data("quality_system", "equivalence_data")
-        margin_pct = st.slider("Select Equivalence Margin (Δ) as % of Mean", 5, 25, 10, key="tost_slider")
         lot_a = np.array(eq_data.get('reagent_lot_a', []))
         lot_b = np.array(eq_data.get('reagent_lot_b', []))
-        if lot_a.size > 1 and lot_b.size > 1:
+        
+        if lot_a.size < 3 or lot_b.size < 3:
+            st.warning("Not enough data for equivalence testing. Each group needs at least 3 data points.")
+        else:
+            margin_pct = st.slider("Select Equivalence Margin (Δ) as % of Mean of Lot A", 5, 25, 10, key="tost_slider")
             margin_abs = (margin_pct / 100) * lot_a.mean()
-            fig, p_value = create_tost_plot(lot_a, lot_b, -margin_abs, margin_abs)
-            st.plotly_chart(fig, use_container_width=True)
-            if p_value < 0.05:
-                st.success(f"**Conclusion:** Equivalence Demonstrated (p = {p_value:.4f}). The 90% CI of the difference falls entirely within the ±{margin_pct}% margin. The new reagent lot is validated.", icon="✅")
-            else:
-                st.error(f"**Conclusion:** Equivalence Not Demonstrated (p = {p_value:.4f}). The confidence interval extends beyond the defined margin. The new lot cannot be approved without further investigation.", icon="❌")
+            low_bound, high_bound = -margin_abs, margin_abs
 
-    # --- Tool 4: Gauge R&R ---
+            # --- Statistical Calculations for TOST ---
+            diff = lot_b.mean() - lot_a.mean()
+            n1, n2 = len(lot_a), len(lot_b)
+            s1, s2 = np.std(lot_a, ddof=1), np.std(lot_b, ddof=1)
+            
+            # Welch-Satterthwaite equation for degrees of freedom
+            dof_num = (s1**2/n1 + s2**2/n2)**2
+            dof_den = (s1**2/n1)**2/(n1-1) + (s2**2/n2)**2/(n2-1)
+            dof = dof_num / dof_den
+            
+            se = np.sqrt(s1**2/n1 + s2**2/n2)
+            
+            # 90% CI for the difference (for a 95% equivalence test)
+            ci_90 = stats.t.interval(0.90, dof, loc=diff, scale=se)
+
+            # Two One-Sided T-tests
+            t_stat1 = (diff - low_bound) / se
+            p_val1 = stats.t.sf(t_stat1, dof) # Survival function for P(T > t)
+            
+            t_stat2 = (diff - high_bound) / se
+            p_val2 = stats.t.cdf(t_stat2, dof) # Cumulative distribution for P(T < t)
+            
+            p_value = max(p_val1, p_val2) # The TOST p-value
+            is_equivalent = p_value < 0.05
+            
+            # --- Build the Informative Dashboard ---
+            st.info("""**How to Read the Plots:**
+- **Left Plot:** Shows the raw data distributions. The violins should be at similar heights and have similar shapes.
+- **Right Plot:** The green area is the "Equivalence Zone" you defined. The horizontal bar is the 90% confidence interval for the true difference between the lots. **If the entire bar is inside the green zone, the lots are equivalent.**
+            """, icon="💡")
+            
+            kpi_cols = st.columns(3)
+            kpi_cols[0].metric("TOST p-value", f"{p_value:.4f}", "Target: < 0.05")
+            kpi_cols[1].metric("Observed Difference (Lot B - Lot A)", f"{diff:+.3f}")
+            kpi_cols[2].metric("90% CI for Difference", f"[{ci_90[0]:.3f}, {ci_90[1]:.3f}]")
+            
+            st.divider()
+
+            plot_cols = st.columns(2)
+            with plot_cols[0]:
+                st.markdown("##### Raw Data Distributions")
+                df_plot = pd.DataFrame({
+                    'value': np.concatenate([lot_a, lot_b]),
+                    'lot': ['Lot A'] * n1 + ['Lot B'] * n2
+                })
+                fig_dist = px.violin(df_plot, y='value', x='lot', color='lot', box=True, points="all",
+                                     title="<b>Comparison of Lot Distributions</b>",
+                                     labels={'value': 'Measurement Value', 'lot': 'Reagent Lot'})
+                fig_dist.update_layout(showlegend=False, title_x=0.5)
+                st.plotly_chart(fig_dist, use_container_width=True)
+
+            with plot_cols[1]:
+                st.markdown("##### Equivalence Test Result")
+                fig_tost = go.Figure()
+
+                # Equivalence Zone (the "goalposts")
+                fig_tost.add_shape(type="rect", x0=low_bound, y0=0, x1=high_bound, y1=1,
+                                   fillcolor="lightgreen", opacity=0.4, layer="below", line_width=0)
+                
+                # Confidence Interval Bar
+                ci_color = "seagreen" if is_equivalent else "crimson"
+                fig_tost.add_trace(go.Scatter(x=[ci_90[0], ci_90[1]], y=[0.5, 0.5],
+                                              mode="lines", line=dict(color=ci_color, width=8),
+                                              name="90% CI of Difference"))
+                
+                # Mean difference point
+                fig_tost.add_trace(go.Scatter(x=[diff], y=[0.5], mode="markers",
+                                              marker=dict(color="black", size=12, symbol="diamond"),
+                                              name="Observed Mean Difference"))
+                
+                # Center line at zero
+                fig_tost.add_vline(x=0, line_width=1, line_dash="dash", line_color="grey")
+
+                fig_tost.update_layout(
+                    title="<b>Confidence Interval vs. Equivalence Bounds</b>",
+                    xaxis_title="Difference (Lot B - Lot A)",
+                    yaxis_visible=False, showlegend=False, title_x=0.5,
+                    height=300, template="plotly_white"
+                )
+                st.plotly_chart(fig_tost, use_container_width=True)
+
+            st.divider()
+            # Final Conclusion
+            if is_equivalent:
+                st.success(f"**Conclusion: Equivalence Demonstrated (p = {p_value:.4f})**\nThe 90% confidence interval for the difference falls entirely within the pre-defined equivalence margin of ±{margin_pct}%. The new reagent lot is validated and can be approved for use.", icon="✅")
+            else:
+                st.error(f"**Conclusion: Equivalence Not Demonstrated (p = {p_value:.4f})**\nThe confidence interval extends beyond the defined margin. The new lot cannot be approved without further investigation to understand the source of the difference.", icon="❌")
+
     # --- Tool 4: Gauge R&R ---
     with tool_tabs[3]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
