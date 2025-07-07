@@ -1794,6 +1794,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("**Conclusion:** Both methods identify a similar optimal region. The GP model captures more nuanced local variations, while the RSM provides a smoother, more generalized surface. For our PMA, the RSM model is preferred for its simplicity and regulatory acceptance, but the GP model provides confidence that no major, complex optima were missed.", icon="🤝")
 
     # --- Tool 5: Time Series ---
+    # --- Tool 5: Time Series Forecasting (Operations) ---
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting for Lab Operations")
         with st.expander("View Method Explanation & Business Context", expanded=False):
@@ -1801,38 +1802,140 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Purpose of the Method:**
             To forecast future operational demand (e.g., incoming sample volume) based on historical trends and seasonality. This is a critical business intelligence tool for proactive lab management, enabling data-driven decisions on reagent inventory, staffing levels, and capital expenditure.
 
-            **Conceptual Walkthrough: Weather Forecasting for the Lab**
-            This tool uses past sample volume data to predict next month's workload. It uses a model called **ARIMA** (AutoRegressive Integrated Moving Average) which is adept at learning three things from the data:
-            1.  **A**uto**R**egression (AR): Is today's volume related to yesterday's? (Momentum)
-            2.  **I**ntegrated (I): Does the data have an overall upward or downward trend?
-            3.  **M**oving **A**verage (MA): Are random shocks or errors in the past still affecting today's value?
+            ---
+            
+            ### Methodologies Compared
+            
+            #### 1. ARIMA (Statistical Approach)
+
+            **Conceptual Walkthrough: The Signal Analyst**
+            This classical method acts like a signal analyst, looking only at the time series' own past behavior to predict its future. It's excellent at capturing linear trends and consistent patterns. It learns three things from the data's history:
+            1.  **A**uto**R**egression (AR - term `p`): Is today's volume related to yesterday's? (Momentum)
+            2.  **I**ntegrated (I - term `d`): Does the data have an overall upward or downward trend that needs to be stabilized?
+            3.  **M**oving **A**verage (MA - term `q`): Are random shocks or errors from the past still affecting today's value?
             
             **Mathematical Basis & Formula:**
             An ARIMA(p,d,q) model is a combination of simpler time series models:
             - **AR(p):** $ Y_t = c + \sum_{i=1}^{p} \phi_i Y_{t-i} + \epsilon_t $ (Regression on past values)
             - **MA(q):** $ Y_t = \mu + \epsilon_t + \sum_{i=1}^{q} \theta_i \epsilon_{t-i} $ (Regression on past errors)
-            The `d` term represents the number of times the raw data is differenced to make it stationary (remove trends).
             
-            **Procedure:**
-            1. Analyze historical time series data for trends and seasonality.
-            2. Select appropriate (p,d,q) parameters for the ARIMA model.
-            3. Fit the model to the historical data.
-            4. Use the fitted model to forecast future values.
+            #### 2. Machine Learning (Gradient Boosting Approach)
 
-            **Significance of Results:**
-            Accurate forecasting is key to running a lean and efficient operation. It helps prevent costly situations like reagent stock-outs (which halt production) or over-staffing (which increases operational expense). It provides the quantitative justification needed for budget requests and strategic planning.
+            **Conceptual Walkthrough: The Contextual Learner**
+            This modern method converts the forecasting problem into a standard regression problem. Instead of just looking at the signal, it learns from a rich set of **features** we engineer from the timeline. It's like a detective using multiple clues (not just one) to make a prediction. We create features such as:
+            - **Lags:** What was the volume exactly 7 days ago?
+            - **Rolling Averages:** What was the average volume over the last week?
+            - **Date Components:** Was it a Monday? Is it December?
+            
+            This allows the model to learn complex, non-linear relationships (e.g., "volume is always 20% higher on Mondays after a holiday weekend") that ARIMA might miss.
             """)
         
-        ts_data = ssm.get_data("ml_models", "sample_volume_data")
-        df_ts = pd.DataFrame(ts_data).set_index('date')
-        df_ts.index = pd.to_datetime(df_ts.index)
-        with st.spinner("Fitting ARIMA model and forecasting next 30 days..."):
-            model_arima = ARIMA(df_ts['samples'].asfreq('D'), order=(5, 1, 0)).fit()
-            forecast = model_arima.get_forecast(steps=30)
-            forecast_df = forecast.summary_frame()
-            fig = create_forecast_plot(df_ts, forecast_df)
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("The ARIMA forecast projects a continued upward trend in sample volume, suggesting a need to review reagent inventory and staffing levels for the upcoming month.", icon="📈")
+        try:
+            from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+            import lightgbm as lgb
+
+            ts_data = ssm.get_data("ml_models", "sample_volume_data")
+            df_ts_raw = pd.DataFrame(ts_data).set_index('date')
+            
+            # --- DEFINITIVE FIX: Correctly set and use DatetimeIndex ---
+            df_ts_raw.index = pd.to_datetime(df_ts_raw.index)
+            # 1. Ensure a daily frequency, creating NaN rows for missing days
+            df_ts = df_ts_raw.asfreq('D') 
+            # 2. Fill any created gaps with a reasonable value (e.g., linear interpolation)
+            df_ts['samples'] = df_ts['samples'].interpolate(method='time')
+
+            if df_ts.empty:
+                st.warning("No time series data available.")
+            else:
+                analysis_method = st.radio(
+                    "Select Forecasting Methodology",
+                    ["ARIMA (Statistical)", "Machine Learning (Gradient Boosting)"],
+                    horizontal=True, key="ts_method_select"
+                )
+                st.markdown("---")
+
+                if analysis_method == "ARIMA (Statistical)":
+                    st.markdown("##### ARIMA Model Controls")
+                    control_cols = st.columns(4)
+                    p = control_cols[0].slider("AR Order (p)", 0, 10, 5, key="arima_p")
+                    d = control_cols[1].slider("Differencing (d)", 0, 3, 1, key="arima_d")
+                    q = control_cols[2].slider("MA Order (q)", 0, 10, 0, key="arima_q")
+                    forecast_horizon = control_cols[3].number_input("Forecast Horizon (Days)", 7, 180, 30, key="arima_horizon")
+                    
+                    with st.expander("View ARIMA Diagnostic Plots (ACF/PACF)"):
+                        fig_diag, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), tight_layout=True)
+                        plot_acf(df_ts['samples'].dropna(), ax=ax1, lags=30)
+                        ax1.set_title("Autocorrelation (ACF) - Helps choose 'q'")
+                        plot_pacf(df_ts['samples'].dropna(), ax=ax2, lags=30, method='ywm')
+                        ax2.set_title("Partial Autocorrelation (PACF) - Helps choose 'p'")
+                        st.pyplot(fig_diag)
+
+                    with st.spinner(f"Fitting ARIMA({p},{d},{q}) and forecasting..."):
+                        try:
+                            model = ARIMA(df_ts['samples'], order=(p, d, q)).fit()
+                            forecast_obj = model.get_forecast(steps=forecast_horizon)
+                            forecast_df = forecast_obj.summary_frame(alpha=0.05)
+                            
+                            fig = go.Figure()
+                            # Use pd.concat for modern pandas compatibility
+                            x_ci = pd.concat([forecast_df.index.to_series(), forecast_df.index.to_series().iloc[::-1]])
+                            y_ci = pd.concat([forecast_df['mean_ci_upper'], forecast_df['mean_ci_lower'].iloc[::-1]])
+                            fig.add_trace(go.Scatter(x=x_ci, y=y_ci, fill='toself', fillcolor='rgba(0,100,80,0.2)', line=dict(color='rgba(255,255,255,0)'), hoverinfo="skip", name='95% CI'))
+                            fig.add_trace(go.Scatter(x=df_ts.index, y=df_ts['samples'], mode='lines', name='Historical', line=dict(color='blue')))
+                            fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df['mean'], mode='lines', name='Forecast', line=dict(color='green')))
+                            st.plotly_chart(fig, use_container_width=True)
+                        except Exception as model_e:
+                            st.error(f"Could not fit ARIMA({p},{d},{q}). It may be an invalid combination. Error: {model_e}")
+
+                elif analysis_method == "Machine Learning (Gradient Boosting)":
+                    st.markdown("##### ML Feature Engineering Controls")
+                    control_cols = st.columns(3)
+                    lags = control_cols[0].slider("Lag Features (Past Days)", 1, 30, 7, key="ml_lags")
+                    window = control_cols[1].slider("Rolling Window Size (Days)", 3, 30, 7, key="ml_window")
+                    forecast_horizon = control_cols[2].number_input("Forecast Horizon (Days)", 7, 180, 30, key="ml_horizon")
+
+                    def create_ts_features(df, lags, window):
+                        df = df.copy()
+                        for i in range(1, lags + 1): df[f'lag_{i}'] = df['samples'].shift(i)
+                        df[f'rolling_mean_{window}'] = df['samples'].rolling(window=window).mean().shift(1)
+                        df['dayofweek'] = df.index.dayofweek
+                        df['month'] = df.index.month
+                        return df.dropna()
+
+                    with st.spinner(f"Engineering features and training LightGBM model..."):
+                        df_feat = create_ts_features(df_ts, lags, window)
+                        X_train, y_train = df_feat.drop(columns='samples'), df_feat['samples']
+                        model = lgb.LGBMRegressor(random_state=42)
+                        model.fit(X_train, y_train)
+
+                        future_preds, history = [], df_ts.copy()
+                        for _ in range(forecast_horizon):
+                            last_date = history.index[-1]
+                            next_step_features = create_ts_features(history, lags, window).iloc[-1:].drop(columns='samples')
+                            pred = model.predict(next_step_features)[0]
+                            future_preds.append(pred)
+                            history.loc[last_date + pd.Timedelta(days=1)] = {'samples': pred}
+
+                        forecast_df = pd.DataFrame({'mean': future_preds}, index=pd.date_range(start=df_ts.index[-1] + pd.Timedelta(days=1), periods=forecast_horizon))
+                        
+                        col1, col2 = st.columns([2.5, 1.5])
+                        with col1:
+                            st.markdown("##### Historical Data vs. ML Forecast")
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(x=df_ts.index, y=df_ts['samples'], mode='lines', name='Historical', line=dict(color='blue')))
+                            fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df['mean'], mode='lines', name='Forecast', line=dict(color='purple')))
+                            st.plotly_chart(fig, use_container_width=True)
+                        with col2:
+                            st.markdown("##### Top Predictive Features")
+                            feat_imp = pd.DataFrame({'feature': X_train.columns, 'importance': model.feature_importances_}).sort_values('importance', ascending=False)
+                            fig_imp = px.bar(feat_imp.head(10), x='importance', y='feature', orientation='h', title="Feature Importance")
+                            st.plotly_chart(fig_imp, use_container_width=True)
+
+        except ImportError:
+            st.error("This tool requires `statsmodels` and `lightgbm`. Please install them (`pip install statsmodels lightgbm`).")
+        except Exception as e:
+            st.error(f"An error occurred during Time Series Analysis: {e}")
+            logger.error(f"Time Series analysis failed: {e}", exc_info=True)
 
     # --- Tool 6: Predictive Run QC ---
     with ml_tabs[5]:
