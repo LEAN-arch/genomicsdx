@@ -771,10 +771,97 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             **Significance of Results:**
             A well-maintained Levey-Jennings chart is direct, auditable evidence of a state of statistical control, as required by **CLIA '88 Subpart K** and **ISO 15189**. Any rule violation must trigger a documented investigation and Corrective and Preventive Action (CAPA), preventing the release of potentially erroneous results and demonstrating robust quality management to auditors.
             """)
+        
+        # --- 1. Data Selection and Preparation ---
         spc_data = ssm.get_data("quality_system", "spc_data")
-        fig = create_levey_jennings_plot(spc_data)
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("The selected control data appears stable and in-control. No Westgard rule violations were detected, indicating a robust and predictable process.", icon="✅")
+        
+        # Assume spc_data is a dict where keys are lot IDs
+        available_lots = list(spc_data.keys())
+        if not available_lots:
+            st.warning("No SPC data available for analysis.")
+        else:
+            selected_lot = st.selectbox("Select QC Lot to Analyze", available_lots)
+            lot_data = spc_data[selected_lot]
+            
+            measurements = np.array(lot_data.get('measurements', []))
+            mean = lot_data.get('mean')
+            std = lot_data.get('std')
+            usl = lot_data.get('usl')
+            lsl = lot_data.get('lsl')
+
+            # --- 2. Westgard Rule Analysis ---
+            violations = []
+            for i in range(len(measurements)):
+                # 1_3s rule
+                if abs(measurements[i] - mean) > 3 * std:
+                    violations.append({'run': i + 1, 'value': measurements[i], 'rule': '1_3s: Out of Control'})
+                # 2_2s rule
+                if i >= 1:
+                    if (measurements[i] > mean + 2 * std and measurements[i-1] > mean + 2 * std) or \
+                       (measurements[i] < mean - 2 * std and measurements[i-1] < mean - 2 * std):
+                        violations.append({'run': i + 1, 'value': measurements[i], 'rule': '2_2s: Systematic Bias'})
+                # 4_1s rule
+                if i >= 3:
+                    if all(measurements[i-j] > mean + std for j in range(4)) or \
+                       all(measurements[i-j] < mean - std for j in range(4)):
+                         violations.append({'run': i + 1, 'value': measurements[i], 'rule': '4_1s: Trend Developing'})
+                # 10_x rule
+                if i >= 9:
+                    if all(m > mean for m in measurements[i-9:i+1]) or \
+                       all(m < mean for m in measurements[i-9:i+1]):
+                        violations.append({'run': i + 1, 'value': measurements[i], 'rule': '10_x: Process Shift'})
+            
+            # Remove duplicate violation entries for the same run
+            violations_df = pd.DataFrame(violations).drop_duplicates(subset='run', keep='first')
+
+            # --- 3. Build the Informative Dashboard ---
+            st.info(f"""**Analysis for QC Lot: {selected_lot}**
+- **Left Plot:** The Levey-Jennings chart tracks performance over time. Any points marked with a red 'X' have violated a control rule.
+- **Right Plot:** The histogram shows the overall distribution of your QC data. A tall, narrow bell curve well within the specification limits (LSL/USL) indicates a capable process.
+            """, icon="💡")
+            
+            col1, col2 = st.columns([2.5, 1.5])
+
+            with col1:
+                # --- Enhanced Levey-Jennings Plot ---
+                fig = go.Figure()
+                # Control Limits
+                for s, c, d in [(1, "lightgrey", None), (2, "lightyellow", "dash"), (3, "lightpink", "dot")]:
+                    fig.add_hrect(y0=mean - s*std, y1=mean + s*std, fillcolor=c, layer="below", line_width=0, opacity=0.5)
+                # Mean line
+                fig.add_hline(y=mean, line_dash="solid", line_color="darkgrey")
+                # Data points
+                run_indices = list(range(1, len(measurements) + 1))
+                fig.add_trace(go.Scatter(x=run_indices, y=measurements, mode='lines+markers', name='QC Values', line=dict(color='royalblue')))
+                # Violation markers
+                if not violations_df.empty:
+                    fig.add_trace(go.Scatter(x=violations_df['run'], y=violations_df['value'], mode='markers',
+                                             marker=dict(color='red', symbol='x-thin', size=12, line_width=2),
+                                             name='Violation', hovertext=violations_df['rule'], hoverinfo='x+y+text'))
+                fig.update_layout(title=f"<b>Levey-Jennings Chart for Lot {selected_lot}</b>", xaxis_title="Run Number", yaxis_title="QC Value", showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                # --- Process Capability Section ---
+                cpk = min((usl - mean) / (3 * std), (mean - lsl) / (3 * std))
+                st.metric("Process Capability (Cpk)", f"{cpk:.2f}", f"{cpk-1.33:.2f} vs. Target 1.33", delta_color="normal" if cpk > 1.33 else "inverse")
+                
+                fig_hist = px.histogram(x=measurements, nbins=20, histnorm='probability density', title="<b>Process Distribution</b>")
+                fig_hist.add_vline(x=usl, line_dash="dash", line_color="red", annotation_text="USL")
+                fig_hist.add_vline(x=lsl, line_dash="dash", line_color="red", annotation_text="LSL")
+                fig_hist.add_vline(x=mean, line_dash="solid", line_color="black", annotation_text="Mean")
+                fig_hist.update_layout(showlegend=False, yaxis_title=None, xaxis_title="QC Value")
+                st.plotly_chart(fig_hist, use_container_width=True)
+
+            # --- 4. Dynamic Conclusion and Violation Log ---
+            st.divider()
+            if not violations_df.empty:
+                st.error(f"**Conclusion: Process OUT OF CONTROL for Lot {selected_lot}**", icon="❌")
+                st.markdown("**Violations Detected:**")
+                st.dataframe(violations_df.set_index('run'), use_container_width=True)
+            else:
+                st.success(f"**Conclusion: Process IN CONTROL for Lot {selected_colt}**", icon="✅")
+                st.markdown("No Westgard rule violations were detected in the selected dataset. The process appears stable and predictable.")
 
     # --- Tool 2: Bland-Altman ---
     with tool_tabs[1]:
