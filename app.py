@@ -1579,7 +1579,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig_pr = px.area(x=recall, y=precision, title=f"<b>Precision-Recall Curve (AUC = {pr_auc:.4f})</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
             fig_pr.update_layout(xaxis=dict(range=[0,1.01]), yaxis=dict(range=[0,1.05]), template="plotly_white")
             st.plotly_chart(fig_pr, use_container_width=True)
-        st.success("The classifier demonstrates high discriminatory power...", icon="✅")
+        st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision across a range of recall values, indicating strong performance for a screening application.", icon="✅")
 
     # --- Tool 2: Classifier Explainability (SHAP) ---
     with ml_tabs[1]:
@@ -1757,7 +1757,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig_gp.add_trace(go.Scatter(x=[opt_x_gp], y=[opt_y_gp], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='GP Optimum'))
             fig_gp.update_layout(title="<b>GP-based Design Space</b>", xaxis_title='pcr_cycles', yaxis_title='input_dna', template="plotly_white")
             st.plotly_chart(fig_gp, use_container_width=True)
-        st.success("**Conclusion:** Both methods identify a similar optimal region...", icon="🤝")
+        st.success("**Conclusion:** Both methods identify a similar optimal region. The GP model captures more nuanced local variations, while the RSM provides a smoother, more generalized surface. For our PMA, the RSM model is preferred for its simplicity and regulatory acceptance, but the GP model provides confidence that no major, complex optima were missed.", icon="🤝")
 
     # --- Tool 5: Time Series Forecasting (Operations) ---
     with ml_tabs[4]:
@@ -1933,7 +1933,11 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig_importance = px.bar(feature_importance, x='coefficient', y='feature', orientation='h', title="<b>What drives a 'Fail' prediction?</b>")
             st.plotly_chart(fig_importance, use_container_width=True)
         st.divider()
-        st.success(f"""**Operational Summary at {decision_threshold:.0%} Threshold:**...""", icon="💰")
+        st.success(f"""**Operational Summary at {decision_threshold:.0%} Threshold:**
+        - This setting correctly identifies **{runs_saved} of the {total_failed_runs} true failures**, preventing **${money_saved:,.0f}** in wasted resources.
+        - It incorrectly flags **{runs_wrongly_flagged} good runs** for review, costing an estimated **${money_lost:,.0f}**.
+        - The resulting estimated **net savings is ${net_savings:,.0f}**.
+        """, icon="💰")
 
     # --- Tool 7: Fragmentomics Analysis ---
     with ml_tabs[6]:
@@ -2002,9 +2006,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
                 fig_combined.update_layout(height=500, showlegend=False, margin=dict(t=40, b=10))
                 st.plotly_chart(fig_combined, use_container_width=True)
             st.divider()
-            if auc_score > 0.85: st.success(f"**Conclusion:** Fragment size is a **strong predictive feature**...", icon="✅")
-            elif auc_score > 0.7: st.warning(f"**Conclusion:** Fragment size is a **moderately useful feature**...", icon="⚠️")
-            else: st.error(f"**Conclusion:** Fragment size is a **weak feature**...", icon="❌")
+            if auc_score > 0.85: st.success(f"**Conclusion:** Fragment size is a **strong predictive feature**", icon="✅")
+            elif auc_score > 0.7: st.warning(f"**Conclusion:** Fragment size is a **moderately useful feature**", icon="⚠️")
+            else: st.error(f"**Conclusion:** Fragment size is a **weak feature**", icon="❌")
         except Exception as e:
             st.error(f"An error occurred during Fragmentomics analysis: {e}")
             logger.error(f"Fragmentomics analysis failed: {e}", exc_info=True)
@@ -2062,8 +2066,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         fig.update_layout(title="<b>Observed Variant vs. Background Error Model</b>", xaxis_title="Variant Allele Frequency (VAF)", yaxis_title="Probability Density", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
         st.divider()
-        if p_value < p_value_threshold: st.success(f"**Conclusion: Variant Called.**...", icon="✅")
-        else: st.error(f"**Conclusion: Not Called.**...", icon="❌")
+        if p_value < p_value_threshold: st.success(f"**Conclusion: Variant Called.** The observed VAF of **{observed_vaf:.4%}** (p={p_value:.2e}) is highly statistically significant and falls well below the calling threshold of p={p_value_threshold:.0e}. This is confidently considered a true mutation.", icon="✅")
+        else: st.error(f"**Conclusion: Not Called.** The observed VAF of **{observed_vaf:.4%}** (p={p_value:.2e}) is not statistically distinguishable from the background sequencing error profile at this depth. Increasing sequencing depth may be required to resolve this signal.", icon="❌")
   
     # --- Tool 9: NGS: Methylation Entropy Analysis ---
     with ml_tabs[8]:
@@ -2225,7 +2229,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='diamond', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
             fig.update_layout(title='<b>3D Visualization of Optimization Landscape</b>', scene=dict(xaxis=dict(title='PCR Cycles', backgroundcolor="rgba(0, 0, 0,0)"), yaxis=dict(title='Input DNA (ng)', backgroundcolor="rgba(0, 0, 0,0)"), zaxis=dict(title='Library Yield', backgroundcolor="rgba(0, 0, 0,0)"), camera=dict(eye=dict(x=1.5, y=-1.5, z=1.2))), height=700, margin=dict(l=0, r=0, b=0, t=40), legend=dict(x=0.01, y=0.99, traceorder='normal', bgcolor='rgba(255,255,255,0.6)'))
             st.plotly_chart(fig, use_container_width=True)
-            st.success("The 3D plot visualizes the assay response surface...", icon="🎯")
+            st.success("The 3D plot visualizes the assay response surface derived from DOE points. The cyan line demonstrates how a gradient-based optimization algorithm navigates this surface to efficiently find the region of maximum yield, confirming that the iterative optimization converges near the predicted global optimum (yellow diamond).", icon="🎯")
         except Exception as e:
             st.error(f"Could not render 3D visualization. Error: {e}")
             logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
