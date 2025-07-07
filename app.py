@@ -911,11 +911,11 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                 model = ols(f'{value_col} ~ C({part_col}) + C({operator_col}) + C({part_col}):C({operator_col})', data=df_msa).fit()
                 anova_table = anova_lm(model, typ=2)
 
-                # Extract Mean Squares (MS)
-                ms_part = anova_table.loc[f'C({part_col})', 'mean_sq']
-                ms_operator = anova_table.loc[f'C({operator_col})', 'mean_sq']
-                ms_interaction = anova_table.loc[f'C({part_col}):C({operator_col})', 'mean_sq']
-                ms_error = anova_table.loc['Residual', 'mean_sq'] # Repeatability
+                # --- FIX: Use 'MS' instead of 'mean_sq' for modern statsmodels versions ---
+                ms_part = anova_table.loc[f'C({part_col})', 'MS']
+                ms_operator = anova_table.loc[f'C({operator_col})', 'MS']
+                ms_interaction = anova_table.loc[f'C({part_col}):C({operator_col})', 'MS']
+                ms_error = anova_table.loc['Residual', 'MS'] # Repeatability
 
                 # Calculate Variance Components
                 var_repeat = ms_error
@@ -1010,7 +1010,6 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"An error occurred during Gauge R&R analysis: {e}")
             logger.error(f"Gauge R&R analysis failed: {e}", exc_info=True)
-
     # --- Tool 5: LoD/Probit ---
     with tool_tabs[4]:
         st.subheader("Limit of Detection (LoD) by Probit Analysis")
