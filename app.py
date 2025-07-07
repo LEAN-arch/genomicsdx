@@ -1960,7 +1960,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "1. Classifier Performance (ROC & PR)", "2. Classifier Explainability (SHAP)", "3. Cancer Signal of Origin (CSO) Analysis",
         "4. Assay Optimization (RSM vs. ML)", "5. Time Series Forecasting (Operations)", "6. Predictive Run QC (On-Instrument)",
         "7. NGS: Fragmentomics Analysis", "8. NGS: Sequencing Error Modeling", "9. NGS: Methylation Entropy Analysis",
-        "10. 3D Optimization Visualization", "Error Modeling", "Methylation Entropy","3D Optimization"
+        "10. 3D Optimization Visualization","11. 3D Optimization_Alpha"
     ])
 
     X, y = ssm.get_data("ml_models", "classifier_data")
@@ -2309,83 +2309,11 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.error(f"Could not render 3D visualization. Error: {e}")
             logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
     
-    # --- Tool 8: Error Modeling ---
-    with ml_tabs[10]:
-        st.subheader("NGS Signal: Sequencing Error Profile Modeling")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of the Method:**
-            To statistically distinguish a true, low-frequency somatic mutation from the background "noise" of sequencing errors. Every sequencer has an inherent error rate. For liquid biopsy, where the true signal (Variant Allele Frequency or VAF) can be <0.1%, a robust error model is absolutely essential for achieving a low Limit of Detection (LoD).
-
-            **Conceptual Walkthrough: A Whisper in a Crowded Room**
-            Imagine trying to hear a very faint whisper (a true mutation) in a noisy room (sequencing errors). If you don't know how loud the background noise typically is, you can't be sure if you heard a real whisper or just a random bit of chatter. This tool first *characterizes the background noise* by fitting a statistical distribution (a Beta distribution) to the observed error rates from many normal samples. This gives us a precise "fingerprint" of the noise. Then, when we hear a potential new signal, we can ask: "What is the probability that the background noise, by itself, would sound this loud?" If that probability (the p-value) is astronomically low, we can confidently say we heard a real whisper.
-
-            **Mathematical Basis & Formula:**
-            1.  **Error Modeling:** The VAF of sequencing errors at non-variant sites is modeled using a Beta distribution, which is perfect for values between 0 and 1. We fit the parameters ($\alpha_0, \beta_0$) of this distribution using a large set of normal, healthy samples.
-            2.  **Hypothesis Testing:** For a new variant observed with a VAF of $v_{obs}$, our null hypothesis is $H_0$: "This observation is just a draw from our background error distribution." We calculate the p-value as the survival function (1 - CDF) of our fitted Beta distribution: $$ P(\text{VAF} \ge v_{obs} | H_0) = 1 - F(v_{obs}; \alpha_0, \beta_0) $$ A very low p-value allows us to reject $H_0$.
-
-            **Procedure:**
-            1.  Sequence a cohort of healthy individuals to high depth.
-            2.  At known non-variant positions, calculate the VAF of non-reference alleles to build an empirical error distribution.
-            3.  Fit a Beta distribution to these error VAFs to get the model parameters ($\alpha_0, \beta_0$).
-            4.  For new samples, calculate a p-value for each potential variant against this error model.
-
-            **Significance of Results:**
-            This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.
-            """)
-        alpha0, beta0, _, _ = stats.beta.fit(np.random.beta(a=0.4, b=9000, size=1000), floc=0, fscale=1)
-        st.write(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`")
-        true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider_ngs")
-        observed_variant_reads = np.random.binomial(10000, true_vaf)
-        observed_vaf = observed_variant_reads / 10000
-        p_value = 1.0 - stats.beta.cdf(observed_vaf, alpha0, beta0)
-        st.metric(f"Observed VAF at 10,000x Depth", f"{observed_vaf:.4f}")
-        st.metric("P-value (Probability this is Random Noise)", f"{p_value:.3e}")
-        if p_value < 1e-6:
-             st.success(f"**Conclusion:** The observation is highly statistically significant. We can confidently call this a true mutation above the background error rate.", icon="✅")
-        else:
-             st.error(f"**Conclusion:** The observed VAF is not statistically distinguishable from the background sequencing error profile. This should **not** be called as a true variant.", icon="❌")
-
-    # --- Tool 9: Methylation Entropy ---
-    with ml_tabs[11]:
-        st.subheader("NGS Signal: Methylation Entropy Analysis")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of the Method:**
-            To leverage another key biological signal in cfDNA: the **disorder** of methylation patterns within a given genomic region. Healthy tissues often have very consistent, ordered methylation patterns, while cancer tissues exhibit chaotic, disordered methylation. This "methylation entropy" can be a powerful feature for classification.
-
-            **Conceptual Walkthrough: A Well-Kept vs. Messy Bookshelf**
-            Imagine a specific genomic region is a bookshelf. In a healthy cell, all the books are neatly arranged by color—a very orderly, low-entropy state. In a cancer cell, the same bookshelf is a mess: books are everywhere, with no discernible pattern—a very disorderly, high-entropy state. Even if we don't know the exact "correct" pattern, we can measure the *amount of disorder*. By sequencing many individual DNA molecules from that region, we can quantify this disorder and use it to distinguish cancer from healthy.
-
-            **Mathematical Basis & Formula:**
-            For a given genomic region with *N* CpG sites, we analyze the methylation patterns across multiple cfDNA reads that cover this region. For each of the $2^N$ possible methylation patterns (e.g., 'MM', 'MU', 'UM', 'UU' for N=2), we calculate its frequency, $p_i$. The Shannon entropy, a measure of disorder, is then calculated:
-            $$ H = -\sum_{i=1}^{2^N} p_i \log_2(p_i) $$
-            A low entropy value (H) indicates a consistent, ordered pattern, while a high entropy value indicates disorder.
-
-            **Procedure:**
-            1.  Define specific genomic regions of interest.
-            2.  For each sample, extract all sequencing reads covering a region.
-            3.  For each read, determine the methylation state (M or U) at each CpG site.
-            4.  Count the frequency of each unique methylation pattern across all reads.
-            5.  Calculate the Shannon entropy for the region.
-            6.  Use this entropy value as a feature in the machine learning model.
-
-            **Significance of Results:**
-            Like fragmentomics, methylation entropy is an **orthogonal biological signal**. It does not depend on the methylation level at a single site but on the heterogeneity of patterns across a region. Incorporating such features makes our classifier more robust and less susceptible to artifacts affecting single-site measurements. Presenting this in a PMA submission demonstrates a deep, multi-faceted understanding of the underlying cancer biology.
-            """)
-        # Generate plausible entropy data
-        np.random.seed(33)
-        healthy_entropy = np.random.normal(1.5, 0.5, 100).clip(0)
-        cancer_entropy = np.random.normal(3.0, 0.8, 100).clip(0)
-        df_entropy = pd.DataFrame({'Entropy (bits)': np.concatenate([healthy_entropy, cancer_entropy]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100})
-        fig = px.box(df_entropy, x='Sample Type', y='Entropy (bits)', color='Sample Type', points='all', title="<b>Methylation Entropy by Sample Type</b>")
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature for classification, enhancing the robustness of our diagnostic model.", icon="🧬")
 
     # --- Tool 10: 3D Optimization Visualization ---
 
-    with ml_tabs[12]:
-        st.subheader("10. Process Optimization & Model Training (3D Visualization)")
+    with ml_tabs[10]:
+        st.subheader("10. Process Optimization & Model Training (3D Visualization_alpha)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
             **Purpose of the Method:**
