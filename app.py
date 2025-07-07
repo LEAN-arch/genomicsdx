@@ -865,7 +865,30 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     with tool_tabs[3]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Existing explanation
+            st.markdown(r"""
+            **Purpose of the Method:**
+            To determine how much of the variation in your data is due to your measurement system versus the actual variation between the items being measured. You cannot trust your data if your ruler is "spongy." A Gauge R&R study quantifies this "sponginess."
+
+            **Conceptual Walkthrough: Measuring Blocks of Wood**
+            Imagine you have several blocks of wood of slightly different lengths (the "Parts"). You ask three different people ("Operators") to measure each block three times ("Replicates") using the same caliper ("Gauge"). The total variation you observe comes from three sources:
+            1.  **Part-to-Part Variation:** The *true* difference in length between the blocks. This is the "good" variation we want to see.
+            2.  **Repeatability (Equipment Variation):** When a single person measures the *same block* three times, do they get the exact same number? The variation in their three measurements is Repeatability.
+            3.  **Reproducibility (Appraiser Variation):** When all three people measure the same block, do their average measurements agree? The variation between the people is Reproducibility.
+
+            **Mathematical Basis & Formula:**
+            Analysis of Variance (ANOVA) is used to partition the total observed variance ($\sigma^2_{\text{Total}}$) into its constituent components.
+            $$ \sigma^2_{\text{Total}} = \sigma^2_{\text{Part}} + \sigma^2_{\text{Gauge R&R}} $$
+            $$ \sigma^2_{\text{Gauge R&R}} = \sigma^2_{\text{Repeatability}} + \sigma^2_{\text{Reproducibility}} $$
+            The key metric is the **% Contribution of GR&R**: $(\sigma^2_{\text{GRR}} / \sigma^2_{\text{Total}}) \times 100\%$.
+
+            **Procedure:**
+            1.  A structured experiment is performed where multiple operators measure multiple parts multiple times.
+            2.  The resulting data is analyzed using ANOVA to calculate the variance components.
+            3.  The % Contribution is compared against industry-standard guidelines.
+
+            **Significance of Results:**
+            The AIAG guidelines are standard: **< 10%** is acceptable; **10% - 30%** is marginal; **> 30%** is unacceptable. A successful Gauge R&R study is a prerequisite for process validation and is critical evidence for **Process Validation (PV)** activities under the FDA's Quality System Regulation.
+            """)n
         
         try:
             from statsmodels.formula.api import ols
