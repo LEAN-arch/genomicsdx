@@ -2245,19 +2245,69 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             This is the core of a high-performance bioinformatic pipeline. A well-parameterized error model is the primary determinant of an assay's analytical specificity and its **Limit of Detection (LoD)**. It is a critical component that will be heavily scrutinized during regulatory review.
             """)
 
-        alpha0, beta0, _, _ = stats.beta.fit(np.random.beta(a=0.4, b=9000, size=1000), floc=0, fscale=1)
-        st.write(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`")
-        true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider_ngs")
-        observed_variant_reads = np.random.binomial(10000, true_vaf)
-        observed_vaf = observed_variant_reads / 10000
-        p_value = 1.0 - stats.beta.cdf(observed_vaf, alpha0, beta0)
-        st.metric(f"Observed VAF at 10,000x Depth", f"{observed_vaf:.4f}")
-        st.metric("P-value (Probability this is Random Noise)", f"{p_value:.3e}")
-        if p_value < 1e-6:
-             st.success(f"**Conclusion:** The observation is highly statistically significant...", icon="✅")
-        else:
-             st.error(f"**Conclusion:** The observed VAF is not statistically distinguishable...", icon="❌")
+        # --- 1. Fit the Background Error Model ---
+        # Generate a plausible background error distribution
+        background_errors = np.random.beta(a=0.4, b=9000, size=1000)
+        alpha0, beta0, _, _ = stats.beta.fit(background_errors, floc=0, fscale=1)
+        
+        st.info(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`."
+                " Use the sliders to simulate a new variant observation and see if it can be distinguished from this noise profile.", icon="🔬")
 
+        # --- 2. Interactive Variant Simulation Controls ---
+        control_cols = st.columns(2)
+        true_vaf = control_cols[0].slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f")
+        depth = control_cols[1].slider("Simulate Sequencing Depth", 1000, 20000, 10000, step=500)
+        
+        # --- 3. Simulate Observation and Calculate P-value ---
+        observed_variant_reads = np.random.binomial(depth, true_vaf)
+        observed_vaf = observed_variant_reads / depth
+        p_value = 1.0 - stats.beta.cdf(observed_vaf, alpha0, beta0)
+        p_value_threshold = 1e-6 # A common threshold for calling a somatic variant
+
+        # --- 4. Build the Informative Dashboard ---
+        kpi_cols = st.columns(3)
+        kpi_cols[0].metric("Observed VAF", f"{observed_vaf:.4%}")
+        kpi_cols[1].metric("Read Counts", f"{observed_variant_reads} / {depth - observed_variant_reads}", help="Variant Reads / Reference Reads")
+        kpi_cols[2].metric("P-value (vs. Noise)", f"{p_value:.3e}")
+
+        # Enhanced Distribution Plot
+        fig = go.Figure()
+        
+        # Plot the background error distribution
+        fig.add_trace(go.Histogram(x=background_errors, name='Background Error Rate', histnorm='probability density', marker_color='lightgrey'))
+        
+        # Overlay the fitted Beta model
+        x_range = np.linspace(0, max(background_errors.max(), observed_vaf) * 1.2, 500)
+        pdf_vals = stats.beta.pdf(x_range, alpha0, beta0)
+        fig.add_trace(go.Scatter(x=x_range, y=pdf_vals, mode='lines', name='Fitted Beta Model', line=dict(color='black')))
+
+        # Shade the p-value area
+        shade_x = np.linspace(observed_vaf, x_range.max(), 100)
+        shade_y = stats.beta.pdf(shade_x, alpha0, beta0)
+        fig.add_trace(go.Scatter(x=np.concatenate([shade_x, shade_x[::-1]]), y=np.concatenate([shade_y, np.zeros(len(shade_y))]),
+                                 fill='toself', fillcolor='rgba(255,0,0,0.3)', line=dict(width=0), name='P-value Area'))
+        
+        # Add lines for the observation and the calling threshold
+        fig.add_vline(x=observed_vaf, line_dash="dash", line_color="red", annotation_text=f"Observed VAF: {observed_vaf:.4%}", annotation_position="top right")
+        
+        # Find the VAF that corresponds to the p-value threshold for plotting
+        vaf_at_threshold = stats.beta.ppf(1 - p_value_threshold, alpha0, beta0)
+        fig.add_vline(x=vaf_at_threshold, line_dash="dot", line_color="purple", annotation_text=f"Calling Threshold (p={p_value_threshold:.0e})", annotation_position="top left")
+
+        fig.update_layout(
+            title="<b>Observed Variant vs. Background Error Model</b>",
+            xaxis_title="Variant Allele Frequency (VAF)",
+            yaxis_title="Probability Density",
+            showlegend=False
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # --- 5. Dynamic Conclusion ---
+        st.divider()
+        if p_value < p_value_threshold:
+            st.success(f"**Conclusion: Variant Called.** The observed VAF of **{observed_vaf:.4%}** (p={p_value:.2e}) is highly statistically significant and falls well below the calling threshold of p={p_value_threshold:.0e}. This is confidently considered a true mutation.", icon="✅")
+        else:
+            st.error(f"**Conclusion: Not Called.** The observed VAF of **{observed_vaf:.4%}** (p={p_value:.2e}) is not statistically distinguishable from the background sequencing error profile at this depth. Increasing sequencing depth may be required to resolve this signal.", icon="❌")
     # --- Tool 9: NGS: Methylation Entropy Analysis ---
     with ml_tabs[8]:
         st.subheader("NGS Signal: Methylation Entropy Analysis")
