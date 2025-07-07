@@ -1253,7 +1253,6 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             logger.error(f"Gauge R&R analysis failed: {e}", exc_info=True)
     
     # --- Tool 5: LoD/Probit ---
-    # --- Tool 5: LoD/Probit ---
     with tool_tabs[4]:
         st.subheader("Limit of Detection (LoD) by Probit Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -1634,6 +1633,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             logger.error(f"SHAP analysis failed: {e}", exc_info=True)
         
     # --- Tool 3: CSO ---
+    # --- Tool 3: Cancer Signal of Origin (CSO) Analysis ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -1658,19 +1658,88 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             **Significance of Results:**
             The performance of the CSO classifier is a key component of the assay's **clinical validation** and a major part of a **PMA submission**. The confusion matrix directly informs the Instructions for Use (IFU) and physician education materials, highlighting the model's strengths and weaknesses so that clinicians can interpret a CSO prediction with the appropriate context.
             """)
-        cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
-        cancer_samples_X = X[y == 1]
-        if not cancer_samples_X.empty:
-            np.random.seed(123)
-            true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X), p=[0.3, 0.25, 0.2, 0.15, 0.1])
-            cso_model = RandomForestClassifier(n_estimators=50, random_state=123).fit(cancer_samples_X, true_cso)
-            predicted_cso = cso_model.predict(cancer_samples_X)
-            cm_cso = confusion_matrix(true_cso, predicted_cso, labels=cso_classes)
-            fig_cm_cso = create_confusion_matrix_heatmap(cm_cso, cso_classes)
-            st.plotly_chart(fig_cm_cso, use_container_width=True)
-            accuracy = np.diag(cm_cso).sum() / cm_cso.sum()
-            st.success(f"The CSO classifier achieved an overall Top-1 accuracy of **{accuracy:.1%}**. The confusion matrix highlights strong performance for Lung and Colorectal signals, guiding where model improvement efforts should be focused.", icon="🎯")
-            
+        
+        try:
+            from sklearn.metrics import classification_report
+
+            cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
+            cancer_samples_X = X[y == 1]
+
+            if cancer_samples_X.empty:
+                st.warning("No samples classified as 'Cancer Signal Detected' to perform CSO analysis.")
+            else:
+                # --- 1. Model Training and Prediction ---
+                np.random.seed(123)
+                true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X), p=[0.3, 0.25, 0.2, 0.15, 0.1])
+                cso_model = RandomForestClassifier(n_estimators=50, random_state=123).fit(cancer_samples_X, true_cso)
+                predicted_cso = cso_model.predict(cancer_samples_X)
+
+                # --- 2. Comprehensive Performance Metrics ---
+                report = classification_report(true_cso, predicted_cso, labels=cso_classes, output_dict=True)
+                cm_cso = confusion_matrix(true_cso, predicted_cso, labels=cso_classes)
+                accuracy = report['accuracy']
+
+                metrics_df = pd.DataFrame(report).transpose().drop(columns='support').loc[cso_classes]
+                metrics_df.index.name = "Cancer Type"
+                
+                # --- 3. Build the Informative Dashboard ---
+                st.metric("Overall CSO Top-1 Accuracy", f"{accuracy:.2%}")
+                st.info("""**How to Read the Plots:**
+- **Confusion Matrix (Left):** Shows where predictions land. The diagonal represents correct predictions. Read across a row to see how a true cancer type was classified.
+- **Performance Metrics (Right):** Compares Precision, Recall, and F1-Score for each cancer type. Taller bars are better.
+                """, icon="💡")
+                
+                col1, col2 = st.columns([1.2, 1])
+
+                with col1:
+                    # Enhanced Confusion Matrix (Normalized)
+                    st.markdown("##### Normalized Confusion Matrix")
+                    cm_norm = cm_cso.astype('float') / cm_cso.sum(axis=1)[:, np.newaxis]
+                    hover_text = [[f"True: {cso_classes[i]}<br>Predicted: {cso_classes[j]}<br>Count: {cm_cso[i, j]}<br>Rate: {cm_norm[i, j]:.1%}" for j in range(len(cso_classes))] for i in range(len(cso_classes))]
+                    
+                    fig_cm = px.imshow(cm_norm, x=cso_classes, y=cso_classes,
+                                       labels=dict(x="Predicted CSO", y="True CSO", color="Recall Rate"),
+                                       color_continuous_scale='Blues', text_auto='.1%')
+                    fig_cm.update_traces(hovertemplate='%{customdata}', customdata=np.array(hover_text))
+                    fig_cm.update_layout(title="<b>Where are predictions going?</b>")
+                    st.plotly_chart(fig_cm, use_container_width=True)
+
+                with col2:
+                    # Per-Class Performance Bar Chart
+                    st.markdown("##### Per-Class Performance")
+                    fig_metrics = px.bar(metrics_df, barmode='group',
+                                         title="<b>Precision vs. Recall by Cancer Type</b>",
+                                         labels={'value': 'Score', 'variable': 'Metric'})
+                    fig_metrics.update_yaxes(range=[0, 1.05])
+                    st.plotly_chart(fig_metrics, use_container_width=True)
+                
+                # --- 4. Dynamic Actionable Insights ---
+                st.divider()
+                st.subheader("Actionable Insights")
+                
+                # Find best and worst performing classes
+                sorted_metrics = metrics_df.sort_values('f1-score', ascending=False)
+                best_class = sorted_metrics.index[0]
+                worst_class = sorted_metrics.index[-1]
+
+                # Find most common confusion
+                cm_temp = cm_cso.copy()
+                np.fill_diagonal(cm_temp, 0)
+                max_confusion_idx = np.unravel_index(np.argmax(cm_temp), cm_temp.shape)
+                true_confused, pred_confused = cso_classes[max_confusion_idx[0]], cso_classes[max_confusion_idx[1]]
+                
+                st.success(f"✅ **Best Performer:** The model is most reliable at identifying **{best_class}** (F1-Score: {sorted_metrics.iloc[0]['f1-score']:.2f}).")
+                st.warning(f"⚠️ **Improvement Target:** The model struggles most with **{worst_class}** (F1-Score: {sorted_metrics.iloc[-1]['f1-score']:.2f}). This should be a priority for retraining.")
+                st.error(f"❌ **Top Confusion Pair:** The most common error is misclassifying **True {true_confused}** cancer as **Predicted {pred_confused}** ({cm_temp.max()} times). Feature engineering should focus on separating these two signals.")
+
+                with st.expander("View Detailed Metrics Table"):
+                    st.dataframe(metrics_df.style.format('{:.2f}'), use_container_width=True)
+                    
+        except ImportError:
+            st.error("This tool requires scikit-learn. Please install it (`pip install scikit-learn`).")
+        except Exception as e:
+            st.error(f"An error occurred during CSO analysis: {e}")
+            logger.error(f"CSO analysis failed: {e}", exc_info=True)
     # --- Tool 4: RSM vs ML ---
     with ml_tabs[3]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
