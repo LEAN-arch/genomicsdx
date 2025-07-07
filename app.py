@@ -902,19 +902,26 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             else:
                 part_col, operator_col, value_col = 'part', 'operator', 'measurement'
                 
-                # --- ANOVA Calculations ---
+                # --- Robustness Check: Ensure data is suitable for analysis ---
                 n_parts = df_msa[part_col].nunique()
                 n_operators = df_msa[operator_col].nunique()
+                
+                if n_parts < 2 or n_operators < 2:
+                    st.error(f"**Data Insufficient for Analysis:** Gauge R&R requires at least 2 parts and 2 operators. Your data has {n_parts} part(s) and {n_operators} operator(s).", icon="📉")
+                    st.stop() # Halt execution for this tab
+
                 n_replicates = len(df_msa) / (n_parts * n_operators)
+                if n_replicates < 2:
+                    st.warning(f"**Warning:** The analysis is being run with only {int(n_replicates)} replicate(s). At least 2 are recommended for a robust study.", icon="⚠️")
 
                 # Fit ANOVA model
-                model = ols(f'{value_col} ~ C({part_col}) + C({operator_col}) + C({part_col}):C({operator_col})', data=df_msa).fit()
+                model = ols(f'`{value_col}` ~ C(`{part_col}`) + C(`{operator_col}`) + C(`{part_col}`):C(`{operator_col}`)', data=df_msa).fit()
                 anova_table = anova_lm(model, typ=2)
 
                 # --- FIX: Use 'MS' instead of 'mean_sq' for modern statsmodels versions ---
-                ms_part = anova_table.loc[f'C({part_col})', 'MS']
-                ms_operator = anova_table.loc[f'C({operator_col})', 'MS']
-                ms_interaction = anova_table.loc[f'C({part_col}):C({operator_col})', 'MS']
+                ms_part = anova_table.loc[f'C(`{part_col}`)', 'MS']
+                ms_operator = anova_table.loc[f'C(`{operator_col}`)', 'MS']
+                ms_interaction = anova_table.loc[f'C(`{part_col}`):C(`{operator_col}`)', 'MS']
                 ms_error = anova_table.loc['Residual', 'MS'] # Repeatability
 
                 # Calculate Variance Components
@@ -933,7 +940,13 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                     'Variance': [var_grr, var_repeat, var_repro, var_part, var_total]
                 }
                 results_df = pd.DataFrame(results)
-                results_df['% Contribution'] = (results_df['Variance'] / var_total) * 100
+                
+                # Robustness Fix: Handle division by zero if total variation is zero
+                if var_total > 0:
+                    results_df['% Contribution'] = (results_df['Variance'] / var_total) * 100
+                else:
+                    results_df['% Contribution'] = 0.0
+                
                 results_df = results_df.set_index('Source')
                 total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
 
