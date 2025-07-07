@@ -1578,7 +1578,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.plotly_chart(fig_pr, use_container_width=True)
         st.success("The classifier demonstrates high discriminatory power (AUC > 0.9) and maintains high precision across a range of recall values, indicating strong performance for a screening application.", icon="✅")
 
- # --- Tool 2: SHAP ---
 # --- Tool 2: Classifier Explainability (SHAP) ---
     with ml_tabs[1]:
         st.subheader("Classifier Explainability (SHAP)")
@@ -1607,11 +1606,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             2.  **Debugging the Model:** It can highlight if the model is unexpectedly relying on an irrelevant feature.
             3.  **Building Trust:** It provides objective, quantitative evidence that the model's decision-making process is sound and well-understood.
             """)
-        
-    with ml_tabs[1]:
-        st.subheader("Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Explanation content
+
         try:
             with st.spinner("Calculating SHAP values..."):
                 n_samples = min(100, len(X))
