@@ -1632,7 +1632,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""  **Purpose of the Method:**
+            st.markdown(r"""**Purpose of the Method:**
             For an MCED test, a key secondary claim is the ability to predict the **Cancer Signal of Origin (CSO)**. This tool analyzes the performance of the CSO multi-class prediction model, which is critical for guiding the subsequent clinical workup.
 
             **Conceptual Walkthrough: The Return Address**
@@ -1704,11 +1704,11 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     # --- Tool 4: Assay Optimization (RSM vs. ML) ---
     with ml_tabs[3]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
-        st.info(" **Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
+        st.info(r"""**Purpose:** To find the optimal settings of critical process parameters by fitting a **quadratic model** to data from a designed experiment (like a CCD).
                 **Mathematical Basis:** It uses a second-order polynomial model fit via least squares. The squared terms ($\beta_{11}, \beta_{22}$) are what allow the model to capture curvature, which is essential for finding a true optimum.
                 $$ Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_{12}X_1X_2 + \beta_{11}X_1^2 + \beta_{22}X_2^2 $$
                 **Significance:** RSM is the industry-standard, statistically rigorous method for defining a **Design Space** and is well-understood by regulators. It is excellent for processes with simple, smooth curvature.
- ")
+ """)
         rsm_data = ssm.get_data("quality_system", "rsm_data")
         df_rsm = pd.DataFrame(rsm_data)
         X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
@@ -1988,7 +1988,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
     with ml_tabs[7]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r""" **Purpose of the Method:**
+            st.markdown(r"""**Purpose of the Method:**
             To statistically distinguish a true, low-frequency somatic mutation from the background "noise" of sequencing errors. Every sequencer has an inherent error rate. For liquid biopsy, where the true signal (Variant Allele Frequency or VAF) can be <0.1%, a robust error model is absolutely essential for achieving a low Limit of Detection (LoD).
 
             **Conceptual Walkthrough: A Whisper in a Crowded Room**
