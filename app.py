@@ -746,6 +746,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     ])
 
     # --- Tool 1: Levey-Jennings ---
+    # --- Tool 1: Levey-Jennings ---
     with tool_tabs[0]:
         st.subheader("Statistical Process Control (SPC) for Daily Assay Monitoring")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -772,17 +773,16 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             A well-maintained Levey-Jennings chart is direct, auditable evidence of a state of statistical control, as required by **CLIA '88 Subpart K** and **ISO 15189**. Any rule violation must trigger a documented investigation and Corrective and Preventive Action (CAPA), preventing the release of potentially erroneous results and demonstrating robust quality management to auditors.
             """)
         
-        # --- 1. Data Selection and Preparation ---
+        # --- 1. Data Preparation (Corrected Logic) ---
         spc_data = ssm.get_data("quality_system", "spc_data")
         
-        # Assume spc_data is a dict where keys are lot IDs
-        available_lots = list(spc_data.keys())
-        if not available_lots:
-            st.warning("No SPC data available for analysis.")
+        # Check if the data is a dictionary and has the required keys
+        if not isinstance(spc_data, dict) or not all(k in spc_data for k in ['measurements', 'mean', 'std', 'usl', 'lsl']):
+            st.warning("SPC data is missing or in an incorrect format. It must be a dictionary with 'measurements', 'mean', 'std', 'usl', and 'lsl' keys.")
         else:
-            selected_lot = st.selectbox("Select QC Lot to Analyze", available_lots)
-            lot_data = spc_data[selected_lot]
-            
+            lot_data = spc_data # Use the data object directly
+            lot_name = lot_data.get("lot_id", "Current QC Lot") # Use a specific lot_id if available, otherwise use a generic name
+
             measurements = np.array(lot_data.get('measurements', []))
             mean = lot_data.get('mean')
             std = lot_data.get('std')
@@ -811,11 +811,10 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                        all(m < mean for m in measurements[i-9:i+1]):
                         violations.append({'run': i + 1, 'value': measurements[i], 'rule': '10_x: Process Shift'})
             
-            # Remove duplicate violation entries for the same run
             violations_df = pd.DataFrame(violations).drop_duplicates(subset='run', keep='first')
 
             # --- 3. Build the Informative Dashboard ---
-            st.info(f"""**Analysis for QC Lot: {selected_lot}**
+            st.info(f"""**Analysis for QC Lot: {lot_name}**
 - **Left Plot:** The Levey-Jennings chart tracks performance over time. Any points marked with a red 'X' have violated a control rule.
 - **Right Plot:** The histogram shows the overall distribution of your QC data. A tall, narrow bell curve well within the specification limits (LSL/USL) indicates a capable process.
             """, icon="💡")
@@ -823,26 +822,22 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             col1, col2 = st.columns([2.5, 1.5])
 
             with col1:
-                # --- Enhanced Levey-Jennings Plot ---
+                # Enhanced Levey-Jennings Plot
                 fig = go.Figure()
-                # Control Limits
                 for s, c, d in [(1, "lightgrey", None), (2, "lightyellow", "dash"), (3, "lightpink", "dot")]:
                     fig.add_hrect(y0=mean - s*std, y1=mean + s*std, fillcolor=c, layer="below", line_width=0, opacity=0.5)
-                # Mean line
                 fig.add_hline(y=mean, line_dash="solid", line_color="darkgrey")
-                # Data points
                 run_indices = list(range(1, len(measurements) + 1))
                 fig.add_trace(go.Scatter(x=run_indices, y=measurements, mode='lines+markers', name='QC Values', line=dict(color='royalblue')))
-                # Violation markers
                 if not violations_df.empty:
                     fig.add_trace(go.Scatter(x=violations_df['run'], y=violations_df['value'], mode='markers',
                                              marker=dict(color='red', symbol='x-thin', size=12, line_width=2),
                                              name='Violation', hovertext=violations_df['rule'], hoverinfo='x+y+text'))
-                fig.update_layout(title=f"<b>Levey-Jennings Chart for Lot {selected_lot}</b>", xaxis_title="Run Number", yaxis_title="QC Value", showlegend=False)
+                fig.update_layout(title=f"<b>Levey-Jennings Chart for Lot {lot_name}</b>", xaxis_title="Run Number", yaxis_title="QC Value", showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
 
             with col2:
-                # --- Process Capability Section ---
+                # Process Capability Section
                 cpk = min((usl - mean) / (3 * std), (mean - lsl) / (3 * std))
                 st.metric("Process Capability (Cpk)", f"{cpk:.2f}", f"{cpk-1.33:.2f} vs. Target 1.33", delta_color="normal" if cpk > 1.33 else "inverse")
                 
@@ -856,13 +851,12 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             # --- 4. Dynamic Conclusion and Violation Log ---
             st.divider()
             if not violations_df.empty:
-                st.error(f"**Conclusion: Process OUT OF CONTROL for Lot {selected_lot}**", icon="❌")
+                st.error(f"**Conclusion: Process OUT OF CONTROL for Lot {lot_name}**", icon="❌")
                 st.markdown("**Violations Detected:**")
                 st.dataframe(violations_df.set_index('run'), use_container_width=True)
             else:
-                st.success(f"**Conclusion: Process IN CONTROL for Lot {selected_colt}**", icon="✅")
+                st.success(f"**Conclusion: Process IN CONTROL for Lot {lot_name}**", icon="✅")
                 st.markdown("No Westgard rule violations were detected in the selected dataset. The process appears stable and predictable.")
-
     # --- Tool 2: Bland-Altman ---
     with tool_tabs[1]:
         st.subheader("Method Agreement Analysis (Bland-Altman)")
