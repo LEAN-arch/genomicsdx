@@ -2252,67 +2252,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature...", icon="🧬")
 
     # --- Tool 10: 3D Optimization Visualization ---
+
     with ml_tabs[9]:
-        st.subheader("10. Process Optimization & Model Training (3D Visualization)")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""")
-        try:
-            rsm_data = ssm.get_data("quality_system", "rsm_data")
-            if not rsm_data:
-                st.warning("RSM data not available for this visualization.")
-                st.stop()
-            df_rsm = pd.DataFrame(rsm_data)
-            X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
-            y_rsm = df_rsm['library_yield']
-            scaler = StandardScaler()
-            X_rsm_scaled = scaler.fit_transform(X_rsm)
-            kernel = C(1.0, (1e-3, 1e3)) * RBF([1.0, 1.0], (1e-2, 1e2))
-            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, random_state=42)
-            gp.fit(X_rsm_scaled, y_rsm)
-            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
-            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
-            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 40), np.linspace(y_min, y_max, 40))
-            grid_scaled = scaler.transform(np.c_[xx.ravel(), yy.ravel()])
-            Z = gp.predict(grid_scaled).reshape(xx.shape)
-            opt_idx_gp = np.argmax(Z)
-            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
-            opt_z_gp = np.max(Z)
-            def gradient_scaled(x_s, y_s):
-                eps = 1e-6
-                grad_x = (gp.predict([[x_s + eps, y_s]])[0] - gp.predict([[x_s - eps, y_s]])[0]) / (2 * eps)
-                grad_y = (gp.predict([[x_s, y_s + eps]])[0] - gp.predict([[x_s, y_s - eps]])[0]) / (2 * eps)
-                return np.array([grad_x, grad_y])
-            path_scaled = []
-            start_point_original = df_rsm.iloc[0][['pcr_cycles', 'input_dna']].values.astype(float)
-            current_point_scaled = scaler.transform([start_point_original])[0]
-            learning_rate = 0.2
-            for i in range(20):
-                path_scaled.append(current_point_scaled)
-                grad = gradient_scaled(current_point_scaled[0], current_point_scaled[1])
-                norm_grad = grad / (np.linalg.norm(grad) + 1e-8)
-                current_point_scaled = current_point_scaled + learning_rate * norm_grad
-            path_scaled = np.array(path_scaled)
-            path_original = scaler.inverse_transform(path_scaled)
-            path_z_values = gp.predict(path_scaled)
-            path_df = pd.DataFrame({'x': path_original[:, 0], 'y': path_original[:, 1], 'z': path_z_values})
-            fig = go.Figure()
-            fig.add_trace(go.Surface(x=xx, y=yy, z=Z, colorscale='Plasma', opacity=0.8, name='GP Response Surface', contours=dict(x=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_x=True), y=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_y=True), z=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_z=True))))
-            fig.add_trace(go.Scatter3d(x=df_rsm['pcr_cycles'], y=df_rsm['input_dna'], z=df_rsm['library_yield'], mode='markers', marker=dict(size=5, color='black', symbol='diamond', line=dict(color='white', width=1)), name='DOE Experimental Points'))
-            fig.add_trace(go.Scatter3d(x=path_df['x'], y=path_df['y'], z=path_df['z'], mode='lines', line=dict(color='cyan', width=8), name='Gradient Ascent Path'))
-            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[0]], y=[path_df['y'].iloc[0]], z=[path_df['z'].iloc[0]], mode='markers', marker=dict(color='lime', size=10, symbol='circle'), name='Start Point'))
-            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[-1]], y=[path_df['y'].iloc[-1]], z=[path_df['z'].iloc[-1]], mode='markers', marker=dict(color='red', size=12, symbol='x'), name='Converged Point'))
-            fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='diamond', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
-            fig.update_layout(title='<b>3D Visualization of Optimization Landscape</b>', scene=dict(xaxis=dict(title='PCR Cycles', backgroundcolor="rgba(0, 0, 0,0)"), yaxis=dict(title='Input DNA (ng)', backgroundcolor="rgba(0, 0, 0,0)"), zaxis=dict(title='Library Yield', backgroundcolor="rgba(0, 0, 0,0)"), camera=dict(eye=dict(x=1.5, y=-1.5, z=1.2))), height=700, margin=dict(l=0, r=0, b=0, t=40), legend=dict(x=0.01, y=0.99, traceorder='normal', bgcolor='rgba(255,255,255,0.6)'))
-            st.plotly_chart(fig, use_container_width=True)
-            st.success("The 3D plot visualizes the assay response surface...", icon="🎯")
-        except Exception as e:
-            st.error(f"Could not render 3D visualization. Error: {e}")
-            logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
-    
-
-    # --- Tool 10: 3D Optimization Visualization ---
-
-    with ml_tabs[10]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization_alpha)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
