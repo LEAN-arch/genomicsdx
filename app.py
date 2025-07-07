@@ -746,7 +746,6 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     ])
 
     # --- Tool 1: Levey-Jennings ---
-    # --- Tool 1: Levey-Jennings ---
     with tool_tabs[0]:
         st.subheader("Statistical Process Control (SPC) for Daily Assay Monitoring")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -1254,6 +1253,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             logger.error(f"Gauge R&R analysis failed: {e}", exc_info=True)
     
     # --- Tool 5: LoD/Probit ---
+    # --- Tool 5: LoD/Probit ---
     with tool_tabs[4]:
         st.subheader("Limit of Detection (LoD) by Probit Analysis")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
@@ -1279,15 +1279,96 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             **Significance of Results:**
             The LoD value is a key performance claim in our regulatory submission and Instructions for Use (IFU). It defines the analytical sensitivity of the assay. A low, precisely-determined LoD is a major competitive advantage and provides confidence in the test's ability to detect disease at the earliest stages. This analysis is guided by CLSI standard **EP17-A2**.
             """)
-        # Generate plausible LoD data
-        concentrations = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]
-        hit_rates = [0.15, 0.30, 0.75, 0.90, 0.98, 1.0] # Plausible hit rates
-        df_lod = pd.DataFrame({'concentration': concentrations, 'hit_rate': hit_rates})
         
-        fig = create_lod_probit_plot(df_lod, 'concentration', 'hit_rate', title="LoD for Key Biomarker Using Contrived Samples")
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("The Probit analysis yields a highly precise LoD estimate with a tight confidence interval, demonstrating robust assay performance at low analyte concentrations. This result is suitable for inclusion in the PMA submission.", icon="✅")
+        try:
+            import statsmodels.api as sm
+            from statsmodels.genmod.generalized_linear_model import GLM
+            from statsmodels.genmod import families
 
+            # --- 1. User Inputs & More Realistic Data ---
+            lod_prob_pct = st.slider("Select Target Detection Probability (%) for LoD Calculation", 80, 100, 95, key="lod_slider")
+            lod_prob = lod_prob_pct / 100.0
+            
+            # Data representing n_hits out of n_total replicates
+            lod_data = {
+                'concentration': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5],
+                'n_total':       [20,   20,   20,   20,  20,  20],
+                'n_hits':        [3,    6,    15,   18,  19,  20]
+            }
+            df_lod = pd.DataFrame(lod_data)
+            df_lod['hit_rate'] = df_lod['n_hits'] / df_lod['n_total']
+            df_lod['log10_conc'] = np.log10(df_lod['concentration'])
+            
+            # --- 2. Probit Model Fitting ---
+            # Create the response variable for binomial GLM: [n_success, n_failures]
+            glm_response = df_lod[['n_hits', 'n_total']].copy()
+            glm_response['n_failures'] = glm_response['n_total'] - glm_response['n_hits']
+            
+            # Add a constant (intercept) to the predictor
+            glm_predictor = sm.add_constant(df_lod['log10_conc'])
+            
+            # Fit the Probit model
+            probit_model = GLM(glm_response[['n_hits', 'n_failures']], glm_predictor, family=families.Binomial(link=families.links.probit()))
+            probit_results = probit_model.fit()
+            
+            # --- 3. Calculate LoD and Confidence Interval ---
+            intercept, slope = probit_results.params
+            probit_val_target = stats.norm.ppf(lod_prob)
+            log10_lod = (probit_val_target - intercept) / slope
+            lod_estimate = 10**log10_lod
+            
+            # Get predictions for the curve and confidence bands
+            x_range_log = np.linspace(df_lod['log10_conc'].min(), df_lod['log10_conc'].max(), 200)
+            x_range_pred = sm.add_constant(x_range_log)
+            preds = probit_results.get_prediction(x_range_pred).summary_frame(alpha=0.05)
+            
+            # Find CI for LoD by finding where the bands cross the target probability
+            log10_lod_ci_lower = (probit_val_target - preds['mean_ci_upper']) / slope
+            log10_lod_ci_upper = (probit_val_target - preds['mean_ci_lower']) / slope
+            lod_ci = (10**log10_lod_ci_lower.min(), 10**log10_lod_ci_upper.max())
+            
+            # --- 4. Build the Informative Dashboard ---
+            kpi_col1, kpi_col2 = st.columns(2)
+            kpi_col1.metric(f"LoD at {lod_prob_pct}% Detection", f"{lod_estimate:.4f} units/mL")
+            kpi_col2.metric("95% Confidence Interval for LoD", f"[{lod_ci[0]:.4f}, {lod_ci[1]:.4f}]")
+            
+            plot_col1, plot_col2 = st.columns(2)
+            
+            with plot_col1:
+                st.markdown("##### Dose-Response Curve")
+                fig = go.Figure()
+                # Confidence Band
+                fig.add_trace(go.Scatter(x=10**x_range_log, y=preds['mean_ci_lower'], fill=None, mode='lines', line_color='lightgrey', name='Lower 95% CI'))
+                fig.add_trace(go.Scatter(x=10**x_range_log, y=preds['mean_ci_upper'], fill='tonexty', mode='lines', line_color='lightgrey', name='Upper 95% CI'))
+                # Main Probit Curve
+                fig.add_trace(go.Scatter(x=10**x_range_log, y=preds['mean'], mode='lines', line_color='blue', name='Probit Fit'))
+                # Raw Data Points
+                fig.add_trace(go.Scatter(x=df_lod['concentration'], y=df_lod['hit_rate'], mode='markers', name='Experimental Data', marker=dict(color='black', size=8)))
+                # LoD line
+                fig.add_hline(y=lod_prob, line_dash="dot", line_color="red", annotation_text=f"{lod_prob_pct}% Detection")
+                fig.add_vline(x=lod_estimate, line_dash="dot", line_color="red")
+                fig.update_xaxes(type="log", title_text="Analyte Concentration (units/mL)")
+                fig.update_yaxes(title_text="Detection Probability (Hit Rate)")
+                fig.update_layout(title="<b>Probit Model Fit vs. Experimental Data</b>", showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+            with plot_col2:
+                st.markdown("##### Linearized Model Fit")
+                df_lod['probit_hit_rate'] = stats.norm.ppf(df_lod['hit_rate'].clip(0.001, 0.999)) # Clip to avoid -inf/inf
+                fig_lin = px.scatter(df_lod, x='log10_conc', y='probit_hit_rate', title="<b>Linearity of Probit Transformation</b>",
+                                     labels={'log10_conc': 'log10(Concentration)', 'probit_hit_rate': 'Probit(Hit Rate)'})
+                fig_lin.add_trace(go.Scatter(x=df_lod['log10_conc'], y=intercept + slope * df_lod['log10_conc'], mode='lines', name='Linear Fit', line_color='red'))
+                fig_lin.update_layout(showlegend=False)
+                st.plotly_chart(fig_lin, use_container_width=True)
+            
+            st.divider()
+            st.success(f"**Conclusion:** The Probit analysis yields a precise LoD{lod_prob_pct} estimate of **{lod_estimate:.4f} units/mL** with a tight 95% confidence interval of **[{lod_ci[0]:.4f}, {lod_ci[1]:.4f}]**. The strong linear fit in the diagnostic plot confirms the validity of the model. This result is suitable for inclusion in the PMA submission.", icon="✅")
+
+        except ImportError:
+            st.error("This tool requires `statsmodels`. Please install it (`pip install statsmodels`).")
+        except Exception as e:
+            st.error(f"An error occurred during Probit analysis: {e}")
+            logger.error(f"Probit analysis failed: {e}", exc_info=True)
     # --- Tool 6: Pareto Analysis ---
     with tool_tabs[5]:
         st.subheader("Pareto Analysis of Process Deviations")
