@@ -807,17 +807,106 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
             **Significance of Results:**
             A Bland-Altman plot is a critical component of any method comparison study in a PMA submission. If the **Limits of Agreement** are within a pre-defined, clinically acceptable range, it provides strong evidence that the two methods can be used interchangeably. If a significant bias is detected, it must be investigated and corrected.
             """)
-        # Generate some plausible data for the plot
+        
+        # --- 1. Generate Plausible Data & User Inputs ---
         np.random.seed(42)
         data = {
             'Method_A': np.random.normal(50, 10, 100),
-            'Method_B': np.random.normal(50, 10, 100) + np.random.normal(1, 2, 100) # Add a slight bias and noise
+            'Method_B': np.random.normal(50, 10, 100) + np.random.normal(1, 2, 100) + np.linspace(0, 2, 100) # Add bias and proportional bias
         }
         df_methods = pd.DataFrame(data)
-        fig = create_bland_altman_plot(df_methods, 'Method_A', 'Method_B', title="Bland-Altman: New vs. Old Assay Version")
-        st.plotly_chart(fig, use_container_width=True)
-        st.success("Analysis shows a small positive bias, indicating the new assay version measures slightly higher on average. However, the limits of agreement are narrow, suggesting strong overall agreement between the methods.", icon="✅")
+        m1, m2 = 'Method_A', 'Method_B'
 
+        st.info("Define the clinically acceptable limits for this comparison study.", icon="🎯")
+        acc_col1, acc_col2 = st.columns(2)
+        max_bias = acc_col1.number_input("Maximum Allowable Bias (Absolute)", value=2.0, step=0.1)
+        max_loa_width = acc_col2.number_input("Maximum Allowable Width of LoA", value=10.0, step=0.1)
+
+        # --- 2. Calculations ---
+        df_methods['average'] = (df_methods[m1] + df_methods[m2]) / 2
+        df_methods['difference'] = df_methods[m2] - df_methods[m1]
+
+        bias = df_methods['difference'].mean()
+        std_diff = df_methods['difference'].std()
+        loa_upper = bias + 1.96 * std_diff
+        loa_lower = bias - 1.96 * std_diff
+
+        # Identify outliers
+        outliers = df_methods[(df_methods['difference'] > loa_upper) | (df_methods['difference'] < loa_lower)]
+        inliers = df_methods[~df_methods.index.isin(outliers.index)]
+        
+        # Proportional bias check
+        reg = stats.linregress(x=df_methods['average'], y=df_methods['difference'])
+        is_prop_bias_sig = reg.pvalue < 0.05
+
+        # --- 3. Build the Dashboard ---
+        kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+        kpi_col1.metric("Calculated Bias", f"{bias:+.3f}", f"Acceptable if < ±{max_bias}", delta_color="inverse" if abs(bias) > max_bias else "normal")
+        kpi_col2.metric("Limits of Agreement Width", f"{(loa_upper - loa_lower):.3f}", f"Acceptable if < {max_loa_width}", delta_color="inverse" if (loa_upper - loa_lower) > max_loa_width else "normal")
+        kpi_col3.metric("Outliers Identified", f"{len(outliers)} ({len(outliers)/len(df_methods):.1%})", delta=len(outliers), delta_color="inverse")
+
+        st.divider()
+        plot_col1, plot_col2 = st.columns(2)
+
+        with plot_col1:
+            st.markdown("##### Correlation View")
+            r_sq = df_methods[[m1, m2]].corr().iloc[0, 1]**2
+            fig_corr = px.scatter(df_methods, x=m1, y=m2, title=f"<b>Method Correlation (R² = {r_sq:.4f})</b>",
+                                  trendline="ols", trendline_color_override="red")
+            fig_corr.add_shape(type="line", x0=df_methods[m1].min(), y0=df_methods[m1].min(),
+                               x1=df_methods[m1].max(), y1=df_methods[m1].max(),
+                               line=dict(color="grey", width=2, dash="dash"), name="Identity Line")
+            st.plotly_chart(fig_corr, use_container_width=True)
+
+        with plot_col2:
+            st.markdown("##### Agreement View (Bland-Altman)")
+            fig_ba = go.Figure()
+            # Acceptance limits (user-defined)
+            fig_ba.add_shape(type="rect", x0=df_methods['average'].min(), y0=-max_loa_width/2, x1=df_methods['average'].max(), y1=max_loa_width/2, fillcolor="lightgreen", opacity=0.2, layer="below", line_width=0, name="Acceptance Zone")
+            # Limits of agreement (statistical)
+            fig_ba.add_hrect(y0=loa_lower, y1=loa_upper, fillcolor="lightblue", opacity=0.2, layer="below", line_width=0, name="95% Limits of Agreement")
+            
+            # Inlier and outlier points
+            fig_ba.add_trace(go.Scatter(x=inliers['average'], y=inliers['difference'], mode='markers', name='Inliers', marker=dict(color='cornflowerblue')))
+            fig_ba.add_trace(go.Scatter(x=outliers['average'], y=outliers['difference'], mode='markers', name='Outliers', marker=dict(color='red', symbol='x-thin', size=8)))
+
+            # Mean and LoA lines with annotations
+            for y, text in [(bias, "Bias"), (loa_upper, "Upper LoA"), (loa_lower, "Lower LoA")]:
+                fig_ba.add_hline(y=y, line_dash="dash", line_color="black", annotation_text=f"{text}: {y:.2f}", annotation_position="bottom right")
+            
+            # Proportional bias line
+            if is_prop_bias_sig:
+                x_range = np.array([df_methods['average'].min(), df_methods['average'].max()])
+                fig_ba.add_trace(go.Scatter(x=x_range, y=reg.intercept + reg.slope * x_range, mode='lines', name='Proportional Bias', line=dict(color='purple', width=2)))
+
+            fig_ba.update_layout(title="<b>Bland-Altman Agreement Plot</b>", xaxis_title="Average of Methods", yaxis_title="Difference (Method B - Method A)", showlegend=False)
+            st.plotly_chart(fig_ba, use_container_width=True)
+            
+        st.divider()
+        # --- 4. Dynamic Conclusion ---
+        conclusion_messages = []
+        is_fail = False
+        if abs(bias) > max_bias:
+            conclusion_messages.append(f"❌ **Bias Fails:** The observed bias of {bias:.3f} exceeds the acceptable limit of ±{max_bias}.")
+            is_fail = True
+        if (loa_upper - loa_lower) > max_loa_width:
+            conclusion_messages.append(f"❌ **Agreement Fails:** The width of the Limits of Agreement ({loa_upper - loa_lower:.3f}) exceeds the acceptable limit of {max_loa_width}.")
+            is_fail = True
+        if not is_fail:
+             conclusion_messages.append(f"✅ **Pass:** Bias and Limits of Agreement are within the defined acceptable criteria.")
+
+        if is_prop_bias_sig:
+            conclusion_messages.append(f"⚠️ **Review:** Significant proportional bias detected (p={reg.pvalue:.3f}). The difference between methods changes as the measurement value increases.")
+        if len(outliers) > 0:
+            conclusion_messages.append(f"⚠️ **Review:** {len(outliers)} outlier(s) were identified outside the 95% limits of agreement, requiring investigation.")
+            
+        final_message = "\n\n".join(conclusion_messages)
+        if is_fail:
+            st.error(f"**Conclusion: Method Agreement Not Demonstrated**\n\n{final_message}")
+        elif "⚠️ **Review:**" in final_message:
+            st.warning(f"**Conclusion: Agreement Demonstrated with Caveats**\n\n{final_message}")
+        else:
+            st.success(f"**Conclusion: Agreement Demonstrated**\n\n{final_message}")
     # --- Tool 3: TOST ---
     with tool_tabs[2]:
         st.subheader("Equivalence Testing (TOST) for Change Control")
