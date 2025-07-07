@@ -865,7 +865,7 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
     with tool_tabs[3]:
         st.subheader("Measurement System Analysis (Gauge R&R)")
         with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Existing content
+            st.markdown(r"""...""") # Existing explanation
         
         try:
             from statsmodels.formula.api import ols
@@ -893,15 +893,15 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                     model = ols(formula, data=df_msa).fit()
                     anova_table = anova_lm(model, typ=2)
                     
-                    # --- DEFINITIVE FIX: Programmatically find the Mean Squares column name ---
-                    if 'MS' in anova_table.columns:
-                        ms_col_name = 'MS'
-                    elif 'mean_sq' in anova_table.columns:
-                        ms_col_name = 'mean_sq'
-                    else:
-                        st.error("Could not find Mean Squares column ('MS' or 'mean_sq') in the ANOVA table. Please check your statsmodels version or the data.", icon="🚨")
-                        st.dataframe(anova_table) # Show the user what the table looks like
+                    # --- DEFINITIVE FIX: Calculate Mean Squares directly from fundamental columns ---
+                    if 'sum_sq' not in anova_table.columns or 'df' not in anova_table.columns:
+                        st.error("FATAL: ANOVA table is missing 'sum_sq' or 'df' columns. Cannot proceed.", icon="🚨")
+                        st.dataframe(anova_table) # Show the user the malformed table
                         st.stop()
+                    
+                    # This calculation makes the code version-agnostic.
+                    anova_table['MS_CALCULATED'] = anova_table['sum_sq'] / anova_table['df']
+                    ms_col_name = 'MS_CALCULATED'
 
                     # Use the dynamically found column name
                     ms_part = anova_table.loc[f"C(Q('{part_col}'))", ms_col_name]
@@ -924,16 +924,15 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                     results_df = results_df.set_index('Source')
                     total_grr = results_df.loc['Total Gauge R&R', '% Contribution']
 
+                    # The rest of the dashboard rendering code is unchanged...
                     st.info("""**How to Read the Plots:**...""", icon="💡")
                     col1, col2 = st.columns([2, 1.2])
                     with col1:
-                        # ... Main plot rendering ...
                         st.markdown("##### Measurement Distribution by Part and Operator")
                         fig_main = px.box(df_msa, x=part_col, y=value_col, color=operator_col, points='all', title="<b>Gauge R&R Interaction Plot</b>", labels={part_col: "Part ID", value_col: "Measurement Value", operator_col: "Operator"}, category_orders={part_col: sorted(df_msa[part_col].unique())})
                         fig_main.update_traces(quartilemethod="exclusive").update_layout(legend_title_text='Operator', title_x=0.5, template='plotly_white')
                         st.plotly_chart(fig_main, use_container_width=True)
                     with col2:
-                        # ... KPI and Bar chart rendering ...
                         st.markdown("##### Key Performance Indicators")
                         delta_color = "normal" if total_grr < 10 else "inverse"
                         st.metric("Total Gauge R&R", f"{total_grr:.2f}%", f"Target: < 10%", delta_color=delta_color)
@@ -945,11 +944,11 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                         fig_bar.add_trace(go.Bar(y=['% Contribution'], x=[var_data['Reproducibility']], name='Reproducibility', orientation='h', text=f"{var_data['Reproducibility']:.1f}%", textposition='inside', marker_color='#d62728'))
                         fig_bar.update_layout(barmode='stack', height=150, margin=dict(l=10, r=10, t=30, b=10), title_text="Sources of Variation", title_x=0.5, yaxis_visible=False, xaxis_visible=False, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                         st.plotly_chart(fig_bar, use_container_width=True)
-
                     st.divider()
                     st.markdown("##### ANOVA Variance Components Analysis")
                     st.dataframe(results_df.style.format({'Variance': '{:.4f}', '% Contribution': '{:.2f}%'}), use_container_width=True)
-                    # ... Conclusion rendering ...
+                    #... Conclusion logic ...
+
         except ImportError:
             st.error("This tool requires `statsmodels`. Please install it (`pip install statsmodels`).")
         except Exception as e:
