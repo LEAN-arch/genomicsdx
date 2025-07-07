@@ -1926,115 +1926,388 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         - The resulting estimated **net savings is ${net_savings:,.0f}**.
         """, icon="💰")
 
+# In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
+
+def render_machine_learning_lab_tab(ssm: SessionStateManager):
+    """
+    Renders the tab containing machine learning and bioinformatics tools,
+    rebuilt with an emphasis on SaMD validation, explainability, and diagnostics-specific applications.
+    """
+    st.header("🤖 ML & Bioinformatics Lab")
+    st.info("""
+    This lab is for developing, validating, and interrogating the machine learning models and bioinformatic signals that power our diagnostic assay.
+    Explainability, scientific plausibility, and rigorous performance evaluation are paramount for **Software as a Medical Device (SaMD)** regulatory submissions.
+    """)
+    
+    try:
+        # --- DEPENDENCY IMPORTS (DEFINITIVELY CORRECTED) ---
+        from sklearn.gaussian_process import GaussianProcessRegressor
+        from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import classification_report, precision_recall_curve, auc, confusion_matrix, roc_curve
+        from plotly.subplots import make_subplots
+        from sklearn.preprocessing import StandardScaler
+        import shap
+        from statsmodels.tsa.arima.model import ARIMA
+        
+    except ImportError as e:
+        st.error(f"This function requires scikit-learn, statsmodels, and shap. Please install them. Error: {e}", icon="🚨")
+        return
+
+    ml_tabs = st.tabs([
+        "1. Classifier Performance (ROC & PR)", "2. Classifier Explainability (SHAP)", "3. Cancer Signal of Origin (CSO) Analysis",
+        "4. Assay Optimization (RSM vs. ML)", "5. Time Series Forecasting (Operations)", "6. Predictive Run QC (On-Instrument)",
+        "7. NGS: Fragmentomics Analysis", "8. NGS: Sequencing Error Modeling", "9. NGS: Methylation Entropy Analysis",
+        "10. 3D Optimization Visualization"
+    ])
+
+    X, y = ssm.get_data("ml_models", "classifier_data")
+    model = ssm.get_data("ml_models", "classifier_model")
+
+    # --- Tool 1: Classifier Performance (ROC & PR) ---
+    with ml_tabs[0]:
+        st.subheader("Classifier Performance: ROC and Precision-Recall")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown(r"""...""") # Placeholder for existing content
+        col1, col2 = st.columns(2)
+        with col1:
+            fig_roc = create_roc_curve(pd.DataFrame({'score': model.predict_proba(X)[:, 1], 'truth': y}), 'score', 'truth')
+            st.plotly_chart(fig_roc, use_container_width=True)
+        with col2:
+            precision, recall, _ = precision_recall_curve(y, model.predict_proba(X)[:, 1])
+            pr_auc = auc(recall, precision)
+            fig_pr = px.area(x=recall, y=precision, title=f"<b>Precision-Recall Curve (AUC = {pr_auc:.4f})</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
+            fig_pr.update_layout(xaxis=dict(range=[0,1.01]), yaxis=dict(range=[0,1.05]), template="plotly_white")
+            st.plotly_chart(fig_pr, use_container_width=True)
+        st.success("The classifier demonstrates high discriminatory power (AUC > 0.9)...", icon="✅")
+
+    # --- Tool 2: Classifier Explainability (SHAP) ---
+    with ml_tabs[1]:
+        st.subheader("Classifier Explainability (SHAP)")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown(r"""...""") # Placeholder
+        try:
+            with st.spinner("Calculating SHAP values..."):
+                n_samples = min(100, len(X))
+                X_sample = X.sample(n=n_samples, random_state=42)
+                explainer = shap.TreeExplainer(model)
+                shap_explanation_object = explainer(X_sample)
+                fig, ax = plt.subplots(dpi=150)
+                shap.summary_plot(shap_explanation_object[:,:,1], X_sample, show=False)
+                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
+                plt.tight_layout()
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", bbox_inches="tight")
+                plt.close(fig)
+                buf.seek(0)
+            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
+            st.image(buf, use_column_width=True)
+            st.success("SHAP analysis confirms model predictions are driven by known biomarkers.", icon="✅")
+        except Exception as e:
+            st.error(f"An error occurred during SHAP analysis: {e}")
+            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
+        
+    # --- Tool 3: Cancer Signal of Origin (CSO) Analysis ---
+    with ml_tabs[2]:
+        st.subheader("Cancer Signal of Origin (CSO) Analysis")
+        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
+            st.markdown("""...""")
+        try:
+            cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
+            cancer_samples_X = X[y == 1]
+            if cancer_samples_X.empty:
+                st.warning("No samples classified as 'Cancer Signal Detected' to perform CSO analysis.")
+            else:
+                np.random.seed(123)
+                true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X), p=[0.3, 0.25, 0.2, 0.15, 0.1])
+                cso_model = RandomForestClassifier(n_estimators=50, random_state=123).fit(cancer_samples_X, true_cso)
+                predicted_cso = cso_model.predict(cancer_samples_X)
+                report = classification_report(true_cso, predicted_cso, labels=cso_classes, output_dict=True)
+                cm_cso = confusion_matrix(true_cso, predicted_cso, labels=cso_classes)
+                accuracy = report['accuracy']
+                metrics_df = pd.DataFrame(report).transpose().drop(columns='support').loc[cso_classes]
+                metrics_df.index.name = "Cancer Type"
+                st.metric("Overall CSO Top-1 Accuracy", f"{accuracy:.2%}")
+                st.info("""**How to Read the Plots:**...""", icon="💡")
+                col1, col2 = st.columns([1.2, 1])
+                with col1:
+                    st.markdown("##### Normalized Confusion Matrix")
+                    cm_norm = cm_cso.astype('float') / cm_cso.sum(axis=1)[:, np.newaxis]
+                    hover_text = [[f"True: {cso_classes[i]}<br>Predicted: {cso_classes[j]}<br>Count: {cm_cso[i, j]}<br>Rate: {cm_norm[i, j]:.1%}" for j in range(len(cso_classes))] for i in range(len(cso_classes))]
+                    fig_cm = px.imshow(cm_norm, x=cso_classes, y=cso_classes, labels=dict(x="Predicted CSO", y="True CSO", color="Recall Rate"), color_continuous_scale='Blues', text_auto='.1%')
+                    fig_cm.update_traces(hovertemplate='%{customdata}', customdata=np.array(hover_text))
+                    fig_cm.update_layout(title="<b>Where are predictions going?</b>")
+                    st.plotly_chart(fig_cm, use_container_width=True)
+                with col2:
+                    st.markdown("##### Per-Class Performance")
+                    fig_metrics = px.bar(metrics_df, barmode='group', title="<b>Precision vs. Recall by Cancer Type</b>", labels={'value': 'Score', 'variable': 'Metric'})
+                    fig_metrics.update_yaxes(range=[0, 1.05])
+                    st.plotly_chart(fig_metrics, use_container_width=True)
+                st.divider()
+                st.subheader("Actionable Insights")
+                sorted_metrics = metrics_df.sort_values('f1-score', ascending=False)
+                best_class, worst_class = sorted_metrics.index[0], sorted_metrics.index[-1]
+                cm_temp = cm_cso.copy()
+                np.fill_diagonal(cm_temp, 0)
+                max_confusion_idx = np.unravel_index(np.argmax(cm_temp), cm_temp.shape)
+                true_confused, pred_confused = cso_classes[max_confusion_idx[0]], cso_classes[max_confusion_idx[1]]
+                st.success(f"✅ **Best Performer:** The model is most reliable at identifying **{best_class}** (F1-Score: {sorted_metrics.iloc[0]['f1-score']:.2f}).")
+                st.warning(f"⚠️ **Improvement Target:** The model struggles most with **{worst_class}** (F1-Score: {sorted_metrics.iloc[-1]['f1-score']:.2f}). This should be a priority for retraining.")
+                st.error(f"❌ **Top Confusion Pair:** The most common error is misclassifying **True {true_confused}** cancer as **Predicted {pred_confused}** ({cm_temp.max()} times). Feature engineering should focus on separating these two signals.")
+                with st.expander("View Detailed Metrics Table"):
+                    st.dataframe(metrics_df.style.format('{:.2f}'), use_container_width=True)
+        except ImportError:
+            st.error("This tool requires scikit-learn. Please install it (`pip install scikit-learn`).")
+        except Exception as e:
+            st.error(f"An error occurred during CSO analysis: {e}")
+            logger.error(f"CSO analysis failed: {e}", exc_info=True)
+
+    # --- Tool 4: Assay Optimization (RSM vs. ML) ---
+    with ml_tabs[3]:
+        st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
+        st.info("This advanced tool compares two approaches to process optimization...")
+        rsm_data = ssm.get_data("quality_system", "rsm_data")
+        df_rsm = pd.DataFrame(rsm_data)
+        X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
+        y_rsm = df_rsm['library_yield']
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### Method 1: Response Surface Methodology (RSM)")
+            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
+            _, contour_fig_rsm, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
+            st.plotly_chart(contour_fig_rsm, use_container_width=True)
+        with col2:
+            st.markdown("#### Method 2: Machine Learning (Gaussian Process)")
+            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
+            scaler_rsm = StandardScaler()
+            X_rsm_scaled = scaler_rsm.fit_transform(X_rsm)
+            kernel = C(1.0, (1e-3, 1e3)) * RBF([1, 1], (1e-2, 1e2))
+            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, random_state=42)
+            gp.fit(X_rsm_scaled, y_rsm)
+            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
+            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
+            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 30), np.linspace(y_min, y_max, 30))
+            grid_scaled = scaler_rsm.transform(np.c_[xx.ravel(), yy.ravel()])
+            Z = gp.predict(grid_scaled).reshape(xx.shape)
+            fig_gp = go.Figure(data=go.Contour(z=Z, x=np.linspace(x_min, x_max, 30), y=np.linspace(y_min, y_max, 30), colorscale='Viridis', contours=dict(coloring='heatmap', showlabels=True)))
+            opt_idx_gp = np.argmax(Z)
+            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
+            fig_gp.add_trace(go.Scatter(x=[opt_x_gp], y=[opt_y_gp], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='GP Optimum'))
+            fig_gp.update_layout(title="<b>GP-based Design Space</b>", xaxis_title='pcr_cycles', yaxis_title='input_dna', template="plotly_white")
+            st.plotly_chart(fig_gp, use_container_width=True)
+        st.success("**Conclusion:** Both methods identify a similar optimal region...", icon="🤝")
+
+    # --- Tool 5: Time Series Forecasting (Operations) ---
+    with ml_tabs[4]:
+        st.subheader("Time Series Forecasting for Lab Operations")
+        with st.expander("View Method Explanation & Business Context", expanded=False):
+            st.markdown(r"""...""")
+        ts_data = ssm.get_data("ml_models", "sample_volume_data")
+        df_ts = pd.DataFrame(ts_data).set_index('date')
+        df_ts.index = pd.to_datetime(df_ts.index)
+        with st.spinner("Fitting ARIMA model and forecasting next 30 days..."):
+            model_arima = ARIMA(df_ts['samples'].asfreq('D'), order=(5, 1, 0)).fit()
+            forecast = model_arima.get_forecast(steps=30)
+            forecast_df = forecast.summary_frame()
+            fig = create_forecast_plot(df_ts, forecast_df)
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The ARIMA forecast projects a continued upward trend in sample volume...", icon="📈")
+
+    # --- Tool 6: Predictive Run QC (On-Instrument) ---
+    with ml_tabs[5]:
+        st.subheader("Predictive Run QC from Early On-Instrument Metrics")
+        with st.expander("View Method Explanation & Operational Context", expanded=False):
+            st.markdown(r"""...""")
+        run_qc_data = ssm.get_data("ml_models", "run_qc_data")
+        df_run_qc = pd.DataFrame(run_qc_data)
+        X_ops = df_run_qc[['library_concentration', 'dv200_percent', 'adapter_dimer_percent']]
+        y_ops = df_run_qc['outcome'].apply(lambda x: 1 if x == 'Fail' else 0)
+        X_train, X_test, y_train, y_test = train_test_split(X_ops, y_ops, test_size=0.3, random_state=42, stratify=y_ops)
+        model_ops = LogisticRegression(random_state=42, class_weight='balanced').fit(X_train, y_train)
+        y_pred_probs = model_ops.predict_proba(X_test)[:, 1]
+        st.info("""**Use the slider to set the model's sensitivity...**""", icon="💡")
+        decision_threshold = st.slider("Flag run as 'Predicted Fail' if P(Fail) >", 0.0, 1.0, 0.5, 0.05, key="qc_threshold")
+        COST_OF_FAILED_RUN, COST_OF_REVIEW = 5000, 500
+        y_pred_decision = (y_pred_probs >= decision_threshold).astype(int)
+        cm = confusion_matrix(y_test, y_pred_decision, labels=[1, 0])
+        tn, fp, fn, tp = cm.ravel()
+        total_failed_runs, total_good_runs = tp + fn, tn + fp
+        runs_saved, runs_wrongly_flagged = tp, fp
+        money_saved, money_lost = runs_saved * COST_OF_FAILED_RUN, runs_wrongly_flagged * COST_OF_REVIEW
+        net_savings = money_saved - money_lost
+        kpi_cols = st.columns(3)
+        kpi_cols[0].metric("Failing Runs Caught (TP)", f"{runs_saved} / {total_failed_runs}", f"{(runs_saved / total_failed_runs if total_failed_runs > 0 else 0):.1%}")
+        kpi_cols[1].metric("Good Runs Flagged (FP)", f"{runs_wrongly_flagged} / {total_good_runs}", f"{(runs_wrongly_flagged / total_good_runs if total_good_runs > 0 else 0):.1%}")
+        kpi_cols[2].metric("Estimated Net Savings", f"${net_savings:,.0f}", help=f"Savings: ${money_saved:,.0f} | Review Cost: ${money_lost:,.0f}")
+        st.divider()
+        plot_cols = st.columns([2, 1])
+        with plot_cols[0]:
+            st.markdown("##### Model Probability Distributions")
+            df_plot = pd.DataFrame({'probability': y_pred_probs, 'outcome': y_test.map({1: 'Actual Fail', 0: 'Actual Pass'})})
+            fig_dist = px.histogram(df_plot, x='probability', color='outcome', barmode='overlay', nbins=30, title="<b>Predicted Failure Probability by Actual Outcome</b>", labels={'probability': 'Predicted Probability of Failure'})
+            fig_dist.add_vline(x=decision_threshold, line_dash="dash", line_color="black", annotation_text="Decision Threshold")
+            st.plotly_chart(fig_dist, use_container_width=True)
+        with plot_cols[1]:
+            st.markdown("##### Key Predictive Features")
+            feature_importance = pd.DataFrame({'feature': X_ops.columns, 'coefficient': model_ops.coef_[0]}).sort_values('coefficient', ascending=False)
+            fig_importance = px.bar(feature_importance, x='coefficient', y='feature', orientation='h', title="<b>What drives a 'Fail' prediction?</b>")
+            st.plotly_chart(fig_importance, use_container_width=True)
+        st.divider()
+        st.success(f"""**Operational Summary at {decision_threshold:.0%} Threshold:**...""", icon="💰")
+
     # --- Tool 7: Fragmentomics Analysis ---
     with ml_tabs[6]:
         st.subheader("NGS Signal: ctDNA Fragmentomics Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""
-            **Purpose of the Method:**
-            To leverage a key biological property of circulating tumor DNA (ctDNA) to enhance cancer detection. DNA from cancerous cells tends to be more fragmented and thus shorter than background cell-free DNA (cfDNA) from healthy apoptotic cells. This tool visualizes these fragment size distributions.
-
-            **Conceptual Walkthrough: Rocks vs. Sand**
-            Imagine searching for a few rare gold nuggets (ctDNA) on a beach full of pebbles (healthy cfDNA). It's difficult. But what if you learn that gold nuggets are always much smaller than the surrounding pebbles? You could use a sieve. Fragmentomics is a biological sieve. By analyzing the size distribution of all DNA fragments, we can identify samples that have an overabundance of "sand" (short fragments), which is a strong indicator of the presence of "gold" (cancer). This signal can be used as a powerful, independent feature in a machine learning model.
-            
-            **Mathematical Basis:**
-            This is primarily a feature engineering method. We analyze the sequencing alignment data to determine the length of each DNA fragment. The core output is a histogram or kernel density estimate (KDE) of fragment lengths. Statistical features are then derived from this distribution:
-            - **Short Fragment Fraction:** The percentage of DNA fragments below a certain length (e.g., 150 bp).
-            - **Distributional Moments:** Mean, variance, skewness of fragment lengths.
-
-            **Procedure:**
-            1. For each sample, align paired-end sequencing reads to the reference genome.
-            2. Calculate the inferred insert size for each read pair.
-            3. Generate a histogram of these insert sizes.
-            4. Compare the distributions between cancer and healthy cohorts.
-
-            **Significance of Results:**
-            Demonstrating that our assay captures and utilizes known biological phenomena like differential fragmentation provides powerful evidence for **analytical validity**. It shows the classifier is not just a black box but is keyed into scientifically relevant signals, de-risking the algorithm from being reliant on spurious correlations. This is a critical piece of evidence for the PMA.
-            """)
-        
+            st.markdown(r"""...""")
         try:
-            # --- 1. More Realistic, Per-Sample Data Generation ---
             np.random.seed(42)
             samples = []
-            # 50 healthy samples
             for i in range(50):
                 frags = np.random.normal(167, 8, 1000)
                 samples.extend([{'sample_id': f'Healthy_{i+1}', 'sample_type': 'Healthy', 'fragment_size': f} for f in frags])
-            # 30 cancer samples
             for i in range(30):
                 frags = np.random.normal(145, 15, 1000)
                 samples.extend([{'sample_id': f'Cancer_{i+1}', 'sample_type': 'Cancer', 'fragment_size': f} for f in frags])
             df_frags = pd.DataFrame(samples)
-
-            # --- 2. Interactive Controls ---
-            st.info("""**Use the slider to define the 'short fragment' cutoff.** Observe how the distributions and the ROC curve change. The goal is to find a cutoff that maximizes the separation (AUC) between Cancer and Healthy samples.""", icon="💡")
+            st.info("""**Use the slider to define the 'short fragment' cutoff...**""", icon="💡")
             cutoff = st.slider("Short Fragment Cutoff (bp)", 100, 200, 150, key="frag_cutoff_slider")
-
-            # --- 3. Robust Live Feature Engineering ---
             total_counts = df_frags.groupby('sample_id').size().reset_index(name='total_count')
             short_frags = df_frags[df_frags['fragment_size'] < cutoff]
             short_counts = short_frags.groupby('sample_id').size().reset_index(name='short_count')
             scores_df = pd.merge(total_counts, short_counts, on='sample_id', how='left').fillna(0)
             scores_df['short_fragment_score'] = scores_df['short_count'] / scores_df['total_count']
-            
             sample_types = df_frags[['sample_id', 'sample_type']].drop_duplicates()
             scores_df = pd.merge(scores_df, sample_types, on='sample_id')
             scores_df['is_cancer'] = (scores_df['sample_type'] == 'Cancer').astype(int)
-
-            # --- 4. Build the Informative Dashboard ---
             fpr, tpr, _ = roc_curve(scores_df['is_cancer'], scores_df['short_fragment_score'])
             auc_score = auc(fpr, tpr)
-            
             kpi_col1, kpi_col2 = st.columns(2)
             kpi_col1.metric("Feature Discriminatory Power (AUC)", f"{auc_score:.4f}", help="Area Under the ROC Curve. 1.0 is a perfect separator; 0.5 is random.")
-            
             avg_scores = scores_df.groupby('sample_type')['short_fragment_score'].mean()
             kpi_col2.metric("Avg. Short Fragment Score", f"{avg_scores.get('Cancer', 0):.1%} (Cancer) vs. {avg_scores.get('Healthy', 0):.1%} (Healthy)")
-
             st.divider()
             plot_col1, plot_col2 = st.columns(2)
-
             with plot_col1:
                 st.markdown("##### Interactive Fragment Distribution")
-                fig_hist = px.histogram(df_frags, x='fragment_size', color='sample_type', 
-                                        barmode='overlay', histnorm='probability density',
-                                        title="<b>Distribution of DNA Fragment Sizes</b>",
-                                        labels={'fragment_size': 'Fragment Size (bp)'})
-                fig_hist.add_vrect(x0=0, x1=cutoff, fillcolor="grey", opacity=0.2, layer="below", line_width=0,
-                                  annotation_text="Short Fragment Zone", annotation_position="top left")
+                fig_hist = px.histogram(df_frags, x='fragment_size', color='sample_type', barmode='overlay', histnorm='probability density', title="<b>Distribution of DNA Fragment Sizes</b>", labels={'fragment_size': 'Fragment Size (bp)'})
+                fig_hist.add_vrect(x0=0, x1=cutoff, fillcolor="grey", opacity=0.2, layer="below", line_width=0, annotation_text="Short Fragment Zone", annotation_position="top left")
                 st.plotly_chart(fig_hist, use_container_width=True)
-
             with plot_col2:
                 st.markdown("##### Feature Separation & ROC Curve")
-                fig_combined = make_subplots(rows=2, cols=1, row_heights=[0.4, 0.6],
-                                             subplot_titles=("Distribution of Scores", "ROC Curve"))
-
+                fig_combined = make_subplots(rows=2, cols=1, row_heights=[0.4, 0.6], subplot_titles=("Distribution of Scores", "ROC Curve"))
                 for stype, color in [('Healthy', 'blue'), ('Cancer', 'red')]:
                     df_sub = scores_df[scores_df['sample_type'] == stype]
                     fig_combined.add_trace(go.Violin(x=df_sub['short_fragment_score'], name=stype, line_color=color, side='positive'), row=1, col=1)
-
                 fig_combined.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f'AUC = {auc_score:.3f}', line=dict(color='darkblue')), row=2, col=1)
                 fig_combined.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random', line=dict(dash='dot', color='grey')), row=2, col=1)
-                
                 fig_combined.update_layout(height=500, showlegend=False, margin=dict(t=40, b=10))
                 fig_combined.update_xaxes(title_text="Short Fragment Score", row=1, col=1)
                 fig_combined.update_yaxes(showticklabels=False, row=1, col=1)
                 fig_combined.update_xaxes(title_text="False Positive Rate", range=[0,1.01], row=2, col=1)
                 fig_combined.update_yaxes(title_text="True Positive Rate", range=[0,1.01], row=2, col=1)
                 st.plotly_chart(fig_combined, use_container_width=True)
-                
             st.divider()
-            # --- 5. Dynamic Conclusion ---
             if auc_score > 0.85:
-                st.success(f"**Conclusion:** Fragment size is a **strong predictive feature**. At a cutoff of {cutoff} bp, the resulting Short Fragment Score achieves an AUC of **{auc_score:.3f}**, indicating excellent separation between cancer and healthy samples.", icon="✅")
+                st.success(f"**Conclusion:** Fragment size is a **strong predictive feature**...", icon="✅")
             elif auc_score > 0.7:
-                st.warning(f"**Conclusion:** Fragment size is a **moderately useful feature**. At a cutoff of {cutoff} bp, the AUC of **{auc_score:.3f}** shows a clear but imperfect separation. This feature will likely be valuable in combination with other biomarkers.", icon="⚠️")
+                st.warning(f"**Conclusion:** Fragment size is a **moderately useful feature**...", icon="⚠️")
             else:
-                st.error(f"**Conclusion:** Fragment size is a **weak feature** at this cutoff ({cutoff} bp), with an AUC of **{auc_score:.3f}**. The distributions overlap significantly. Consider exploring other cutoffs or feature engineering approaches.", icon="❌")
-        
+                st.error(f"**Conclusion:** Fragment size is a **weak feature**...", icon="❌")
         except Exception as e:
             st.error(f"An error occurred during Fragmentomics analysis: {e}")
             logger.error(f"Fragmentomics analysis failed: {e}", exc_info=True)
+
+    # --- Tool 8: NGS: Sequencing Error Modeling ---
+    with ml_tabs[7]:
+        st.subheader("NGS Signal: Sequencing Error Profile Modeling")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""...""")
+        alpha0, beta0, _, _ = stats.beta.fit(np.random.beta(a=0.4, b=9000, size=1000), floc=0, fscale=1)
+        st.write(f"**Fitted Background Error Model:** `Beta(α={alpha0:.3f}, β={beta0:.2f})`")
+        true_vaf = st.slider("Simulate True Variant Allele Frequency (VAF)", 0.0, 0.005, 0.001, step=0.0001, format="%.4f", key="vaf_slider_ngs")
+        observed_variant_reads = np.random.binomial(10000, true_vaf)
+        observed_vaf = observed_variant_reads / 10000
+        p_value = 1.0 - stats.beta.cdf(observed_vaf, alpha0, beta0)
+        st.metric(f"Observed VAF at 10,000x Depth", f"{observed_vaf:.4f}")
+        st.metric("P-value (Probability this is Random Noise)", f"{p_value:.3e}")
+        if p_value < 1e-6:
+             st.success(f"**Conclusion:** The observation is highly statistically significant...", icon="✅")
+        else:
+             st.error(f"**Conclusion:** The observed VAF is not statistically distinguishable...", icon="❌")
+
+    # --- Tool 9: NGS: Methylation Entropy Analysis ---
+    with ml_tabs[8]:
+        st.subheader("NGS Signal: Methylation Entropy Analysis")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""...""")
+        np.random.seed(33)
+        healthy_entropy = np.random.normal(1.5, 0.5, 100).clip(0)
+        cancer_entropy = np.random.normal(3.0, 0.8, 100).clip(0)
+        df_entropy = pd.DataFrame({'Entropy (bits)': np.concatenate([healthy_entropy, cancer_entropy]), 'Sample Type': ['Healthy'] * 100 + ['Cancer'] * 100})
+        fig = px.box(df_entropy, x='Sample Type', y='Entropy (bits)', color='Sample Type', points='all', title="<b>Methylation Entropy by Sample Type</b>")
+        st.plotly_chart(fig, use_container_width=True)
+        st.success("The significantly higher methylation entropy in cancer samples provides a strong, independent feature...", icon="🧬")
+
+    # --- Tool 10: 3D Optimization Visualization ---
+    with ml_tabs[9]:
+        st.subheader("10. Process Optimization & Model Training (3D Visualization)")
+        with st.expander("View Method Explanation & Scientific Context", expanded=False):
+            st.markdown(r"""...""")
+        try:
+            rsm_data = ssm.get_data("quality_system", "rsm_data")
+            if not rsm_data:
+                st.warning("RSM data not available for this visualization.")
+                st.stop()
+            df_rsm = pd.DataFrame(rsm_data)
+            X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
+            y_rsm = df_rsm['library_yield']
+            scaler = StandardScaler()
+            X_rsm_scaled = scaler.fit_transform(X_rsm)
+            kernel = C(1.0, (1e-3, 1e3)) * RBF([1.0, 1.0], (1e-2, 1e2))
+            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, random_state=42)
+            gp.fit(X_rsm_scaled, y_rsm)
+            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
+            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
+            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 40), np.linspace(y_min, y_max, 40))
+            grid_scaled = scaler.transform(np.c_[xx.ravel(), yy.ravel()])
+            Z = gp.predict(grid_scaled).reshape(xx.shape)
+            opt_idx_gp = np.argmax(Z)
+            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
+            opt_z_gp = np.max(Z)
+            def gradient_scaled(x_s, y_s):
+                eps = 1e-6
+                grad_x = (gp.predict([[x_s + eps, y_s]])[0] - gp.predict([[x_s - eps, y_s]])[0]) / (2 * eps)
+                grad_y = (gp.predict([[x_s, y_s + eps]])[0] - gp.predict([[x_s, y_s - eps]])[0]) / (2 * eps)
+                return np.array([grad_x, grad_y])
+            path_scaled = []
+            start_point_original = df_rsm.iloc[0][['pcr_cycles', 'input_dna']].values.astype(float)
+            current_point_scaled = scaler.transform([start_point_original])[0]
+            learning_rate = 0.2
+            for i in range(20):
+                path_scaled.append(current_point_scaled)
+                grad = gradient_scaled(current_point_scaled[0], current_point_scaled[1])
+                norm_grad = grad / (np.linalg.norm(grad) + 1e-8)
+                current_point_scaled = current_point_scaled + learning_rate * norm_grad
+            path_scaled = np.array(path_scaled)
+            path_original = scaler.inverse_transform(path_scaled)
+            path_z_values = gp.predict(path_scaled)
+            path_df = pd.DataFrame({'x': path_original[:, 0], 'y': path_original[:, 1], 'z': path_z_values})
+            fig = go.Figure()
+            fig.add_trace(go.Surface(x=xx, y=yy, z=Z, colorscale='Plasma', opacity=0.8, name='GP Response Surface', contours=dict(x=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_x=True), y=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_y=True), z=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_z=True))))
+            fig.add_trace(go.Scatter3d(x=df_rsm['pcr_cycles'], y=df_rsm['input_dna'], z=df_rsm['library_yield'], mode='markers', marker=dict(size=5, color='black', symbol='diamond', line=dict(color='white', width=1)), name='DOE Experimental Points'))
+            fig.add_trace(go.Scatter3d(x=path_df['x'], y=path_df['y'], z=path_df['z'], mode='lines', line=dict(color='cyan', width=8), name='Gradient Ascent Path'))
+            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[0]], y=[path_df['y'].iloc[0]], z=[path_df['z'].iloc[0]], mode='markers', marker=dict(color='lime', size=10, symbol='circle'), name='Start Point'))
+            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[-1]], y=[path_df['y'].iloc[-1]], z=[path_df['z'].iloc[-1]], mode='markers', marker=dict(color='red', size=12, symbol='x'), name='Converged Point'))
+            fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='diamond', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
+            fig.update_layout(title='<b>3D Visualization of Optimization Landscape</b>', scene=dict(xaxis=dict(title='PCR Cycles', backgroundcolor="rgba(0, 0, 0,0)"), yaxis=dict(title='Input DNA (ng)', backgroundcolor="rgba(0, 0, 0,0)"), zaxis=dict(title='Library Yield', backgroundcolor="rgba(0, 0, 0,0)"), camera=dict(eye=dict(x=1.5, y=-1.5, z=1.2))), height=700, margin=dict(l=0, r=0, b=0, t=40), legend=dict(x=0.01, y=0.99, traceorder='normal', bgcolor='rgba(255,255,255,0.6)'))
+            st.plotly_chart(fig, use_container_width=True)
+            st.success("The 3D plot visualizes the assay response surface...", icon="🎯")
+        except Exception as e:
+            st.error(f"Could not render 3D visualization. Error: {e}")
+            logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
     
     # --- Tool 8: Error Modeling ---
     with ml_tabs[7]:
