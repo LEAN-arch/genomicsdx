@@ -1960,7 +1960,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         "1. Classifier Performance (ROC & PR)", "2. Classifier Explainability (SHAP)", "3. Cancer Signal of Origin (CSO) Analysis",
         "4. Assay Optimization (RSM vs. ML)", "5. Time Series Forecasting (Operations)", "6. Predictive Run QC (On-Instrument)",
         "7. NGS: Fragmentomics Analysis", "8. NGS: Sequencing Error Modeling", "9. NGS: Methylation Entropy Analysis",
-        "10. 3D Optimization Visualization"
+        "10. 3D Optimization Visualization", "Error Modeling", "Methylation Entropy","3D Optimization"
     ])
 
     X, y = ssm.get_data("ml_models", "classifier_data")
@@ -2310,7 +2310,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
     
     # --- Tool 8: Error Modeling ---
-    with ml_tabs[7]:
+    with ml_tabs[10]:
         st.subheader("NGS Signal: Sequencing Error Profile Modeling")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
@@ -2347,7 +2347,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
              st.error(f"**Conclusion:** The observed VAF is not statistically distinguishable from the background sequencing error profile. This should **not** be called as a true variant.", icon="❌")
 
     # --- Tool 9: Methylation Entropy ---
-    with ml_tabs[8]:
+    with ml_tabs[11]:
         st.subheader("NGS Signal: Methylation Entropy Analysis")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
@@ -2384,7 +2384,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
 
     # --- Tool 10: 3D Optimization Visualization ---
 
-    with ml_tabs[9]:
+    with ml_tabs[12]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization)")
         with st.expander("View Method Explanation & Scientific Context", expanded=False):
             st.markdown(r"""
