@@ -1497,8 +1497,6 @@ def render_statistical_tools_tab(ssm: SessionStateManager):
                 Focusing CAPA and process improvement initiatives on these categories will yield the greatest return on investment.
                 """, icon="🎯")
 
-# In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
-
 def render_machine_learning_lab_tab(ssm: SessionStateManager):
     """
     Renders the tab containing machine learning and bioinformatics tools,
@@ -1637,7 +1635,6 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             st.error(f"An error occurred during SHAP analysis: {e}")
             logger.error(f"SHAP analysis failed: {e}", exc_info=True)
         
-    # --- Tool 3: CSO ---
     # --- Tool 3: Cancer Signal of Origin (CSO) Analysis ---
     with ml_tabs[2]:
         st.subheader("Cancer Signal of Origin (CSO) Analysis")
@@ -1745,7 +1742,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"An error occurred during CSO analysis: {e}")
             logger.error(f"CSO analysis failed: {e}", exc_info=True)
-    # --- Tool 4: RSM vs ML ---
+   
+ # --- Tool 4: RSM vs ML ---
     with ml_tabs[3]:
         st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
         st.info("This advanced tool compares two approaches to process optimization. Traditional Response Surface Methodology (RSM) fits a simple quadratic equation, while a Machine Learning model like a Gaussian Process (GP) can learn more complex, non-linear relationships.")
@@ -1793,7 +1791,7 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
             
         st.success("**Conclusion:** Both methods identify a similar optimal region. The GP model captures more nuanced local variations, while the RSM provides a smoother, more generalized surface. For our PMA, the RSM model is preferred for its simplicity and regulatory acceptance, but the GP model provides confidence that no major, complex optima were missed.", icon="🤝")
 
-    # --- Tool 5: Time Series ---
+
     # --- Tool 5: Time Series Forecasting (Operations) ---
     with ml_tabs[4]:
         st.subheader("Time Series Forecasting for Lab Operations")
@@ -2033,329 +2031,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         - It incorrectly flags **{runs_wrongly_flagged} good runs** for review, costing an estimated **${money_lost:,.0f}**.
         - The resulting estimated **net savings is ${net_savings:,.0f}**.
         """, icon="💰")
-
-# In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
-
-def render_machine_learning_lab_tab(ssm: SessionStateManager):
-    """
-    Renders the tab containing machine learning and bioinformatics tools,
-    rebuilt with an emphasis on SaMD validation, explainability, and diagnostics-specific applications.
-    """
-    st.header("🤖 ML & Bioinformatics Lab")
-    st.info("""
-    This lab is for developing, validating, and interrogating the machine learning models and bioinformatic signals that power our diagnostic assay.
-    Explainability, scientific plausibility, and rigorous performance evaluation are paramount for **Software as a Medical Device (SaMD)** regulatory submissions.
-    """)
-    
-    try:
-        # --- DEPENDENCY IMPORTS (DEFINITIVELY CORRECTED) ---
-        from sklearn.gaussian_process import GaussianProcessRegressor
-        from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.model_selection import train_test_split
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.metrics import classification_report, precision_recall_curve, auc, confusion_matrix, roc_curve
-        from plotly.subplots import make_subplots
-        from sklearn.preprocessing import StandardScaler
-        import shap
-        from statsmodels.tsa.arima.model import ARIMA
-        
-    except ImportError as e:
-        st.error(f"This function requires scikit-learn, statsmodels, and shap. Please install them. Error: {e}", icon="🚨")
-        return
-
-    ml_tabs = st.tabs([
-        "1. Classifier Performance (ROC & PR)", "2. Classifier Explainability (SHAP)", "3. Cancer Signal of Origin (CSO) Analysis",
-        "4. Assay Optimization (RSM vs. ML)", "5. Time Series Forecasting (Operations)", "6. Predictive Run QC (On-Instrument)",
-        "7. NGS: Fragmentomics Analysis", "8. NGS: Sequencing Error Modeling", "9. NGS: Methylation Entropy Analysis",
-        "10. 3D Optimization Visualization"
-    ])
-
-    X, y = ssm.get_data("ml_models", "classifier_data")
-    model = ssm.get_data("ml_models", "classifier_model")
-
-    # --- Tool 1: Classifier Performance (ROC & PR) ---
-    with ml_tabs[0]:
-        st.subheader("Classifier Performance: ROC and Precision-Recall")
-        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Placeholder for existing content
-        col1, col2 = st.columns(2)
-        with col1:
-            fig_roc = create_roc_curve(pd.DataFrame({'score': model.predict_proba(X)[:, 1], 'truth': y}), 'score', 'truth')
-            st.plotly_chart(fig_roc, use_container_width=True)
-        with col2:
-            precision, recall, _ = precision_recall_curve(y, model.predict_proba(X)[:, 1])
-            pr_auc = auc(recall, precision)
-            fig_pr = px.area(x=recall, y=precision, title=f"<b>Precision-Recall Curve (AUC = {pr_auc:.4f})</b>", labels={'x':'Recall (Sensitivity)', 'y':'Precision'})
-            fig_pr.update_layout(xaxis=dict(range=[0,1.01]), yaxis=dict(range=[0,1.05]), template="plotly_white")
-            st.plotly_chart(fig_pr, use_container_width=True)
-        st.success("The classifier demonstrates high discriminatory power (AUC > 0.9)...", icon="✅")
-
-    # --- Tool 2: Classifier Explainability (SHAP) ---
-    with ml_tabs[1]:
-        st.subheader("Classifier Explainability (SHAP)")
-        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown(r"""...""") # Placeholder
-        try:
-            with st.spinner("Calculating SHAP values..."):
-                n_samples = min(100, len(X))
-                X_sample = X.sample(n=n_samples, random_state=42)
-                explainer = shap.TreeExplainer(model)
-                shap_explanation_object = explainer(X_sample)
-                fig, ax = plt.subplots(dpi=150)
-                shap.summary_plot(shap_explanation_object[:,:,1], X_sample, show=False)
-                fig.suptitle("SHAP Feature Importance Summary", fontsize=16)
-                plt.tight_layout()
-                buf = io.BytesIO()
-                fig.savefig(buf, format="png", bbox_inches="tight")
-                plt.close(fig)
-                buf.seek(0)
-            st.write("##### SHAP Summary Plot (Impact on 'Cancer Signal Detected' Prediction)")
-            st.image(buf, use_column_width=True)
-            st.success("SHAP analysis confirms model predictions are driven by known biomarkers.", icon="✅")
-        except Exception as e:
-            st.error(f"An error occurred during SHAP analysis: {e}")
-            logger.error(f"SHAP analysis failed: {e}", exc_info=True)
-        
-    # --- Tool 3: Cancer Signal of Origin (CSO) Analysis ---
-    with ml_tabs[2]:
-        st.subheader("Cancer Signal of Origin (CSO) Analysis")
-        with st.expander("View Method Explanation & Regulatory Context", expanded=False):
-            st.markdown("""...""")
-        try:
-            cso_classes = ['Lung', 'Colorectal', 'Pancreatic', 'Liver', 'Ovarian']
-            cancer_samples_X = X[y == 1]
-            if cancer_samples_X.empty:
-                st.warning("No samples classified as 'Cancer Signal Detected' to perform CSO analysis.")
-            else:
-                np.random.seed(123)
-                true_cso = np.random.choice(cso_classes, size=len(cancer_samples_X), p=[0.3, 0.25, 0.2, 0.15, 0.1])
-                cso_model = RandomForestClassifier(n_estimators=50, random_state=123).fit(cancer_samples_X, true_cso)
-                predicted_cso = cso_model.predict(cancer_samples_X)
-                report = classification_report(true_cso, predicted_cso, labels=cso_classes, output_dict=True)
-                cm_cso = confusion_matrix(true_cso, predicted_cso, labels=cso_classes)
-                accuracy = report['accuracy']
-                metrics_df = pd.DataFrame(report).transpose().drop(columns='support').loc[cso_classes]
-                metrics_df.index.name = "Cancer Type"
-                st.metric("Overall CSO Top-1 Accuracy", f"{accuracy:.2%}")
-                st.info("""**How to Read the Plots:**...""", icon="💡")
-                col1, col2 = st.columns([1.2, 1])
-                with col1:
-                    st.markdown("##### Normalized Confusion Matrix")
-                    cm_norm = cm_cso.astype('float') / cm_cso.sum(axis=1)[:, np.newaxis]
-                    hover_text = [[f"True: {cso_classes[i]}<br>Predicted: {cso_classes[j]}<br>Count: {cm_cso[i, j]}<br>Rate: {cm_norm[i, j]:.1%}" for j in range(len(cso_classes))] for i in range(len(cso_classes))]
-                    fig_cm = px.imshow(cm_norm, x=cso_classes, y=cso_classes, labels=dict(x="Predicted CSO", y="True CSO", color="Recall Rate"), color_continuous_scale='Blues', text_auto='.1%')
-                    fig_cm.update_traces(hovertemplate='%{customdata}', customdata=np.array(hover_text))
-                    fig_cm.update_layout(title="<b>Where are predictions going?</b>")
-                    st.plotly_chart(fig_cm, use_container_width=True)
-                with col2:
-                    st.markdown("##### Per-Class Performance")
-                    fig_metrics = px.bar(metrics_df, barmode='group', title="<b>Precision vs. Recall by Cancer Type</b>", labels={'value': 'Score', 'variable': 'Metric'})
-                    fig_metrics.update_yaxes(range=[0, 1.05])
-                    st.plotly_chart(fig_metrics, use_container_width=True)
-                st.divider()
-                st.subheader("Actionable Insights")
-                sorted_metrics = metrics_df.sort_values('f1-score', ascending=False)
-                best_class, worst_class = sorted_metrics.index[0], sorted_metrics.index[-1]
-                cm_temp = cm_cso.copy()
-                np.fill_diagonal(cm_temp, 0)
-                max_confusion_idx = np.unravel_index(np.argmax(cm_temp), cm_temp.shape)
-                true_confused, pred_confused = cso_classes[max_confusion_idx[0]], cso_classes[max_confusion_idx[1]]
-                st.success(f"✅ **Best Performer:** The model is most reliable at identifying **{best_class}** (F1-Score: {sorted_metrics.iloc[0]['f1-score']:.2f}).")
-                st.warning(f"⚠️ **Improvement Target:** The model struggles most with **{worst_class}** (F1-Score: {sorted_metrics.iloc[-1]['f1-score']:.2f}). This should be a priority for retraining.")
-                st.error(f"❌ **Top Confusion Pair:** The most common error is misclassifying **True {true_confused}** cancer as **Predicted {pred_confused}** ({cm_temp.max()} times). Feature engineering should focus on separating these two signals.")
-                with st.expander("View Detailed Metrics Table"):
-                    st.dataframe(metrics_df.style.format('{:.2f}'), use_container_width=True)
-        except ImportError:
-            st.error("This tool requires scikit-learn. Please install it (`pip install scikit-learn`).")
-        except Exception as e:
-            st.error(f"An error occurred during CSO analysis: {e}")
-            logger.error(f"CSO analysis failed: {e}", exc_info=True)
-
-    # --- Tool 4: Assay Optimization (RSM vs. ML) ---
-    with ml_tabs[3]:
-        st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
-        st.info("This advanced tool compares two approaches to process optimization...")
-        rsm_data = ssm.get_data("quality_system", "rsm_data")
-        df_rsm = pd.DataFrame(rsm_data)
-        X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
-        y_rsm = df_rsm['library_yield']
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### Method 1: Response Surface Methodology (RSM)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
-            _, contour_fig_rsm, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
-            st.plotly_chart(contour_fig_rsm, use_container_width=True)
-        with col2:
-            st.markdown("#### Method 2: Machine Learning (Gaussian Process)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
-            scaler_rsm = StandardScaler()
-            X_rsm_scaled = scaler_rsm.fit_transform(X_rsm)
-            kernel = C(1.0, (1e-3, 1e3)) * RBF([1, 1], (1e-2, 1e2))
-            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, random_state=42)
-            gp.fit(X_rsm_scaled, y_rsm)
-            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
-            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
-            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 30), np.linspace(y_min, y_max, 30))
-            grid_scaled = scaler_rsm.transform(np.c_[xx.ravel(), yy.ravel()])
-            Z = gp.predict(grid_scaled).reshape(xx.shape)
-            fig_gp = go.Figure(data=go.Contour(z=Z, x=np.linspace(x_min, x_max, 30), y=np.linspace(y_min, y_max, 30), colorscale='Viridis', contours=dict(coloring='heatmap', showlabels=True)))
-            opt_idx_gp = np.argmax(Z)
-            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
-            fig_gp.add_trace(go.Scatter(x=[opt_x_gp], y=[opt_y_gp], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='GP Optimum'))
-            fig_gp.update_layout(title="<b>GP-based Design Space</b>", xaxis_title='pcr_cycles', yaxis_title='input_dna', template="plotly_white")
-            st.plotly_chart(fig_gp, use_container_width=True)
-        st.success("**Conclusion:** Both methods identify a similar optimal region...", icon="🤝")
-
-    # --- Tool 5: Time Series Forecasting (Operations) ---
-    # In genomicsdx/app.py, replace the entire render_machine_learning_lab_tab function with this corrected version.
-
-def render_machine_learning_lab_tab(ssm: SessionStateManager):
-    """
-    Renders the tab containing machine learning and bioinformatics tools,
-    rebuilt with an emphasis on SaMD validation, explainability, and diagnostics-specific applications.
-    """
-    st.header("🤖 ML & Bioinformatics Lab")
-    st.info("""
-    This lab is for developing, validating, and interrogating the machine learning models and bioinformatic signals that power our diagnostic assay.
-    Explainability, scientific plausibility, and rigorous performance evaluation are paramount for **Software as a Medical Device (SaMD)** regulatory submissions.
-    """)
-    
-    try:
-        from sklearn.gaussian_process import GaussianProcessRegressor
-        from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.model_selection import train_test_split
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.metrics import classification_report, precision_recall_curve, auc, confusion_matrix, roc_curve
-        from plotly.subplots import make_subplots
-        from sklearn.preprocessing import StandardScaler
-        import shap
-        from statsmodels.tsa.arima.model import ARIMA
-        from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-        import lightgbm as lgb
-        import itertools
-        
-    except ImportError as e:
-        st.error(f"This function requires scikit-learn, statsmodels, lightgbm, and shap. Please install them. Error: {e}", icon="🚨")
-        return
-
-    ml_tabs = st.tabs([
-        "1. Classifier Performance (ROC & PR)", "2. Classifier Explainability (SHAP)", "3. Cancer Signal of Origin (CSO) Analysis",
-        "4. Assay Optimization (RSM vs. ML)", "5. Time Series Forecasting (Operations)", "6. Predictive Run QC (On-Instrument)",
-        "7. NGS: Fragmentomics Analysis", "8. NGS: Sequencing Error Modeling", "9. NGS: Methylation Entropy Analysis",
-        "10. 3D Optimization Visualization"
-    ])
-
-    X, y = ssm.get_data("ml_models", "classifier_data")
-    model = ssm.get_data("ml_models", "classifier_model")
-
-    # (Code for tabs 0, 1, 2 is correct and unchanged)
-    # ...
-
-    # --- Tool 4: Assay Optimization (RSM vs. ML) ---
-    with ml_tabs[3]:
-        st.subheader("Assay Optimization: Statistical (RSM) vs. Machine Learning (GP)")
-        st.info("This advanced tool compares two approaches...")
-        rsm_data = ssm.get_data("quality_system", "rsm_data")
-        df_rsm = pd.DataFrame(rsm_data)
-        X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
-        y_rsm = df_rsm['library_yield']
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### Method 1: Response Surface Methodology (RSM)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
-            _, contour_fig_rsm, _ = create_rsm_plots(df_rsm, 'pcr_cycles', 'input_dna', 'library_yield')
-            st.plotly_chart(contour_fig_rsm, use_container_width=True)
-        with col2:
-            st.markdown("#### Method 2: Machine Learning (Gaussian Process)")
-            with st.expander("View Method Explanation", expanded=False): st.markdown(r"""...""")
-            # --- DEFINITIVE FIX: Use .values and wider bounds to fix all warnings ---
-            scaler_rsm = StandardScaler()
-            X_rsm_scaled = scaler_rsm.fit_transform(X_rsm.values)
-            kernel = C(1.0, (1e-3, 1e3)) * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-3, 1e3))
-            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, random_state=42)
-            gp.fit(X_rsm_scaled, y_rsm)
-            
-            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
-            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
-            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 30), np.linspace(y_min, y_max, 30))
-            grid_scaled = scaler_rsm.transform(np.c_[xx.ravel(), yy.ravel()])
-            Z = gp.predict(grid_scaled).reshape(xx.shape)
-            fig_gp = go.Figure(data=go.Contour(z=Z, x=np.linspace(x_min, x_max, 30), y=np.linspace(y_min, y_max, 30), colorscale='Viridis', contours=dict(coloring='heatmap', showlabels=True)))
-            opt_idx_gp = np.argmax(Z)
-            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
-            fig_gp.add_trace(go.Scatter(x=[opt_x_gp], y=[opt_y_gp], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='GP Optimum'))
-            fig_gp.update_layout(title="<b>GP-based Design Space</b>", xaxis_title='pcr_cycles', yaxis_title='input_dna', template="plotly_white")
-            st.plotly_chart(fig_gp, use_container_width=True)
-        st.success("**Conclusion:** Both methods identify a similar optimal region...", icon="🤝")
-
-    # (Code for tabs 4, 5, 6, 7, 8 is correct and unchanged)
-    # ...
-
-    # --- Tool 10: 3D Optimization Visualization ---
-    with ml_tabs[9]:
-        st.subheader("10. Process Optimization & Model Training (3D Visualization)")
-        with st.expander("View Method Explanation & Scientific Context", expanded=False):
-            st.markdown(r"""...""")
-        try:
-            rsm_data = ssm.get_data("quality_system", "rsm_data")
-            if not rsm_data:
-                st.warning("RSM data not available for this visualization.")
-                st.stop()
-            
-            df_rsm = pd.DataFrame(rsm_data)
-            X_rsm = df_rsm[['pcr_cycles', 'input_dna']]
-            y_rsm = df_rsm['library_yield']
-
-            # --- DEFINITIVE FIX: Use .values and wider bounds to fix all warnings ---
-            scaler = StandardScaler()
-            X_rsm_scaled = scaler.fit_transform(X_rsm.values)
-            kernel = C(1.0, (1e-3, 1e3)) * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-3, 1e3))
-            gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, random_state=42)
-            gp.fit(X_rsm_scaled, y_rsm)
-
-            # (The rest of the 3D plot logic is correct and unchanged)
-            x_min, x_max = X_rsm['pcr_cycles'].min(), X_rsm['pcr_cycles'].max()
-            y_min, y_max = X_rsm['input_dna'].min(), X_rsm['input_dna'].max()
-            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 40), np.linspace(y_min, y_max, 40))
-            grid_scaled = scaler.transform(np.c_[xx.ravel(), yy.ravel()])
-            Z = gp.predict(grid_scaled).reshape(xx.shape)
-            opt_idx_gp = np.argmax(Z)
-            opt_x_gp, opt_y_gp = xx.ravel()[opt_idx_gp], yy.ravel()[opt_idx_gp]
-            opt_z_gp = np.max(Z)
-            def gradient_scaled(x_s, y_s):
-                eps = 1e-6
-                grad_x = (gp.predict([[x_s + eps, y_s]])[0] - gp.predict([[x_s - eps, y_s]])[0]) / (2 * eps)
-                grad_y = (gp.predict([[x_s, y_s + eps]])[0] - gp.predict([[x_s, y_s - eps]])[0]) / (2 * eps)
-                return np.array([grad_x, grad_y])
-            path_scaled = []
-            start_point_original = df_rsm.iloc[0][['pcr_cycles', 'input_dna']].values.astype(float)
-            current_point_scaled = scaler.transform([start_point_original])[0]
-            learning_rate = 0.2
-            for i in range(20):
-                path_scaled.append(current_point_scaled)
-                grad = gradient_scaled(current_point_scaled[0], current_point_scaled[1])
-                norm_grad = grad / (np.linalg.norm(grad) + 1e-8)
-                current_point_scaled = current_point_scaled + learning_rate * norm_grad
-            path_scaled = np.array(path_scaled)
-            path_original = scaler.inverse_transform(path_scaled)
-            path_z_values = gp.predict(path_scaled)
-            path_df = pd.DataFrame({'x': path_original[:, 0], 'y': path_original[:, 1], 'z': path_z_values})
-            fig = go.Figure()
-            fig.add_trace(go.Surface(x=xx, y=yy, z=Z, colorscale='Plasma', opacity=0.8, name='GP Response Surface', contours=dict(x=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_x=True), y=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_y=True), z=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_z=True))))
-            fig.add_trace(go.Scatter3d(x=df_rsm['pcr_cycles'], y=df_rsm['input_dna'], z=df_rsm['library_yield'], mode='markers', marker=dict(size=5, color='black', symbol='diamond', line=dict(color='white', width=1)), name='DOE Experimental Points'))
-            fig.add_trace(go.Scatter3d(x=path_df['x'], y=path_df['y'], z=path_df['z'], mode='lines', line=dict(color='cyan', width=8), name='Gradient Ascent Path'))
-            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[0]], y=[path_df['y'].iloc[0]], z=[path_df['z'].iloc[0]], mode='markers', marker=dict(color='lime', size=10, symbol='circle'), name='Start Point'))
-            fig.add_trace(go.Scatter3d(x=[path_df['x'].iloc[-1]], y=[path_df['y'].iloc[-1]], z=[path_df['z'].iloc[-1]], mode='markers', marker=dict(color='red', size=12, symbol='x'), name='Converged Point'))
-            fig.add_trace(go.Scatter3d(x=[opt_x_gp], y=[opt_y_gp], z=[opt_z_gp], mode='markers', marker=dict(color='yellow', size=12, symbol='diamond', line=dict(color='black', width=1)), name='Predicted Global Optimum'))
-            fig.update_layout(title='<b>3D Visualization of Optimization Landscape</b>', scene=dict(xaxis=dict(title='PCR Cycles', backgroundcolor="rgba(0, 0, 0,0)"), yaxis=dict(title='Input DNA (ng)', backgroundcolor="rgba(0, 0, 0,0)"), zaxis=dict(title='Library Yield', backgroundcolor="rgba(0, 0, 0,0)"), camera=dict(eye=dict(x=1.5, y=-1.5, z=1.2))), height=700, margin=dict(l=0, r=0, b=0, t=40), legend=dict(x=0.01, y=0.99, traceorder='normal', bgcolor='rgba(255,255,255,0.6)'))
-            st.plotly_chart(fig, use_container_width=True)
-            st.success("The 3D plot visualizes the assay response surface...", icon="🎯")
-        except Exception as e:
-            st.error(f"Could not render 3D visualization. Error: {e}")
-            logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
-    # --- Tool 6: Predictive Run QC (On-Instrument) ---
+   
+ # --- Tool 6: Predictive Run QC (On-Instrument) ---
     with ml_tabs[5]:
         st.subheader("Predictive Run QC from Early On-Instrument Metrics")
         with st.expander("View Method Explanation & Operational Context", expanded=False):
@@ -2649,7 +2326,9 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"An error occurred during Methylation Entropy analysis: {e}")
             logger.error(f"Methylation Entropy analysis failed: {e}", exc_info=True)
-    # --- Tool 10: 3D Optimization Visualization ---
+   
+
+ # --- Tool 10: 3D Optimization Visualization ---
 
     with ml_tabs[9]:
         st.subheader("10. Process Optimization & Model Training (3D Visualization_alpha)")
@@ -2787,6 +2466,8 @@ def render_machine_learning_lab_tab(ssm: SessionStateManager):
         except Exception as e:
             st.error(f"Could not render 3D visualization. Error: {e}")
             logger.error(f"Error in 3D optimization visualization: {e}", exc_info=True)
+
+
 #___________________________________________________________________________________________________________________________________________________________________TEXT_______________________________________________________________________________
 def render_compliance_guide_tab():
     """Renders the definitive reference guide to the regulatory and methodological frameworks for the program."""
